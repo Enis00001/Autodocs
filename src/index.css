@@ -1,0 +1,147 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 20% 4%;
+    --foreground: 240 20% 96%;
+
+    --card: 240 16% 7%;
+    --card-foreground: 240 20% 96%;
+
+    --popover: 240 16% 7%;
+    --popover-foreground: 240 20% 96%;
+
+    --primary: 228 91% 64%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 12% 10%;
+    --secondary-foreground: 240 20% 96%;
+
+    --muted: 240 8% 14%;
+    --muted-foreground: 240 8% 46%;
+
+    --accent: 263 84% 58%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 142 71% 80%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 92% 70%;
+
+    --border: 240 10% 18%;
+    --input: 240 10% 18%;
+    --ring: 228 91% 64%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 240 16% 7%;
+    --sidebar-foreground: 240 8% 46%;
+    --sidebar-primary: 228 91% 64%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 12% 10%;
+    --sidebar-accent-foreground: 240 20% 96%;
+    --sidebar-border: 240 10% 18%;
+    --sidebar-ring: 228 91% 64%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(228 91% 64%), hsl(263 84% 58%));
+    --shadow-primary: 0 4px 20px hsla(228, 91%, 64%, 0.3);
+    --shadow-primary-hover: 0 8px 28px hsla(228, 91%, 64%, 0.45);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Syne', sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
+}
+
+@layer components {
+  .font-display {
+    font-family: 'Syne', sans-serif;
+  }
+
+  .font-body {
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+  }
+
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .card-autodocs {
+    @apply bg-card border border-border rounded-xl p-5;
+  }
+
+  .card-title-autodocs {
+    @apply font-display text-xs font-bold uppercase tracking-wider text-muted-foreground;
+  }
+
+  .field-label {
+    @apply text-[11px] font-semibold uppercase tracking-wider text-muted-foreground;
+  }
+
+  .field-input {
+    @apply bg-secondary border border-border rounded-[7px] px-3 py-2.5 text-[13px] text-foreground font-body outline-none transition-colors duration-150;
+  }
+
+  .field-input:focus {
+    @apply border-primary;
+    box-shadow: 0 0 0 3px hsla(228, 91%, 64%, 0.1);
+  }
+
+  .field-input-auto {
+    border-color: hsla(142, 71%, 45%, 0.4);
+    background: hsla(142, 71%, 45%, 0.04);
+    color: hsl(var(--success-foreground));
+  }
+
+  .status-dot-ok {
+    @apply w-[7px] h-[7px] rounded-full shrink-0;
+    background: hsl(var(--success));
+    box-shadow: 0 0 6px hsl(var(--success));
+  }
+
+  .status-dot-pending {
+    @apply w-[7px] h-[7px] rounded-full shrink-0;
+    background: hsl(var(--warning));
+    box-shadow: 0 0 6px hsl(var(--warning));
+    animation: pulse-dot 1.5s infinite;
+  }
+
+  .status-dot-missing {
+    @apply w-[7px] h-[7px] rounded-full shrink-0 bg-muted-foreground;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+}
