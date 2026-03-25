@@ -1,4 +1,4 @@
-export type DocumentKind =
+﻿export type DocumentKind =
   | "cni"
   | "permis"
   | "justificatif_domicile"
@@ -37,7 +37,7 @@ async function pdfFirstPageToDataUrl(file: File): Promise<string> {
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) {
-    throw new Error("Impossible de créer le contexte canvas pour le PDF");
+    throw new Error("Impossible de creer le contexte canvas pour le PDF");
   }
   canvas.width = Math.floor(viewport.width);
   canvas.height = Math.floor(viewport.height);
@@ -50,55 +50,6 @@ async function toVisionImageDataUrl(file: File): Promise<string> {
     return pdfFirstPageToDataUrl(file);
   }
   return fileToDataUrl(file);
-}
-
-function getPrompt(kind: DocumentKind): string {
-  const common = [
-    "Tu es un moteur OCR/validation de documents administratifs français.",
-    "Réponds STRICTEMENT en JSON valide (sans markdown).",
-    "Format de sortie:",
-    "{",
-    '  "status": "valid|invalid|unreadable",',
-    '  "extracted_data": { ... },',
-    '  "validation": { "is_valid": true|false, "reason": "message court en français" }',
-    "}",
-  ].join("\n");
-
-  const perType: Record<DocumentKind, string> = {
-    cni: [
-      "Document type: CNI ou Passeport.",
-      "Extraire: nom, prenom, date_naissance, adresse, numero_cni, date_expiration.",
-      "Validation: date_expiration > aujourd'hui.",
-      'Si invalide: reason explicite (ex: "CNI expirée le 12/03/2024").',
-    ].join("\n"),
-    permis: [
-      "Document type: Permis de conduire.",
-      "Extraire: numero, categories, date_expiration.",
-      "Validation: date_expiration > aujourd'hui.",
-    ].join("\n"),
-    justificatif_domicile: [
-      "Document type: Justificatif de domicile.",
-      "Extraire: nom, prenom, adresse_complete, date_document.",
-      "Validation: date_document <= 3 mois.",
-    ].join("\n"),
-    fiche_paie: [
-      "Document type: Fiche de paie.",
-      "Extraire: nom, prenom, employeur, salaire_net, periode.",
-      "Validation: periode <= 3 mois.",
-    ].join("\n"),
-    avis_imposition: [
-      "Document type: Avis d'imposition.",
-      "Extraire: nom, prenom, revenu_fiscal, annee.",
-      "Validation: annee >= année courante - 1.",
-    ].join("\n"),
-    rib: [
-      "Document type: RIB.",
-      "Extraire: titulaire, iban, bic, banque.",
-      "Validation: format IBAN correct.",
-    ].join("\n"),
-  };
-
-  return `${common}\n\n${perType[kind]}`;
 }
 
 function normalizeResult(parsed: any): AnalyzeResult {
@@ -121,18 +72,8 @@ function normalizeResult(parsed: any): AnalyzeResult {
 }
 
 export async function analyzeDocument(file: File, kind: DocumentKind): Promise<AnalyzeResult> {
-  console.log("analyzeDocument appelé:", file.name, file.type, kind);
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-  console.log("Clé API présente:", !!apiKey);
-  if (!apiKey) {
-    return {
-      status: "unreadable",
-      extractedData: {},
-      validation: { isValid: false, reason: "Clé API OpenAI manquante" },
-    };
-  }
+  console.log("analyzeDocument appele:", file.name, file.type, kind);
 
-  // Accepter images + PDF (PDF converti en image via canvas). Rejeter le reste.
   const isImage = file.type.startsWith("image/");
   const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
   if (!isImage && !isPdf) {
@@ -150,51 +91,62 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
   try {
     dataUrl = await toVisionImageDataUrl(file);
   } catch (err) {
-    console.error("Conversion PDF/image échouée:", err);
+    console.error("Conversion PDF/image echouee:", err);
     return {
       status: "unreadable",
       extractedData: {},
       validation: { isValid: false, reason: "Impossible de lire le document" },
     };
   }
-  const prompt = getPrompt(kind);
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      response_format: { type: "json_object" },
-      temperature: 0,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: dataUrl } },
-          ],
-        },
-      ],
-    }),
-  });
-  console.log("Réponse OpenAI status:", response.status);
-
-  if (!response.ok) {
+  let response: Response;
+  try {
+    response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        imageBase64: dataUrl,
+        kind,
+      }),
+    });
+  } catch (err) {
+    console.error("Erreur reseau vers /api/analyze:", err);
     return {
       status: "unreadable",
       extractedData: {},
-      validation: { isValid: false, reason: `Erreur API OpenAI (${response.status})` },
+      validation: {
+        isValid: false,
+        reason: "Impossible de contacter le serveur d'analyse (/api/analyze).",
+      },
+    };
+  }
+
+  console.log("Reponse proxy /api/analyze status:", response.status);
+
+  if (!response.ok) {
+    let reason = `Erreur API analyse (${response.status})`;
+    try {
+      const errBody = (await response.json()) as { error?: string };
+      if (typeof errBody?.error === "string" && errBody.error.trim()) {
+        reason = errBody.error;
+      }
+    } catch {
+      // ignore parsing error
+    }
+    return {
+      status: "unreadable",
+      extractedData: {},
+      validation: { isValid: false, reason },
     };
   }
 
   const json = await response.json();
-  console.log("JSON complet reçu:", JSON.stringify(json));
+  console.log("JSON complet recu:", JSON.stringify(json));
   const content = json?.choices?.[0]?.message?.content;
   const refusal = json?.choices?.[0]?.message?.refusal;
-  console.log("Contenu réponse:", content);
+
   if (refusal) {
     return {
       status: "invalid",
@@ -209,7 +161,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
     return {
       status: "unreadable",
       extractedData: {},
-      validation: { isValid: false, reason: "Réponse vide du modèle" },
+      validation: { isValid: false, reason: "Reponse vide du modele" },
     };
   }
 
@@ -220,8 +172,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
     return {
       status: "unreadable",
       extractedData: {},
-      validation: { isValid: false, reason: "Réponse JSON invalide" },
+      validation: { isValid: false, reason: "Reponse JSON invalide" },
     };
   }
 }
-
