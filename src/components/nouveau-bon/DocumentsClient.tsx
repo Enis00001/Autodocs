@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+﻿import React, { useState, useRef, useEffect } from "react";
 import { Upload } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { analyzeDocument, type DocumentKind } from "@/utils/analyzeDocument";
@@ -19,14 +19,16 @@ function isFinancement(type: string) {
   return FINANCEMENT_OPTIONS.includes(type);
 }
 
-/** Documents obligatoires pour tous + docs supplémentaires si financement + optionnels second propriétaire */
-function buildDocsList(
-  vehiculeFinancement: string,
-  secondProprietaire: boolean
-): DocItem[] {
+function buildDocsList(vehiculeFinancement: string, secondProprietaire: boolean): DocItem[] {
   const withFinancement = isFinancement(vehiculeFinancement);
   const list: DocItem[] = [
-    { id: "cni", icon: "🪪", name: "Carte d'identité / Passeport (en cours de validité)", status: "missing", detail: "Non importé" },
+    {
+      id: "cni",
+      icon: "🪪",
+      name: "Carte d'identité / Passeport (en cours de validité)",
+      status: "missing",
+      detail: "Recto et verso requis",
+    },
     { id: "permis", icon: "🚗", name: "Permis de conduire (en cours de validité)", status: "missing", detail: "Non importé" },
     {
       id: "justif-domicile",
@@ -91,9 +93,32 @@ const DocumentsClient = ({
     buildDocsList(vehiculeFinancement, secondProprietaire)
   );
 
+  const [cniModalOpen, setCniModalOpen] = useState(false);
+  const [cniRectoFile, setCniRectoFile] = useState<File | null>(null);
+  const [cniVersoFile, setCniVersoFile] = useState<File | null>(null);
+  const [cniRectoPreview, setCniRectoPreview] = useState<string | null>(null);
+  const [cniVersoPreview, setCniVersoPreview] = useState<string | null>(null);
+  const cniRectoImportRef = useRef<HTMLInputElement | null>(null);
+  const cniRectoCameraRef = useRef<HTMLInputElement | null>(null);
+  const cniVersoImportRef = useRef<HTMLInputElement | null>(null);
+  const cniVersoCameraRef = useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
-    setDocs(buildDocsList(vehiculeFinancement, secondProprietaire));
+    setDocs((prev) => {
+      const next = buildDocsList(vehiculeFinancement, secondProprietaire);
+      return next.map((doc) => {
+        const existing = prev.find((d) => d.id === doc.id);
+        return existing ? existing : doc;
+      });
+    });
   }, [vehiculeFinancement, secondProprietaire]);
+
+  useEffect(() => {
+    return () => {
+      if (cniRectoPreview) URL.revokeObjectURL(cniRectoPreview);
+      if (cniVersoPreview) URL.revokeObjectURL(cniVersoPreview);
+    };
+  }, [cniRectoPreview, cniVersoPreview]);
 
   const uploadedCount = docs.filter((d) => d.status !== "missing").length;
   useEffect(() => {
@@ -150,33 +175,41 @@ const DocumentsClient = ({
     return { patch, fields };
   };
 
+  const mergeExtracted = (base: Record<string, string>, incoming: Record<string, string>) => {
+    const next = { ...base };
+    Object.entries(incoming).forEach(([key, value]) => {
+      if (typeof value === "string" && value.trim()) {
+        next[key] = value;
+      }
+    });
+    return next;
+  };
+
+  const statusDotClass = (status: DocItem["status"]) => {
+    if (status === "ok") return "bg-success";
+    if (status === "pending") return "bg-warning animate-pulse";
+    if (status === "invalid") return "bg-warning";
+    if (status === "unreadable") return "bg-destructive";
+    return "bg-muted-foreground";
+  };
+
+  const updateDocStatus = (docId: string, status: DocItem["status"], detail: string) => {
+    setDocs((prev) => prev.map((d) => (d.id === docId ? { ...d, status, detail } : d)));
+  };
+
   const handleFileUpload = async (file: File, docId: string) => {
     const kind = getKindFromDocId(docId);
-    setDocs((prev) =>
-      prev.map((d) =>
-        d.id === docId ? { ...d, status: "pending", detail: "⏳ Analyse en cours..." } : d
-      )
-    );
+    updateDocStatus(docId, "pending", "⏳ Analyse en cours...");
 
     if (!kind) {
-      setDocs((prev) =>
-        prev.map((d) =>
-          d.id === docId
-            ? { ...d, status: "unreadable", detail: "❌ Illisible — Type de document non reconnu" }
-            : d
-        )
-      );
+      updateDocStatus(docId, "unreadable", "❌ Illisible — Type de document non reconnu");
       return;
     }
 
     const analysis = await analyzeDocument(file, kind);
 
     if (analysis.status === "valid" && analysis.validation.isValid) {
-      setDocs((prev) =>
-        prev.map((d) =>
-          d.id === docId ? { ...d, status: "ok", detail: "✅ Validé" } : d
-        )
-      );
+      updateDocStatus(docId, "ok", "✅ Validé");
       const mapped = mapExtractedToForm(kind, analysis.extractedData);
       if (kind === "fiche_paie" || kind === "rib") {
         setAnalysisStore((prev) => ({ ...prev, [docId]: analysis.extractedData }));
@@ -189,26 +222,18 @@ const DocumentsClient = ({
     }
 
     if (analysis.status === "invalid") {
-      setDocs((prev) =>
-        prev.map((d) =>
-          d.id === docId
-            ? {
-                ...d,
-                status: "invalid",
-                detail: `⚠️ Document invalide — ${analysis.validation.reason ?? "validation échouée"}`,
-              }
-            : d
-        )
+      updateDocStatus(
+        docId,
+        "invalid",
+        `⚠️ Document invalide — ${analysis.validation.reason ?? "validation échouée"}`
       );
       return;
     }
 
-    setDocs((prev) =>
-      prev.map((d) =>
-        d.id === docId
-          ? { ...d, status: "unreadable", detail: "❌ Illisible — Document illisible, veuillez réimporter" }
-          : d
-      )
+    updateDocStatus(
+      docId,
+      "unreadable",
+      `❌ Illisible — ${analysis.validation.reason ?? "Document illisible, veuillez réimporter"}`
     );
   };
 
@@ -225,6 +250,71 @@ const DocumentsClient = ({
     e.target.value = "";
   };
 
+  const onCniSideFileSelected = (side: "recto" | "verso", file: File) => {
+    if (side === "recto") {
+      if (cniRectoPreview) URL.revokeObjectURL(cniRectoPreview);
+      setCniRectoFile(file);
+      setCniRectoPreview(URL.createObjectURL(file));
+    } else {
+      if (cniVersoPreview) URL.revokeObjectURL(cniVersoPreview);
+      setCniVersoFile(file);
+      setCniVersoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleCniSideInput = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    side: "recto" | "verso"
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    onCniSideFileSelected(side, file);
+    e.target.value = "";
+  };
+
+  const handleConfirmCni = async () => {
+    if (!cniRectoFile || !cniVersoFile) return;
+
+    setCniModalOpen(false);
+    updateDocStatus("cni", "pending", "⏳ Analyse recto + verso en cours...");
+
+    const [rectoAnalysis, versoAnalysis] = await Promise.all([
+      analyzeDocument(cniRectoFile, "cni"),
+      analyzeDocument(cniVersoFile, "cni"),
+    ]);
+
+    const mergedExtracted = mergeExtracted(
+      rectoAnalysis.extractedData ?? {},
+      versoAnalysis.extractedData ?? {}
+    );
+    const mapped = mapExtractedToForm("cni", mergedExtracted);
+
+    const rectoOk = rectoAnalysis.status === "valid" && rectoAnalysis.validation.isValid;
+    const versoOk = versoAnalysis.status === "valid" && versoAnalysis.validation.isValid;
+
+    if (rectoOk && versoOk) {
+      updateDocStatus("cni", "ok", "✅ CNI complète (recto + verso)");
+      if (Object.keys(mapped.patch).length > 0) {
+        onExtractedData?.(mapped.patch, mapped.fields);
+      }
+      toast({ title: "CNI analysée ✓" });
+      return;
+    }
+
+    const reasons = [rectoAnalysis.validation.reason, versoAnalysis.validation.reason]
+      .filter((r): r is string => Boolean(r && r.trim()))
+      .join(" | ");
+
+    const hasInvalid = rectoAnalysis.status === "invalid" || versoAnalysis.status === "invalid";
+    updateDocStatus(
+      "cni",
+      hasInvalid ? "invalid" : "unreadable",
+      `${hasInvalid ? "⚠️" : "❌"} ${reasons || (hasInvalid ? "CNI invalide" : "CNI illisible")}`
+    );
+  };
+
+  const cniCanConfirm = Boolean(cniRectoFile && cniVersoFile);
+
   return (
     <div className="card-autodocs col-span-2">
       <div className="flex items-center justify-between mb-4">
@@ -234,19 +324,17 @@ const DocumentsClient = ({
         </span>
       </div>
 
-      {/* Upload area */}
       <div className="relative">
-        <div
-          className="relative border-2 border-dashed rounded-[10px] py-7 px-4 text-center transition-all duration-200 overflow-hidden border-border bg-primary/[0.02]"
-        >
-          <div className="absolute inset-0 pointer-events-none" style={{
-            background: "radial-gradient(ellipse at 50% 0%, hsla(228,91%,64%,0.08) 0%, transparent 70%)"
-          }} />
+        <div className="relative border-2 border-dashed rounded-[10px] py-7 px-4 text-center transition-all duration-200 overflow-hidden border-border bg-primary/[0.02]">
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background: "radial-gradient(ellipse at 50% 0%, hsla(228,91%,64%,0.08) 0%, transparent 70%)",
+            }}
+          />
           <Upload className="w-8 h-8 mx-auto mb-2.5 text-muted-foreground" />
           <div className="font-display text-[15px] font-bold mb-1">Scanner ou importer des documents</div>
-          <div className="text-xs text-muted-foreground mb-4">
-            Types acceptés pour import/analyse
-          </div>
+          <div className="text-xs text-muted-foreground mb-4">Types acceptés pour import/analyse</div>
           <div className="flex gap-2 justify-center flex-wrap">
             {chips.map((c) => (
               <span key={c} className="text-[11px] px-2.5 py-1 rounded-full border border-border text-muted-foreground bg-secondary">
@@ -255,10 +343,8 @@ const DocumentsClient = ({
             ))}
           </div>
         </div>
-
       </div>
 
-      {/* Case à cocher second propriétaire */}
       <label className="flex items-center gap-2 mt-3.5 cursor-pointer">
         <input
           type="checkbox"
@@ -269,81 +355,188 @@ const DocumentsClient = ({
         <span className="text-sm text-foreground">Ajouter un second propriétaire</span>
       </label>
 
-      {/* Docs list */}
       <div className="flex flex-col gap-2 mt-3.5">
         {docs.map((doc) => (
-          <div key={doc.id} className="flex items-center gap-3 px-3 py-2.5 bg-secondary rounded-lg border border-border">
-            <div className={`w-8 h-8 rounded-md flex items-center justify-center text-sm shrink-0 ${
-              doc.status === "ok"
-                ? "bg-success/10"
-                : doc.status === "pending"
-                  ? "bg-warning/10 animate-pulse"
-                  : doc.status === "invalid"
-                    ? "bg-warning/10"
-                    : doc.status === "unreadable"
-                      ? "bg-destructive/10"
-                      : "bg-muted-foreground/10"
-            }`}>
+          <div key={doc.id} className="flex flex-col gap-3 px-3 py-3 bg-secondary rounded-lg border border-border md:flex-row md:items-center md:gap-3 md:py-2.5">
+            <div
+              className={`w-8 h-8 rounded-md flex items-center justify-center text-sm shrink-0 ${
+                doc.status === "ok"
+                  ? "bg-success/10"
+                  : doc.status === "pending"
+                    ? "bg-warning/10 animate-pulse"
+                    : doc.status === "invalid"
+                      ? "bg-warning/10"
+                      : doc.status === "unreadable"
+                        ? "bg-destructive/10"
+                        : "bg-muted-foreground/10"
+              }`}
+            >
               {doc.icon}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium">{doc.name}</div>
+              <div className="text-[13px] font-medium">
+                {doc.id === "cni" ? (
+                  <button
+                    type="button"
+                    className="text-left hover:text-primary transition-colors cursor-pointer"
+                    onClick={() => setCniModalOpen(true)}
+                  >
+                    {doc.name}
+                  </button>
+                ) : (
+                  doc.name
+                )}
+              </div>
               {doc.subOption && (
                 <div className="text-[11px] text-muted-foreground mt-0.5">→ {doc.subOption}</div>
               )}
               <div className="text-[11px] text-muted-foreground truncate">{doc.detail}</div>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <input
-                ref={(el) => {
-                  importRefs.current[doc.id] = el;
-                }}
-                type="file"
-                accept="image/jpeg,image/png,application/pdf"
-                className="hidden"
-                onChange={(e) => handleFileChangeForDoc(e, doc.id)}
-              />
-              <input
-                ref={(el) => {
-                  cameraRefs.current[doc.id] = el;
-                }}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => handleFileChangeForDoc(e, doc.id)}
-              />
+            {doc.id === "cni" ? (
               <button
                 type="button"
-                className="px-2 py-1 rounded-md text-[11px] border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer"
-                onClick={() => importRefs.current[doc.id]?.click()}
+                className="min-h-11 w-full md:w-auto px-3 py-2 rounded-md text-xs font-medium border border-border text-foreground hover:border-primary transition-colors bg-transparent cursor-pointer"
+                onClick={() => setCniModalOpen(true)}
               >
-                📎 Importer
+                Ouvrir
               </button>
-              <button
-                type="button"
-                className="px-2 py-1 rounded-md text-[11px] border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer"
-                onClick={() => cameraRefs.current[doc.id]?.click()}
-              >
-                📷 Scanner
-              </button>
-            </div>
-            <div
-              className={`w-2.5 h-2.5 rounded-full ${
-                doc.status === "ok"
-                  ? "bg-success"
-                  : doc.status === "pending"
-                    ? "bg-warning animate-pulse"
-                    : doc.status === "invalid"
-                      ? "bg-warning"
-                      : doc.status === "unreadable"
-                        ? "bg-destructive"
-                        : "bg-muted-foreground"
-              }`}
-            />
+            ) : (
+              <div className="flex w-full items-stretch gap-2 shrink-0 md:w-auto md:items-center md:gap-1.5">
+                <input
+                  ref={(el) => {
+                    importRefs.current[doc.id] = el;
+                  }}
+                  type="file"
+                  accept="image/jpeg,image/png,application/pdf"
+                  className="hidden"
+                  onChange={(e) => handleFileChangeForDoc(e, doc.id)}
+                />
+                <input
+                  ref={(el) => {
+                    cameraRefs.current[doc.id] = el;
+                  }}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => handleFileChangeForDoc(e, doc.id)}
+                />
+                <button
+                  type="button"
+                  className="min-h-11 flex-1 touch-manipulation rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground cursor-pointer md:min-h-0 md:flex-none md:px-2 md:py-1 md:text-[11px]"
+                  onClick={() => importRefs.current[doc.id]?.click()}
+                >
+                  📎 Importer
+                </button>
+                <button
+                  type="button"
+                  className="min-h-11 flex-1 touch-manipulation rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground cursor-pointer md:min-h-0 md:flex-none md:px-2 md:py-1 md:text-[11px]"
+                  onClick={() => cameraRefs.current[doc.id]?.click()}
+                >
+                  📷 Scanner
+                </button>
+              </div>
+            )}
+            <div className={`w-2.5 h-2.5 rounded-full ${statusDotClass(doc.status)}`} />
           </div>
         ))}
       </div>
+
+      {cniModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in-0 duration-200"
+          style={{ background: "rgba(0,0,0,0.6)" }}
+          onClick={() => setCniModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-cni-title"
+        >
+          <div
+            className="w-full max-w-[640px] max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-5 md:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="modal-cni-title" className="font-display text-lg font-bold mb-4">
+              Carte d'identité
+            </h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {(["recto", "verso"] as const).map((side) => {
+                const isRecto = side === "recto";
+                const preview = isRecto ? cniRectoPreview : cniVersoPreview;
+                return (
+                  <div key={side} className="rounded-xl border border-border bg-secondary/40 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-display text-sm font-bold">{isRecto ? "Recto" : "Verso"}</span>
+                      <span className={`w-2.5 h-2.5 rounded-full ${statusDotClass(preview ? "ok" : "missing")}`} />
+                    </div>
+
+                    <button
+                      type="button"
+                      className="w-full h-[150px] rounded-lg border border-dashed border-border bg-card hover:border-primary transition-colors flex items-center justify-center overflow-hidden"
+                      onClick={() =>
+                        (isRecto ? cniRectoImportRef.current : cniVersoImportRef.current)?.click()
+                      }
+                    >
+                      {preview ? (
+                        <img src={preview} alt={`Aperçu ${side}`} className="h-full max-h-[150px] w-full object-cover" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Zone de drop/upload</span>
+                      )}
+                    </button>
+
+                    <div className="flex gap-2">
+                      <input
+                        ref={isRecto ? cniRectoImportRef : cniVersoImportRef}
+                        type="file"
+                        accept="image/jpeg,image/png,application/pdf"
+                        className="hidden"
+                        onChange={(e) => handleCniSideInput(e, side)}
+                      />
+                      <input
+                        ref={isRecto ? cniRectoCameraRef : cniVersoCameraRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={(e) => handleCniSideInput(e, side)}
+                      />
+                      <button
+                        type="button"
+                        className="min-h-11 flex-1 rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors cursor-pointer"
+                        onClick={() =>
+                          (isRecto ? cniRectoCameraRef.current : cniVersoCameraRef.current)?.click()
+                        }
+                      >
+                        📷 Scanner
+                      </button>
+                      <button
+                        type="button"
+                        className="min-h-11 flex-1 rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors cursor-pointer"
+                        onClick={() =>
+                          (isRecto ? cniRectoImportRef.current : cniVersoImportRef.current)?.click()
+                        }
+                      >
+                        📎 Importer
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                disabled={!cniCanConfirm}
+                className="min-h-11 px-4 py-2.5 rounded-lg text-sm font-medium gradient-primary text-primary-foreground border-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                onClick={handleConfirmCni}
+              >
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
