@@ -20,6 +20,10 @@ const defaultFormState: DraftFormState = {
   clientDateNaissance: "12/03/1985",
   clientNumeroCni: "123456789012",
   clientAdresse: "14 rue des Lilas, 69003 Lyon",
+  ribTitulaire: "",
+  ribIban: "",
+  ribBic: "",
+  ribBanque: "",
   clientEmail: "",
   clientTelephone: "",
   vehiculeModele: "",
@@ -126,6 +130,10 @@ const NouveauBon = () => {
           vehiculeFinancement={formState.vehiculeFinancement}
           onDocumentsChange={setDocumentsUploaded}
           currentAdresse={formState.clientAdresse}
+          ribTitulaire={formState.ribTitulaire}
+          ribIban={formState.ribIban}
+          ribBic={formState.ribBic}
+          ribBanque={formState.ribBanque}
           onExtractedData={(
             patch: Partial<BonDraftData>,
             fields: Array<keyof BonDraftData>
@@ -140,7 +148,15 @@ const NouveauBon = () => {
           form={formState}
           onChange={updateForm}
           autoFilledFields={highlightedFields as Array<
-            "clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse"
+            | "clientNom"
+            | "clientPrenom"
+            | "clientDateNaissance"
+            | "clientNumeroCni"
+            | "clientAdresse"
+            | "ribTitulaire"
+            | "ribIban"
+            | "ribBic"
+            | "ribBanque"
           >}
         />
         <VehiculeVente form={formState} onChange={updateForm} />

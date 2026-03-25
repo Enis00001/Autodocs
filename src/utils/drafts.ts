@@ -13,6 +13,10 @@ export type BonDraftData = {
   clientDateNaissance: string;
   clientNumeroCni: string;
   clientAdresse: string;
+  ribTitulaire: string;
+  ribIban: string;
+  ribBic: string;
+  ribBanque: string;
   clientEmail: string;
   clientTelephone: string;
   vehiculeModele: string;
@@ -55,6 +59,10 @@ type BrouillonRow = {
   client_date_naissance: string;
   client_numero_cni: string;
   client_adresse: string;
+  rib_titulaire: string;
+  rib_iban: string;
+  rib_bic: string;
+  rib_banque: string;
   client_email: string;
   client_telephone: string;
   vehicule_modele: string;
@@ -98,6 +106,10 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     clientDateNaissance: row.client_date_naissance ?? "",
     clientNumeroCni: row.client_numero_cni ?? "",
     clientAdresse: row.client_adresse ?? "",
+    ribTitulaire: row.rib_titulaire ?? "",
+    ribIban: row.rib_iban ?? "",
+    ribBic: row.rib_bic ?? "",
+    ribBanque: row.rib_banque ?? "",
     clientEmail: row.client_email ?? "",
     clientTelephone: row.client_telephone ?? "",
     vehiculeModele: row.vehicule_modele ?? "",
@@ -142,6 +154,10 @@ function draftToRow(d: BonDraftData): Omit<BrouillonRow, "created_at" | "updated
     client_date_naissance: d.clientDateNaissance,
     client_numero_cni: d.clientNumeroCni,
     client_adresse: d.clientAdresse,
+    rib_titulaire: d.ribTitulaire,
+    rib_iban: d.ribIban,
+    rib_bic: d.ribBic,
+    rib_banque: d.ribBanque,
     client_email: d.clientEmail,
     client_telephone: d.clientTelephone,
     vehicule_modele: d.vehiculeModele,
@@ -252,6 +268,10 @@ export async function upsertDraft(
           client_date_naissance: row.client_date_naissance,
           client_numero_cni: row.client_numero_cni,
           client_adresse: row.client_adresse,
+          rib_titulaire: row.rib_titulaire,
+          rib_iban: row.rib_iban,
+          rib_bic: row.rib_bic,
+          rib_banque: row.rib_banque,
           client_email: row.client_email,
           client_telephone: row.client_telephone,
           vehicule_modele: row.vehicule_modele,
@@ -313,6 +333,10 @@ export async function upsertDraft(
     client_date_naissance: row.client_date_naissance,
     client_numero_cni: row.client_numero_cni,
     client_adresse: row.client_adresse,
+    rib_titulaire: row.rib_titulaire,
+    rib_iban: row.rib_iban,
+    rib_bic: row.rib_bic,
+    rib_banque: row.rib_banque,
     client_email: row.client_email,
     client_telephone: row.client_telephone,
     vehicule_modele: row.vehicule_modele,

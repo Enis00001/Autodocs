@@ -9,6 +9,10 @@ CREATE TABLE IF NOT EXISTS brouillons (
   client_date_naissance TEXT NOT NULL DEFAULT '',
   client_numero_cni TEXT NOT NULL DEFAULT '',
   client_adresse TEXT NOT NULL DEFAULT '',
+  rib_titulaire TEXT NOT NULL DEFAULT '',
+  rib_iban TEXT NOT NULL DEFAULT '',
+  rib_bic TEXT NOT NULL DEFAULT '',
+  rib_banque TEXT NOT NULL DEFAULT '',
   client_email TEXT NOT NULL DEFAULT '',
   client_telephone TEXT NOT NULL DEFAULT '',
   vehicule_modele TEXT NOT NULL DEFAULT '',
@@ -79,6 +83,10 @@ CREATE INDEX IF NOT EXISTS idx_concession_user_id ON concession (user_id);
 
 -- Migration des schémas déjà existants (ajout de user_id si nécessaire)
 ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS rib_titulaire TEXT NOT NULL DEFAULT '';
+ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS rib_iban TEXT NOT NULL DEFAULT '';
+ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS rib_bic TEXT NOT NULL DEFAULT '';
+ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS rib_banque TEXT NOT NULL DEFAULT '';
 ALTER TABLE templates ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE vendeurs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE concession ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
