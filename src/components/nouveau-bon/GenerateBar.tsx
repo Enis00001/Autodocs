@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { Zap, Loader2 } from "lucide-react";
+import { generatePDF } from "@/utils/generatePDF";
 
 const MANDATORY_FIELDS = [
   "clientNom",
@@ -24,27 +25,26 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount }: GenerateBarProps
   const [modalOpen, setModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const canGenerate = documentsUploaded > 0 || missingFieldsCount < 5;
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!canGenerate) return;
     setModalOpen(true);
     setIsGenerating(true);
     setIsSuccess(false);
-    timeoutRef.current = setTimeout(() => {
+    setGenerationError(null);
+    try {
+      await generatePDF();
       setIsGenerating(false);
       setIsSuccess(true);
-      timeoutRef.current = null;
-    }, 3000);
+    } catch (err) {
+      setIsGenerating(false);
+      setIsSuccess(false);
+      setGenerationError(err instanceof Error ? err.message : "Erreur lors de la génération PDF");
+    }
   };
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
 
   const filledDots = Math.min(documentsUploaded, MAX_DOTS);
 
@@ -156,9 +156,9 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount }: GenerateBarProps
                   <button
                     type="button"
                     className="px-4 py-2.5 rounded-lg text-sm font-medium gradient-primary text-primary-foreground cursor-pointer border-0"
-                    onClick={() => {}}
+                    onClick={() => setModalOpen(false)}
                   >
-                    Télécharger le PDF
+                    Terminé
                   </button>
                   <button
                     type="button"
@@ -168,6 +168,21 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount }: GenerateBarProps
                     Fermer
                   </button>
                 </div>
+              </div>
+            )}
+
+            {!isGenerating && generationError && (
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-sm text-destructive text-center">
+                  ❌ {generationError}
+                </p>
+                <button
+                  type="button"
+                  className="px-4 py-2.5 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors cursor-pointer bg-transparent"
+                  onClick={() => setModalOpen(false)}
+                >
+                  Fermer
+                </button>
               </div>
             )}
           </div>
