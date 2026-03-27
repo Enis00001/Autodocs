@@ -4,6 +4,12 @@ import { getCurrentUserId } from "@/lib/auth";
 /** Une option détaillée (nom + prix) pour la section Prix & coûts */
 export type OptionDetail = { name: string; price: string };
 
+export type DocumentScannedState = {
+  status: "ok" | "invalid" | "unreadable";
+  detail: string;
+  extractedData?: Record<string, string>;
+};
+
 export type BonDraftData = {
   id: string;
   createdAt: string;
@@ -48,6 +54,7 @@ export type BonDraftData = {
   vendeurNom: string;
   vendeurNotes: string;
   templateId: string;
+  documentsScanned: Record<string, DocumentScannedState>;
 };
 
 type BrouillonRow = {
@@ -94,7 +101,35 @@ type BrouillonRow = {
   vendeur_nom: string;
   vendeur_notes: string;
   template_id: string;
+  documents_scanned: unknown;
 };
+
+function sanitizeScannedDocuments(value: unknown): Record<string, DocumentScannedState> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, DocumentScannedState> = {};
+  for (const [docId, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object") continue;
+    const statusRaw = (raw as { status?: unknown }).status;
+    const detailRaw = (raw as { detail?: unknown }).detail;
+    if (statusRaw !== "ok" && statusRaw !== "invalid" && statusRaw !== "unreadable") continue;
+    const extractedRaw = (raw as { extractedData?: unknown }).extractedData;
+    const extractedData =
+      extractedRaw && typeof extractedRaw === "object"
+        ? Object.fromEntries(
+            Object.entries(extractedRaw as Record<string, unknown>).map(([k, v]) => [
+              k,
+              String(v ?? ""),
+            ])
+          )
+        : undefined;
+    out[docId] = {
+      status: statusRaw,
+      detail: typeof detailRaw === "string" ? detailRaw : "",
+      extractedData,
+    };
+  }
+  return out;
+}
 
 function rowToDraft(row: BrouillonRow): BonDraftData {
   return {
@@ -141,6 +176,7 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     vendeurNom: row.vendeur_nom ?? "",
     vendeurNotes: row.vendeur_notes ?? "",
     templateId: row.template_id ?? "",
+    documentsScanned: sanitizeScannedDocuments(row.documents_scanned),
   };
 }
 
@@ -189,6 +225,7 @@ function draftToRow(d: BonDraftData): Omit<BrouillonRow, "created_at" | "updated
     vendeur_nom: d.vendeurNom,
     vendeur_notes: d.vendeurNotes,
     template_id: d.templateId,
+    documents_scanned: d.documentsScanned ?? {},
   };
 }
 
@@ -303,6 +340,7 @@ export async function upsertDraft(
           vendeur_nom: row.vendeur_nom,
           vendeur_notes: row.vendeur_notes,
           template_id: row.template_id,
+          documents_scanned: row.documents_scanned,
         })
         .eq("id", partial.id)
         .eq("user_id", userId);
@@ -368,6 +406,7 @@ export async function upsertDraft(
     vendeur_nom: row.vendeur_nom,
     vendeur_notes: row.vendeur_notes,
     template_id: row.template_id,
+    documents_scanned: row.documents_scanned,
   });
   if (error) console.error("upsertDraft insert:", error);
   if (typeof window !== "undefined") {

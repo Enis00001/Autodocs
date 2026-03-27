@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS brouillons (
   clause_suspensive BOOLEAN NOT NULL DEFAULT false,
   vendeur_nom TEXT NOT NULL DEFAULT '',
   vendeur_notes TEXT NOT NULL DEFAULT '',
-  template_id TEXT NOT NULL DEFAULT ''
+  template_id TEXT NOT NULL DEFAULT '',
+  documents_scanned JSONB NOT NULL DEFAULT '{}'
 );
 
 -- Index pour trier par date de mise à jour (liste des brouillons)
@@ -87,6 +88,7 @@ ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS rib_titulaire TEXT NOT NULL DEFA
 ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS rib_iban TEXT NOT NULL DEFAULT '';
 ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS rib_bic TEXT NOT NULL DEFAULT '';
 ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS rib_banque TEXT NOT NULL DEFAULT '';
+ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS documents_scanned JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE templates ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE vendeurs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE concession ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;

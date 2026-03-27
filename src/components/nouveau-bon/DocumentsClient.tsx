@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Upload } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { analyzeDocument, type AnalyzeResult, type DocumentKind } from "@/utils/analyzeDocument";
-import type { BonDraftData } from "@/utils/drafts";
+import type { BonDraftData, DocumentScannedState } from "@/utils/drafts";
 
 export interface DocItem {
   id: string;
@@ -71,6 +71,8 @@ const chips = ["CNI / Passeport", "Permis de conduire", "Justif. domicile", "Fic
 type DocumentsClientProps = {
   vehiculeFinancement: string;
   onDocumentsChange?: (uploadedCount: number) => void;
+  initialDocumentsScanned?: Record<string, DocumentScannedState>;
+  onDocumentsScannedChange?: (documentsScanned: Record<string, DocumentScannedState>) => void;
   currentAdresse?: string;
   ribTitulaire: string;
   ribIban: string;
@@ -85,6 +87,8 @@ type DocumentsClientProps = {
 const DocumentsClient = ({
   vehiculeFinancement,
   onDocumentsChange,
+  initialDocumentsScanned,
+  onDocumentsScannedChange,
   currentAdresse,
   ribTitulaire,
   ribIban,
@@ -95,6 +99,7 @@ const DocumentsClient = ({
   const [secondProprietaire, setSecondProprietaire] = useState(false);
   const importRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const cameraRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const lastScannedPayloadRef = useRef<string>("");
   const [analysisStore, setAnalysisStore] = useState<
     Record<
       string,
@@ -131,6 +136,41 @@ const DocumentsClient = ({
   }, [vehiculeFinancement, secondProprietaire]);
 
   useEffect(() => {
+    if (!initialDocumentsScanned) return;
+    setDocs((prev) =>
+      prev.map((doc) => {
+        const scanned = initialDocumentsScanned[doc.id];
+        if (!scanned) return doc;
+        return {
+          ...doc,
+          status: scanned.status,
+          detail: scanned.detail || doc.detail,
+        };
+      })
+    );
+    setAnalysisStore((prev) => {
+      const next = { ...prev };
+      for (const [docId, scanned] of Object.entries(initialDocumentsScanned)) {
+        if (!scanned?.extractedData) continue;
+        next[docId] = {
+          status:
+            scanned.status === "ok"
+              ? "valid"
+              : scanned.status === "invalid"
+                ? "invalid"
+                : "unreadable",
+          extractedData: scanned.extractedData,
+          validation: {
+            isValid: scanned.status === "ok",
+            reason: scanned.detail || undefined,
+          },
+        };
+      }
+      return next;
+    });
+  }, [initialDocumentsScanned]);
+
+  useEffect(() => {
     return () => {
       if (cniRectoPreview) URL.revokeObjectURL(cniRectoPreview);
       if (cniVersoPreview) URL.revokeObjectURL(cniVersoPreview);
@@ -141,6 +181,22 @@ const DocumentsClient = ({
   useEffect(() => {
     onDocumentsChange?.(uploadedCount);
   }, [uploadedCount, onDocumentsChange]);
+
+  useEffect(() => {
+    const scannedState: Record<string, DocumentScannedState> = {};
+    docs.forEach((doc) => {
+      if (doc.status !== "ok" && doc.status !== "invalid" && doc.status !== "unreadable") return;
+      scannedState[doc.id] = {
+        status: doc.status,
+        detail: doc.detail,
+        extractedData: analysisStore[doc.id]?.extractedData,
+      };
+    });
+    const payload = JSON.stringify(scannedState);
+    if (payload === lastScannedPayloadRef.current) return;
+    lastScannedPayloadRef.current = payload;
+    onDocumentsScannedChange?.(scannedState);
+  }, [docs, analysisStore, onDocumentsScannedChange]);
 
   const scanned = docs.filter((d) => d.status === "ok").length;
 

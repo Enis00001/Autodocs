@@ -55,6 +55,7 @@ const defaultFormState: DraftFormState = {
   vendeurNom: "",
   vendeurNotes: "",
   templateId: "1",
+  documentsScanned: {},
 };
 
 const NouveauBon = () => {
@@ -129,6 +130,8 @@ const NouveauBon = () => {
         <DocumentsClient
           vehiculeFinancement={formState.vehiculeFinancement}
           onDocumentsChange={setDocumentsUploaded}
+          initialDocumentsScanned={formState.documentsScanned}
+          onDocumentsScannedChange={(documentsScanned) => updateForm({ documentsScanned })}
           currentAdresse={formState.clientAdresse}
           ribTitulaire={formState.ribTitulaire}
           ribIban={formState.ribIban}
