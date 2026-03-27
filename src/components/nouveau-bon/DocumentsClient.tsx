@@ -100,6 +100,7 @@ const DocumentsClient = ({
   const importRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const cameraRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const lastScannedPayloadRef = useRef<string>("");
+  const isRestoringFromInitialRef = useRef(false);
   const [analysisStore, setAnalysisStore] = useState<
     Record<
       string,
@@ -126,17 +127,34 @@ const DocumentsClient = ({
   const cniVersoCameraRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    if (initialDocumentsScanned?.["cni-second"] || initialDocumentsScanned?.["justif-second"]) {
+      setSecondProprietaire(true);
+    }
+  }, [initialDocumentsScanned]);
+
+  useEffect(() => {
     setDocs((prev) => {
       const next = buildDocsList(vehiculeFinancement, secondProprietaire);
-      return next.map((doc) => {
+      const merged = next.map((doc) => {
         const existing = prev.find((d) => d.id === doc.id);
         return existing ? existing : doc;
       });
+      if (!initialDocumentsScanned) return merged;
+      return merged.map((doc) => {
+        const scanned = initialDocumentsScanned[doc.id];
+        if (!scanned) return doc;
+        return {
+          ...doc,
+          status: scanned.status,
+          detail: scanned.detail || doc.detail,
+        };
+      });
     });
-  }, [vehiculeFinancement, secondProprietaire]);
+  }, [vehiculeFinancement, secondProprietaire, initialDocumentsScanned]);
 
   useEffect(() => {
     if (!initialDocumentsScanned) return;
+    isRestoringFromInitialRef.current = true;
     setDocs((prev) =>
       prev.map((doc) => {
         const scanned = initialDocumentsScanned[doc.id];
@@ -168,6 +186,9 @@ const DocumentsClient = ({
       }
       return next;
     });
+    setTimeout(() => {
+      isRestoringFromInitialRef.current = false;
+    }, 0);
   }, [initialDocumentsScanned]);
 
   useEffect(() => {
@@ -183,6 +204,7 @@ const DocumentsClient = ({
   }, [uploadedCount, onDocumentsChange]);
 
   useEffect(() => {
+    if (isRestoringFromInitialRef.current) return;
     const scannedState: Record<string, DocumentScannedState> = {};
     docs.forEach((doc) => {
       if (doc.status !== "ok" && doc.status !== "invalid" && doc.status !== "unreadable") return;
@@ -192,6 +214,14 @@ const DocumentsClient = ({
         extractedData: analysisStore[doc.id]?.extractedData,
       };
     });
+    if (
+      initialDocumentsScanned &&
+      Object.keys(initialDocumentsScanned).length > 0 &&
+      Object.keys(scannedState).length === 0 &&
+      !lastScannedPayloadRef.current
+    ) {
+      return;
+    }
     const payload = JSON.stringify(scannedState);
     if (payload === lastScannedPayloadRef.current) return;
     lastScannedPayloadRef.current = payload;
