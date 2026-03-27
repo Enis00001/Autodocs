@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import OpenAI from "openai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { fromBuffer } from "pdf2pic";
 
 type FieldCoord = { page: number; x: number; y: number };
 type CoordMap = Record<string, FieldCoord>;
@@ -56,6 +57,28 @@ function fieldValue(formData: Record<string, unknown>, key: string): string {
   return String(v);
 }
 
+async function pdfFirstPageToPngDataUrl(templateBase64: string): Promise<string> {
+  const pdfBuffer = Buffer.from(templateBase64, "base64");
+  const convert = fromBuffer(pdfBuffer, {
+    density: 144,
+    format: "png",
+    width: 1400,
+    height: 2000,
+    savePath: "/tmp",
+    saveFilename: `tpl-${Date.now()}`,
+  });
+
+  const result = (await convert(1, { responseType: "base64" })) as {
+    base64?: string;
+  };
+
+  if (!result?.base64) {
+    throw new Error("Conversion PDF->PNG échouée (base64 vide)");
+  }
+
+  return `data:image/png;base64,${result.base64}`;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -96,7 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!coordinates) {
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const pdfDataUrl = `data:application/pdf;base64,${templateBase64}`;
+      const firstPagePngDataUrl = await pdfFirstPageToPngDataUrl(templateBase64);
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -107,7 +130,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             role: "user",
             content: [
               { type: "text", text: getPrompt() },
-              { type: "image_url", image_url: { url: pdfDataUrl } },
+              { type: "image_url", image_url: { url: firstPagePngDataUrl } },
             ],
           },
         ],
