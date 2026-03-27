@@ -98,12 +98,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const parsed = safeJsonParse<Record<string, unknown>>(content) ?? {};
     const mapping = sanitizeMapping(parsed, fieldNames);
 
-    for (const [fieldName, value] of Object.entries(mapping)) {
+    for (const field of fields) {
       try {
-        const field = form.getTextField(fieldName);
-        field.setText(String(value));
+        const fieldName = field.getName();
+        const value = mapping[fieldName];
+        if (!value) continue;
+
+        const fieldType = field.constructor.name;
+        if (fieldType === "PDFTextField") {
+          const textField = form.getTextField(fieldName) as any;
+          if (typeof textField.disableRichFormatting === "function") {
+            textField.disableRichFormatting();
+          }
+          textField.setText(String(value));
+        } else if (fieldType === "PDFCheckBox") {
+          const normalized = String(value).trim().toLowerCase();
+          if (normalized === "true" || normalized === "1" || normalized === "oui" || normalized === "yes") {
+            form.getCheckBox(fieldName).check();
+          }
+        }
       } catch (err) {
-        console.warn(`Champ ignoré (non supporté) : ${fieldName}`, err);
+        console.warn("Champ ignoré:", field.getName(), err);
         continue;
       }
     }
