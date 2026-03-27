@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import OpenAI from "openai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { fromBuffer } from "pdf2pic";
+import { createCanvas } from "canvas";
 
 type FieldCoord = { page: number; x: number; y: number };
 type CoordMap = Record<string, FieldCoord>;
@@ -58,25 +58,46 @@ function fieldValue(formData: Record<string, unknown>, key: string): string {
 }
 
 async function pdfFirstPageToPngDataUrl(templateBase64: string): Promise<string> {
-  const pdfBuffer = Buffer.from(templateBase64, "base64");
-  const convert = fromBuffer(pdfBuffer, {
-    density: 144,
-    format: "png",
-    width: 1400,
-    height: 2000,
-    savePath: "/tmp",
-    saveFilename: `tpl-${Date.now()}`,
-  });
+  const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfData = Uint8Array.from(Buffer.from(templateBase64, "base64"));
 
-  const result = (await convert(1, { responseType: "base64" })) as {
-    base64?: string;
-  };
-
-  if (!result?.base64) {
-    throw new Error("Conversion PDF->PNG échouée (base64 vide)");
+  class NodeCanvasFactory {
+    create(width: number, height: number) {
+      const canvas = createCanvas(width, height);
+      const context = canvas.getContext("2d");
+      return { canvas, context };
+    }
+    reset(canvasAndContext: any, width: number, height: number) {
+      canvasAndContext.canvas.width = width;
+      canvasAndContext.canvas.height = height;
+    }
+    destroy(canvasAndContext: any) {
+      canvasAndContext.canvas.width = 0;
+      canvasAndContext.canvas.height = 0;
+      canvasAndContext.canvas = null;
+      canvasAndContext.context = null;
+    }
   }
 
-  return `data:image/png;base64,${result.base64}`;
+  const loadingTask = pdfjsLib.getDocument({
+    data: pdfData,
+    disableFontFace: true,
+    useSystemFonts: true,
+  });
+  const pdf = await loadingTask.promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2 });
+
+  const canvasFactory = new NodeCanvasFactory();
+  const { canvas, context } = canvasFactory.create(
+    Math.floor(viewport.width),
+    Math.floor(viewport.height)
+  );
+  await page.render({ canvasContext: context, viewport, canvasFactory }).promise;
+
+  const pngBuffer = canvas.toBuffer("image/png");
+  const base64 = pngBuffer.toString("base64");
+  return `data:image/png;base64,${base64}`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
