@@ -233,6 +233,13 @@ const DocumentsClient = ({
     return "bg-muted-foreground";
   };
 
+  const detailTextClass = (status: DocItem["status"]) => {
+    if (status === "invalid") return "text-warning";
+    if (status === "unreadable") return "text-destructive";
+    if (status === "ok") return "text-success";
+    return "text-muted-foreground";
+  };
+
   const formatFrenchDate = (value?: string): string => {
     const raw = String(value ?? "").trim();
     if (!raw) return "";
@@ -485,7 +492,7 @@ const DocumentsClient = ({
                   {doc.subOption && (
                     <div className="text-[11px] text-muted-foreground mt-0.5">→ {doc.subOption}</div>
                   )}
-                  <div className="text-[11px] text-muted-foreground truncate">{doc.detail}</div>
+                  <div className={`text-[11px] truncate ${detailTextClass(doc.status)}`}>{doc.detail}</div>
                 </div>
                 {doc.id === "cni" ? (
                   <button

@@ -153,7 +153,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
       extractedData: {},
       validation: {
         isValid: false,
-        reason: "Document non analysable. Utilisez une photo nette du document original.",
+        reason: typeof refusal === "string" && refusal.trim() ? refusal : "Document refusé par le modèle",
       },
     };
   }
@@ -172,7 +172,8 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
     return {
       status: "unreadable",
       extractedData: {},
-      validation: { isValid: false, reason: "Reponse JSON invalide" },
+      validation: { isValid: false, reason: "Reponse JSON invalide du modele" },
     };
   }
 }
+

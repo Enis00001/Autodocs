@@ -82,7 +82,6 @@ export async function generatePDF() {
   const formData = extractFormDataFromDom();
   const cache = getLocalCoordsCache();
   const templateCacheKey = selectedTemplate.id;
-  const cachedCoordinates = cache[templateCacheKey];
 
   const response = await fetch("/api/fill-pdf", {
     method: "POST",
@@ -90,7 +89,6 @@ export async function generatePDF() {
     body: JSON.stringify({
       templateBase64: selectedTemplate.contentBase64,
       formData,
-      cachedCoordinates,
     }),
   });
 

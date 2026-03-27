@@ -28,7 +28,7 @@ function getPrompt(kind: DocumentKind): string {
     '  "extracted_data": { ... },',
     '  "validation": { "is_valid": true|false, "reason": "message court en français" }',
     "}",
-  ].join("\\n");
+  ].join("\n");
 
   const perType: Record<DocumentKind, string> = {
     cni: [
@@ -36,35 +36,35 @@ function getPrompt(kind: DocumentKind): string {
       "Extraire: nom, prenom, date_naissance, adresse, numero_cni, date_expiration.",
       "Validation: date_expiration > aujourd'hui.",
       'Si invalide: reason explicite (ex: "CNI expirée le 12/03/2024").',
-    ].join("\\n"),
+    ].join("\n"),
     permis: [
       "Document type: Permis de conduire.",
       "Extraire: numero, categories, date_expiration.",
       "Validation: date_expiration > aujourd'hui.",
-    ].join("\\n"),
+    ].join("\n"),
     justificatif_domicile: [
       "Document type: Justificatif de domicile.",
       "Extraire: nom, prenom, adresse_complete, date_document.",
       "Validation: date_document <= 3 mois.",
-    ].join("\\n"),
+    ].join("\n"),
     fiche_paie: [
       "Document type: Fiche de paie.",
       "Extraire: nom, prenom, employeur, salaire_net, periode.",
       "Validation: periode <= 3 mois.",
-    ].join("\\n"),
+    ].join("\n"),
     avis_imposition: [
       "Document type: Avis d'imposition.",
       "Extraire: nom, prenom, revenu_fiscal, annee.",
       "Validation: annee >= année courante - 1.",
-    ].join("\\n"),
+    ].join("\n"),
     rib: [
       "Document type: RIB.",
       "Extraire: titulaire, iban, bic, banque.",
       "Validation: format IBAN correct.",
-    ].join("\\n"),
+    ].join("\n"),
   };
 
-  return `${common}\\n\\n${perType[kind]}`;
+  return `${common}\n\n${perType[kind]}`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -75,9 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({
-      error: "OPENAI_API_KEY non configurée côté serveur",
-    });
+    return res.status(500).json({ error: "OPENAI_API_KEY non configurée côté serveur" });
   }
 
   let body: unknown = req.body;
@@ -101,6 +99,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const prompt = getPrompt(kind as DocumentKind);
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const approxImageBytes = Math.floor((imageBase64.length * 3) / 4);
+  console.error("[analyze] Avant appel OpenAI", {
+    kind,
+    imageBase64Length: imageBase64.length,
+    approxImageBytes,
+  });
 
   try {
     const completion = await openai.chat.completions.create({
@@ -118,18 +122,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ],
     });
 
+    const message = completion.choices?.[0]?.message;
+    const refusal = message?.refusal ?? null;
+    const rawContent = message?.content ?? null;
+
+    if (refusal) {
+      console.error("[analyze] refusal exact:", refusal);
+      return res.status(200).json({ choices: [{ message: { content: null, refusal } }] });
+    }
+
+    if (typeof rawContent !== "string" || !rawContent.trim()) {
+      console.error("[analyze] contenu vide reçu:", rawContent);
+      return res.status(502).json({ error: "Réponse vide du modèle" });
+    }
+
+    try {
+      JSON.parse(rawContent);
+    } catch {
+      console.error("[analyze] JSON invalide, contenu brut reçu:", rawContent);
+      return res.status(502).json({
+        error: "Réponse JSON invalide du modèle",
+        rawContent,
+      });
+    }
+
     return res.status(200).json({
-      choices: [
-        {
-          message: {
-            content: completion.choices?.[0]?.message?.content ?? null,
-            refusal: completion.choices?.[0]?.message?.refusal ?? null,
-          },
-        },
-      ],
+      choices: [{ message: { content: rawContent, refusal: null } }],
     });
   } catch (error: any) {
     const status = typeof error?.status === "number" ? error.status : 502;
+    console.error("[analyze] openaiRes.ok = false", {
+      status,
+      body: error?.error ?? error,
+    });
     return res.status(status >= 500 ? 502 : status).json({
       error: error?.message ?? "Erreur OpenAI",
       type: error?.type,
