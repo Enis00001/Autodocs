@@ -1,4 +1,8 @@
 import { loadTemplates, type Template } from "@/utils/templates";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const COORDS_CACHE_KEY = "autodocs_pdf_coords_cache_v1";
 
@@ -73,11 +77,9 @@ function downloadBase64Pdf(base64: string, filename: string) {
 }
 
 async function firstPdfPageToPngDataUrl(templateBase64: string): Promise<string> {
-  const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf");
   const bytes = Uint8Array.from(atob(templateBase64), (c) => c.charCodeAt(0));
   const loadingTask = pdfjsLib.getDocument({
     data: bytes,
-    disableWorker: true,
   });
   const pdf = await loadingTask.promise;
   const page = await pdf.getPage(1);
