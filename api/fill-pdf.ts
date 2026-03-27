@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import OpenAI from "openai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { createCanvas } from "canvas";
 
 type FieldCoord = { page: number; x: number; y: number };
 type CoordMap = Record<string, FieldCoord>;
@@ -57,49 +56,6 @@ function fieldValue(formData: Record<string, unknown>, key: string): string {
   return String(v);
 }
 
-async function pdfFirstPageToPngDataUrl(templateBase64: string): Promise<string> {
-  const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const pdfData = Uint8Array.from(Buffer.from(templateBase64, "base64"));
-
-  class NodeCanvasFactory {
-    create(width: number, height: number) {
-      const canvas = createCanvas(width, height);
-      const context = canvas.getContext("2d");
-      return { canvas, context };
-    }
-    reset(canvasAndContext: any, width: number, height: number) {
-      canvasAndContext.canvas.width = width;
-      canvasAndContext.canvas.height = height;
-    }
-    destroy(canvasAndContext: any) {
-      canvasAndContext.canvas.width = 0;
-      canvasAndContext.canvas.height = 0;
-      canvasAndContext.canvas = null;
-      canvasAndContext.context = null;
-    }
-  }
-
-  const loadingTask = pdfjsLib.getDocument({
-    data: pdfData,
-    disableFontFace: true,
-    useSystemFonts: true,
-  });
-  const pdf = await loadingTask.promise;
-  const page = await pdf.getPage(1);
-  const viewport = page.getViewport({ scale: 2 });
-
-  const canvasFactory = new NodeCanvasFactory();
-  const { canvas, context } = canvasFactory.create(
-    Math.floor(viewport.width),
-    Math.floor(viewport.height)
-  );
-  await page.render({ canvasContext: context, viewport, canvasFactory }).promise;
-
-  const pngBuffer = canvas.toBuffer("image/png");
-  const base64 = pngBuffer.toString("base64");
-  return `data:image/png;base64,${base64}`;
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -116,9 +72,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "Corps JSON invalide" });
   }
 
-  const { templateBase64, formData } = body as {
+  const { templateBase64, formData, templateImageBase64 } = body as {
     templateBase64?: string;
     formData?: Record<string, unknown>;
+    templateImageBase64?: string;
     cachedCoordinates?: Record<string, unknown>;
   };
 
@@ -127,6 +84,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (!formData || typeof formData !== "object") {
     return res.status(400).json({ error: "formData manquant" });
+  }
+  if (!templateImageBase64 || typeof templateImageBase64 !== "string") {
+    return res.status(400).json({ error: "templateImageBase64 manquant (conversion PDF->PNG côté client)" });
   }
 
   const cacheKey = toCacheKey(templateBase64);
@@ -140,7 +100,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!coordinates) {
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const firstPagePngDataUrl = await pdfFirstPageToPngDataUrl(templateBase64);
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -151,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             role: "user",
             content: [
               { type: "text", text: getPrompt() },
-              { type: "image_url", image_url: { url: firstPagePngDataUrl } },
+              { type: "image_url", image_url: { url: templateImageBase64 } },
             ],
           },
         ],

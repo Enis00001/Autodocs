@@ -72,6 +72,48 @@ function downloadBase64Pdf(base64: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+async function firstPdfPageToPngDataUrl(templateBase64: string): Promise<string> {
+  const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf");
+  const bytes = Uint8Array.from(atob(templateBase64), (c) => c.charCodeAt(0));
+  const loadingTask = pdfjsLib.getDocument({
+    data: bytes,
+    disableWorker: true,
+  });
+  const pdf = await loadingTask.promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2 });
+
+  let canvas: HTMLCanvasElement | OffscreenCanvas;
+  let context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+
+  if (typeof OffscreenCanvas !== "undefined") {
+    canvas = new OffscreenCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
+    context = canvas.getContext("2d");
+  } else {
+    const htmlCanvas = document.createElement("canvas");
+    htmlCanvas.width = Math.floor(viewport.width);
+    htmlCanvas.height = Math.floor(viewport.height);
+    canvas = htmlCanvas;
+    context = htmlCanvas.getContext("2d");
+  }
+
+  if (!context) {
+    throw new Error("Impossible de créer le canvas pour convertir le PDF");
+  }
+
+  await page.render({ canvasContext: context as any, viewport }).promise;
+
+  if (canvas instanceof OffscreenCanvas) {
+    const blob = await canvas.convertToBlob({ type: "image/png" });
+    const arr = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    arr.forEach((b) => (binary += String.fromCharCode(b)));
+    return `data:image/png;base64,${btoa(binary)}`;
+  }
+
+  return (canvas as HTMLCanvasElement).toDataURL("image/png");
+}
+
 export async function generatePDF() {
   const templates = await loadTemplates();
   const selectedTemplate = guessSelectedTemplate(templates);
@@ -80,6 +122,7 @@ export async function generatePDF() {
   }
 
   const formData = extractFormDataFromDom();
+  const templateImageBase64 = await firstPdfPageToPngDataUrl(selectedTemplate.contentBase64);
   const cache = getLocalCoordsCache();
   const templateCacheKey = selectedTemplate.id;
 
@@ -89,6 +132,7 @@ export async function generatePDF() {
     body: JSON.stringify({
       templateBase64: selectedTemplate.contentBase64,
       formData,
+      templateImageBase64,
     }),
   });
 
