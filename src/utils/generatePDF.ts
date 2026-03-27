@@ -34,22 +34,57 @@ function extractFormDataFromDom(): Record<string, string> {
   const out: Record<string, string> = {};
 
   const labelMap: Record<string, string> = {
-    nom: "nom_client",
-    prénom: "prenom_client",
-    "date de naissance": "date_naissance_client",
-    "n° cni": "numero_cni",
-    adresse: "adresse_client",
-    email: "email_client",
-    téléphone: "telephone_client",
-    titulaire: "titulaire_rib",
-    iban: "iban",
-    bic: "bic",
-    banque: "banque_rib",
+    nom: "clientNom",
+    prenom: "clientPrenom",
+    "date de naissance": "clientDateNaissance",
+    "n cni": "clientNumeroCni",
+    "numero cni": "clientNumeroCni",
+    adresse: "clientAdresse",
+    email: "clientEmail",
+    telephone: "clientTelephone",
+    titulaire: "ribTitulaire",
+    iban: "ribIban",
+    bic: "ribBic",
+    banque: "ribBanque",
+    modele: "vehiculeModele",
+    vin: "vehiculeVin",
+    "premiere circulation": "vehiculePremiereCirculation",
+    kilometrage: "vehiculeKilometrage",
+    co2: "vehiculeCo2",
+    chevaux: "vehiculeChevaux",
+    prix: "vehiculePrix",
+    "carte grise": "vehiculeCarteGrise",
+    "frais reprise": "vehiculeFraisReprise",
+    remise: "vehiculeRemise",
+    financement: "vehiculeFinancement",
+    "date livraison": "vehiculeDateLivraison",
+    reprise: "vehiculeReprise",
+    couleur: "vehiculeCouleur",
+    options: "vehiculeOptions",
+    acompte: "acompte",
+    "mode paiement": "modePaiement",
+    apport: "apport",
+    "organisme preteur": "organismePreteur",
+    "montant credit": "montantCredit",
+    "taux credit": "tauxCredit",
+    "duree mois": "dureeMois",
+    vendeur: "vendeurNom",
+    notes: "vendeurNotes",
   };
+
+  const normalize = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[°º]/g, " ")
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
   const labels = Array.from(document.querySelectorAll("label"));
   labels.forEach((labelEl) => {
-    const labelTxt = labelEl.textContent?.trim().toLowerCase() ?? "";
+    const labelTxt = normalize(labelEl.textContent ?? "");
     const key = Object.entries(labelMap).find(([k]) => labelTxt.includes(k))?.[1];
     if (!key) return;
     const wrapper = labelEl.parentElement;
@@ -59,7 +94,9 @@ function extractFormDataFromDom(): Record<string, string> {
       | HTMLSelectElement
       | null;
     if (!input) return;
-    out[key] = String((input as any).value ?? "");
+    const value = String((input as any).value ?? "").trim();
+    if (!value) return;
+    out[key] = value;
   });
 
   return out;

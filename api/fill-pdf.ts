@@ -9,21 +9,31 @@ const coordCache = new Map<string, CoordMap>();
 
 function getPrompt(formData: Record<string, unknown>): string {
   const formDataJson = JSON.stringify(formData, null, 2);
-  return [
-    "Tu analyses un bon de commande automobile vierge.",
-    "Voici les données à injecter :",
-    formDataJson,
-    "Pour chaque donnée, identifie la zone correspondante sur le document et retourne les coordonnées x,y en pourcentage de la page (0-100) où écrire la valeur.",
-    "Retourne UNIQUEMENT un JSON valide (sans markdown, sans texte supplémentaire) au format :",
-    "{",
-    '  "nom_client": { "x": 45, "y": 23, "valeur": "MARTIN" },',
-    '  "prenom_client": { "x": 65, "y": 23, "valeur": "Jean" }',
-    "}",
-    "Contraintes importantes :",
-    "- x et y sont des nombres entre 0 et 100",
-    "- inclure uniquement les clés présentes dans les données",
-    "- conserver la valeur exacte fournie dans les données",
-  ].join("\n");
+  return `Tu es un expert en analyse de documents PDF.
+Analyse ce bon de commande automobile vierge.
+Identifie TOUTES les lignes vides ou cases a remplir.
+Pour chaque case, regarde le label a sa gauche ou au-dessus.
+
+Voici les donnees disponibles a injecter :
+${formDataJson}
+
+Instructions :
+- Identifie chaque case vide du document
+- Associe la case au bon champ des donnees selon son label
+- Utilise EXACTEMENT les memes noms de cles que dans les donnees fournies (ex: clientNom, clientPrenom, vehiculeModele, vehiculePrix, vendeurNom, vehiculeDateLivraison, vehiculeFinancement, etc.)
+- x = position horizontale en % depuis la gauche (0-100)
+- y = position verticale en % depuis le haut (0-100)
+- Place x,y au DEBUT de la zone d'ecriture de la case
+- N'inclus que les champs dont la valeur est non vide
+- Inclus TOUS les champs pertinents : client ET vehicule ET vendeur ET prix
+
+Format de reponse STRICT (JSON uniquement, sans markdown) :
+{
+  "clientNom": {"x": 35, "y": 18, "valeur": "MARTIN"},
+  "clientPrenom": {"x": 60, "y": 18, "valeur": "Jean"},
+  "vehiculeModele": {"x": 35, "y": 45, "valeur": "Peugeot 308"},
+  "vehiculePrix": {"x": 60, "y": 52, "valeur": "25000"}
+}`;
 }
 
 function safeJsonParse<T>(value: string): T | null {
