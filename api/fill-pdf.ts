@@ -94,55 +94,85 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!coordinates) {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const pdfDataUrl = `data:application/pdf;base64,${templateBase64}`;
+    try {
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const pdfDataUrl = `data:application/pdf;base64,${templateBase64}`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: getPrompt() },
-            { type: "image_url", image_url: { url: pdfDataUrl } },
-          ],
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: getPrompt() },
+              { type: "image_url", image_url: { url: pdfDataUrl } },
+            ],
+          },
+        ],
+      });
+
+      const content = completion.choices?.[0]?.message?.content ?? "{}";
+      const parsed = safeJsonParse<Record<string, unknown>>(content) ?? {};
+      coordinates = sanitizeCoordinates(parsed);
+      coordCache.set(cacheKey, coordinates);
+    } catch (err: any) {
+      console.error("[fill-pdf] GPT step failed", {
+        message: err?.message,
+        status: err?.status,
+        type: err?.type,
+        code: err?.code,
+        body: err?.error ?? err,
+      });
+      return res.status(502).json({
+        error: err?.message ?? "Erreur GPT lors de la détection des coordonnées",
+        stage: "gpt_detection",
+        details: {
+          status: err?.status,
+          type: err?.type,
+          code: err?.code,
         },
-      ],
-    });
-
-    const content = completion.choices?.[0]?.message?.content ?? "{}";
-    const parsed = safeJsonParse<Record<string, unknown>>(content) ?? {};
-    coordinates = sanitizeCoordinates(parsed);
-    coordCache.set(cacheKey, coordinates);
+      });
+    }
   }
 
-  const pdfBytes = Uint8Array.from(Buffer.from(templateBase64, "base64"));
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  try {
+    const pdfBytes = Uint8Array.from(Buffer.from(templateBase64, "base64"));
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  for (const [key, coord] of Object.entries(coordinates)) {
-    const pageIndex = Math.max(0, Math.floor(coord.page) - 1);
-    const page = pdfDoc.getPages()[pageIndex];
-    if (!page) continue;
-    const value = fieldValue(formData, key);
-    if (!value) continue;
-    const yFromTop = coord.y;
-    const yPdf = page.getHeight() - yFromTop;
-    page.drawText(value, {
-      x: coord.x,
-      y: yPdf,
-      size: 10,
-      font,
-      color: rgb(0, 0, 0),
-      lineHeight: 10,
-      maxWidth: 260,
+    for (const [key, coord] of Object.entries(coordinates)) {
+      const pageIndex = Math.max(0, Math.floor(coord.page) - 1);
+      const page = pdfDoc.getPages()[pageIndex];
+      if (!page) continue;
+      const value = fieldValue(formData, key);
+      if (!value) continue;
+      const yFromTop = coord.y;
+      const yPdf = page.getHeight() - yFromTop;
+      page.drawText(value, {
+        x: coord.x,
+        y: yPdf,
+        size: 10,
+        font,
+        color: rgb(0, 0, 0),
+        lineHeight: 10,
+        maxWidth: 260,
+      });
+    }
+
+    const filledBytes = await pdfDoc.save();
+    const filledBase64 = Buffer.from(filledBytes).toString("base64");
+    return res.status(200).json({ pdfBase64: filledBase64, coordinates });
+  } catch (err: any) {
+    console.error("[fill-pdf] pdf-lib step failed", {
+      message: err?.message,
+      stack: err?.stack,
+    });
+    return res.status(500).json({
+      error: err?.message ?? "Erreur pdf-lib lors du remplissage du PDF",
+      stage: "pdf_fill",
     });
   }
-
-  const filledBytes = await pdfDoc.save();
-  const filledBase64 = Buffer.from(filledBytes).toString("base64");
-  return res.status(200).json({ pdfBase64: filledBase64, coordinates });
 }
 
