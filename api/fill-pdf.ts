@@ -2,25 +2,27 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import OpenAI from "openai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
-type FieldCoord = { page: number; x: number; y: number };
-type CoordMap = Record<string, FieldCoord>;
+type FieldCoordPercent = { x: number; y: number; valeur?: string };
+type CoordMap = Record<string, FieldCoordPercent>;
 
 const coordCache = new Map<string, CoordMap>();
 
-function getPrompt(): string {
+function getPrompt(formData: Record<string, unknown>): string {
+  const formDataJson = JSON.stringify(formData, null, 2);
   return [
-    "Tu analyses un template PDF de bon de commande automobile.",
-    "Retourne STRICTEMENT un JSON valide (sans markdown).",
-    "Le JSON doit être un dictionnaire clé -> coordonnées :",
+    "Tu analyses un bon de commande automobile vierge.",
+    "Voici les données à injecter :",
+    formDataJson,
+    "Pour chaque donnée, identifie la zone correspondante sur le document et retourne les coordonnées x,y en pourcentage de la page (0-100) où écrire la valeur.",
+    "Retourne UNIQUEMENT un JSON valide (sans markdown, sans texte supplémentaire) au format :",
     "{",
-    '  "nom_client": { "page": 1, "x": 150, "y": 320 },',
-    '  "prenom_client": { "page": 1, "x": 280, "y": 320 },',
-    '  "prix_ttc": { "page": 1, "x": 150, "y": 450 }',
+    '  "nom_client": { "x": 45, "y": 23, "valeur": "MARTIN" },',
+    '  "prenom_client": { "x": 65, "y": 23, "valeur": "Jean" }',
     "}",
-    "Contraintes:",
-    "- page commence à 1",
-    "- x et y sont des nombres",
-    "- détecte un maximum de champs utiles pour un bon de commande auto",
+    "Contraintes importantes :",
+    "- x et y sont des nombres entre 0 et 100",
+    "- inclure uniquement les clés présentes dans les données",
+    "- conserver la valeur exacte fournie dans les données",
   ].join("\n");
 }
 
@@ -41,11 +43,17 @@ function sanitizeCoordinates(raw: unknown): CoordMap {
   const out: CoordMap = {};
   for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
     if (!val || typeof val !== "object") continue;
-    const page = Number((val as any).page);
     const x = Number((val as any).x);
     const y = Number((val as any).y);
-    if (!Number.isFinite(page) || !Number.isFinite(x) || !Number.isFinite(y)) continue;
-    out[key] = { page, x, y };
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const clampedX = Math.max(0, Math.min(100, x));
+    const clampedY = Math.max(0, Math.min(100, y));
+    const valeurRaw = (val as any).valeur;
+    out[key] = {
+      x: clampedX,
+      y: clampedY,
+      valeur: valeurRaw === null || valeurRaw === undefined ? undefined : String(valeurRaw),
+    };
   }
   return out;
 }
@@ -109,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           {
             role: "user",
             content: [
-              { type: "text", text: getPrompt() },
+              { type: "text", text: getPrompt(formData) },
               { type: "image_url", image_url: { url: templateImageBase64 } },
             ],
           },
@@ -144,17 +152,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pdfBytes = Uint8Array.from(Buffer.from(templateBase64, "base64"));
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const firstPage = pdfDoc.getPages()[0];
+    if (!firstPage) {
+      return res.status(500).json({ error: "Le template PDF ne contient aucune page", stage: "pdf_fill" });
+    }
 
     for (const [key, coord] of Object.entries(coordinates)) {
-      const pageIndex = Math.max(0, Math.floor(coord.page) - 1);
-      const page = pdfDoc.getPages()[pageIndex];
-      if (!page) continue;
-      const value = fieldValue(formData, key);
+      const page = firstPage;
+      const value = fieldValue(formData, key) || coord.valeur || "";
       if (!value) continue;
-      const yFromTop = coord.y;
+      const xPdf = (coord.x / 100) * page.getWidth();
+      const yFromTop = (coord.y / 100) * page.getHeight();
       const yPdf = page.getHeight() - yFromTop;
       page.drawText(value, {
-        x: coord.x,
+        x: xPdf,
         y: yPdf,
         size: 10,
         font,
