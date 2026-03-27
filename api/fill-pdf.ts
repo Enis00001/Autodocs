@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import OpenAI from "openai";
-import { PDFCheckBox, PDFDocument, PDFDropdown, PDFOptionList, PDFRadioGroup, PDFTextField } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
 
 type PdfFieldMapping = Record<string, string>;
 
@@ -99,24 +99,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const mapping = sanitizeMapping(parsed, fieldNames);
 
     for (const [fieldName, value] of Object.entries(mapping)) {
-      const maybeField = fields.find((f) => f.getName() === fieldName);
-      if (!maybeField) continue;
       try {
-        if (maybeField instanceof PDFTextField) {
-          maybeField.setText(value);
-        } else if (maybeField instanceof PDFDropdown) {
-          maybeField.select(value);
-        } else if (maybeField instanceof PDFOptionList) {
-          maybeField.select(value);
-        } else if (maybeField instanceof PDFCheckBox) {
-          const truthy = ["1", "true", "oui", "yes", "x", "checked"].includes(value.toLowerCase());
-          if (truthy) maybeField.check();
-          else maybeField.uncheck();
-        } else if (maybeField instanceof PDFRadioGroup) {
-          maybeField.select(value);
-        }
-      } catch (fieldErr: any) {
-        console.warn("[fill-pdf] field fill skipped:", fieldName, fieldErr?.message);
+        const field = form.getTextField(fieldName);
+        field.setText(String(value));
+      } catch (err) {
+        console.warn(`Champ ignoré (non supporté) : ${fieldName}`, err);
+        continue;
       }
     }
 
