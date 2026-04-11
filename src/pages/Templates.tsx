@@ -101,10 +101,15 @@ const TemplatesPage = () => {
         }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        row?: { id?: string };
+      };
       if (!res.ok) {
         throw new Error(json.error || `Erreur ${res.status}`);
       }
+
+      const pdfTemplateId = json.row?.id;
 
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
@@ -115,7 +120,7 @@ const TemplatesPage = () => {
       const base64 = dataUrl.split(",")[1] ?? "";
 
       setBanner({ variant: "success", text: "Template analysé et sauvegardé" });
-      await createTemplate(displayName, dateStr, base64, "application/pdf");
+      await createTemplate(displayName, dateStr, base64, "application/pdf", pdfTemplateId);
       setTemplates(await loadTemplates());
     } catch (err: unknown) {
       setBanner({

@@ -61,6 +61,24 @@ const defaultFormState: DraftFormState = {
   vehicleFieldValues: {},
 };
 
+function buildPdfFormData(form: DraftFormState): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(form)) {
+    if (key === "id" || key === "documentsScanned" || key === "vehicleFieldValues") continue;
+    if (typeof value === "boolean") {
+      out[key] = value ? "oui" : "non";
+    } else if (typeof value === "string") {
+      out[key] = value;
+    }
+  }
+  if (form.vehicleFieldValues && typeof form.vehicleFieldValues === "object") {
+    for (const [k, v] of Object.entries(form.vehicleFieldValues)) {
+      out[k] = String(v ?? "");
+    }
+  }
+  return out;
+}
+
 const NouveauBon = () => {
   const navigate = useNavigate();
   const params = useParams<{ id: string }>();
@@ -200,7 +218,8 @@ const NouveauBon = () => {
         <GenerateBar
           documentsUploaded={documentsUploaded}
           missingFieldsCount={countMissingMandatoryFields(formState)}
-          extraPdfFormData={formState.vehicleFieldValues}
+          formData={buildPdfFormData(formState)}
+          templateId={formState.templateId}
         />
       </div>
     </>

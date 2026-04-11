@@ -111,10 +111,12 @@ export async function createTemplate(
   name: string,
   date: string,
   contentBase64?: string,
-  mimeType?: string
+  mimeType?: string,
+  /** Si fourni, utilise cet ID au lieu d'en générer un nouveau (pour partager l'ID avec pdf_templates). */
+  existingId?: string
 ): Promise<Template> {
   const template: Template = {
-    id: crypto.randomUUID(),
+    id: existingId ?? crypto.randomUUID(),
     name,
     date,
     contentBase64,

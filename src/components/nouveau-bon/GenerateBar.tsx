@@ -17,13 +17,15 @@ export function countMissingMandatoryFields(form: Record<string, string>): numbe
 type GenerateBarProps = {
   documentsUploaded: number;
   missingFieldsCount: number;
-  /** Champs additionnels (ex. vehicle_field_values) fusionnés dans le formData PDF. */
-  extraPdfFormData?: Record<string, string>;
+  /** Données complètes du formulaire à injecter dans le PDF. */
+  formData: Record<string, string>;
+  /** ID du template PDF (pdf_templates.id). */
+  templateId: string;
 };
 
 const MAX_DOTS = 6;
 
-const GenerateBar = ({ documentsUploaded, missingFieldsCount, extraPdfFormData }: GenerateBarProps) => {
+const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, templateId }: GenerateBarProps) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -38,7 +40,7 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, extraPdfFormData }
     setIsSuccess(false);
     setGenerationError(null);
     try {
-      await generatePDF(extraPdfFormData);
+      await generatePDF(formData, templateId);
       setIsGenerating(false);
       setIsSuccess(true);
     } catch (err) {
