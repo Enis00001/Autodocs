@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS brouillons (
   vendeur_nom TEXT NOT NULL DEFAULT '',
   vendeur_notes TEXT NOT NULL DEFAULT '',
   template_id TEXT NOT NULL DEFAULT '',
-  documents_scanned JSONB NOT NULL DEFAULT '{}'
+  documents_scanned JSONB NOT NULL DEFAULT '{}',
+  vehicle_field_values JSONB NOT NULL DEFAULT '{}'
 );
 
 -- Index pour trier par date de mise à jour (liste des brouillons)
@@ -81,6 +82,47 @@ CREATE TABLE IF NOT EXISTS concession (
   logo_base64 TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_concession_user_id ON concession (user_id);
+
+-- Templates PDF (analyse / mapping champs AcroForm par concession)
+CREATE TABLE IF NOT EXISTS pdf_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  dealer_id UUID NOT NULL,
+  template_name TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  field_mapping JSONB NOT NULL DEFAULT '{}',
+  mapping_status TEXT NOT NULL DEFAULT 'pending' CHECK (mapping_status IN ('pending', 'complete', 'failed')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_pdf_templates_dealer_id ON pdf_templates (dealer_id);
+
+-- Storage Supabase : créer le bucket `pdf-templates` (privé) et des politiques pour
+-- upload/download par utilisateur authentifié (ex. chemin `{user_id}/...`).
+
+-- Champs véhicule personnalisés (concession = utilisateur connecté)
+CREATE TABLE IF NOT EXISTS vehicle_fields (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  concession_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  field_key TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(concession_id, field_key)
+);
+CREATE INDEX IF NOT EXISTS idx_vehicle_fields_concession ON vehicle_fields (concession_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_fields_position ON vehicle_fields (concession_id, position);
+
+ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS vehicle_field_values JSONB NOT NULL DEFAULT '{}';
+
+ALTER TABLE vehicle_fields ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "vehicle_fields_select_own" ON vehicle_fields;
+DROP POLICY IF EXISTS "vehicle_fields_insert_own" ON vehicle_fields;
+DROP POLICY IF EXISTS "vehicle_fields_update_own" ON vehicle_fields;
+DROP POLICY IF EXISTS "vehicle_fields_delete_own" ON vehicle_fields;
+CREATE POLICY "vehicle_fields_select_own" ON vehicle_fields FOR SELECT USING (auth.uid() = concession_id);
+CREATE POLICY "vehicle_fields_insert_own" ON vehicle_fields FOR INSERT WITH CHECK (auth.uid() = concession_id);
+CREATE POLICY "vehicle_fields_update_own" ON vehicle_fields FOR UPDATE USING (auth.uid() = concession_id) WITH CHECK (auth.uid() = concession_id);
+CREATE POLICY "vehicle_fields_delete_own" ON vehicle_fields FOR DELETE USING (auth.uid() = concession_id);
 
 -- Migration des schémas déjà existants (ajout de user_id si nécessaire)
 ALTER TABLE brouillons ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;

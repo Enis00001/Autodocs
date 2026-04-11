@@ -55,6 +55,8 @@ export type BonDraftData = {
   vendeurNotes: string;
   templateId: string;
   documentsScanned: Record<string, DocumentScannedState>;
+  /** Valeurs des champs véhicule configurés (clés = field_key). */
+  vehicleFieldValues: Record<string, string>;
 };
 
 type BrouillonRow = {
@@ -102,6 +104,7 @@ type BrouillonRow = {
   vendeur_notes: string;
   template_id: string;
   documents_scanned: unknown;
+  vehicle_field_values: unknown;
 };
 
 function sanitizeScannedDocuments(value: unknown): Record<string, DocumentScannedState> {
@@ -127,6 +130,15 @@ function sanitizeScannedDocuments(value: unknown): Record<string, DocumentScanne
       detail: typeof detailRaw === "string" ? detailRaw : "",
       extractedData,
     };
+  }
+  return out;
+}
+
+function sanitizeVehicleFieldValues(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = String(v ?? "");
   }
   return out;
 }
@@ -177,6 +189,7 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     vendeurNotes: row.vendeur_notes ?? "",
     templateId: row.template_id ?? "",
     documentsScanned: sanitizeScannedDocuments(row.documents_scanned),
+    vehicleFieldValues: sanitizeVehicleFieldValues(row.vehicle_field_values),
   };
 }
 
@@ -226,6 +239,7 @@ function draftToRow(d: BonDraftData): Omit<BrouillonRow, "created_at" | "updated
     vendeur_notes: d.vendeurNotes,
     template_id: d.templateId,
     documents_scanned: d.documentsScanned ?? {},
+    vehicle_field_values: d.vehicleFieldValues ?? {},
   };
 }
 
@@ -341,6 +355,7 @@ export async function upsertDraft(
           vendeur_notes: row.vendeur_notes,
           template_id: row.template_id,
           documents_scanned: row.documents_scanned,
+          vehicle_field_values: row.vehicle_field_values,
         })
         .eq("id", partial.id)
         .eq("user_id", userId);
@@ -407,6 +422,7 @@ export async function upsertDraft(
     vendeur_notes: row.vendeur_notes,
     template_id: row.template_id,
     documents_scanned: row.documents_scanned,
+    vehicle_field_values: row.vehicle_field_values,
   });
   if (error) console.error("upsertDraft insert:", error);
   if (typeof window !== "undefined") {

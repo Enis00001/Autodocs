@@ -8,6 +8,8 @@ import TemplateSelector from "@/components/nouveau-bon/TemplateSelector";
 import GenerateBar, { countMissingMandatoryFields } from "@/components/nouveau-bon/GenerateBar";
 import { toast } from "@/hooks/use-toast";
 import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
+import { getCurrentUserId } from "@/lib/auth";
+import { loadVehicleFields, type VehicleFieldRow } from "@/utils/vehicleFields";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -56,6 +58,7 @@ const defaultFormState: DraftFormState = {
   vendeurNotes: "",
   templateId: "1",
   documentsScanned: {},
+  vehicleFieldValues: {},
 };
 
 const NouveauBon = () => {
@@ -64,6 +67,36 @@ const NouveauBon = () => {
   const [formState, setFormState] = useState<DraftFormState>(defaultFormState);
   const [documentsUploaded, setDocumentsUploaded] = useState(0);
   const [highlightedFields, setHighlightedFields] = useState<Array<keyof DraftFormState>>([]);
+  const [customVehicleFields, setCustomVehicleFields] = useState<VehicleFieldRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const uid = await getCurrentUserId();
+      if (!uid || cancelled) return;
+      const defs = await loadVehicleFields(uid);
+      if (cancelled) return;
+      setCustomVehicleFields(defs);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (customVehicleFields.length === 0) return;
+    setFormState((prev) => {
+      const next = { ...prev.vehicleFieldValues };
+      let changed = false;
+      for (const f of customVehicleFields) {
+        if (!(f.field_key in next)) {
+          next[f.field_key] = "";
+          changed = true;
+        }
+      }
+      return changed ? { ...prev, vehicleFieldValues: next } : prev;
+    });
+  }, [customVehicleFields, formState.id]);
 
   useEffect(() => {
     if (params.id) {
@@ -162,11 +195,12 @@ const NouveauBon = () => {
             | "ribBanque"
           >}
         />
-        <VehiculeVente form={formState} onChange={updateForm} />
+        <VehiculeVente form={formState} onChange={updateForm} customVehicleFields={customVehicleFields} />
         <TemplateSelector selectedTemplateId={formState.templateId} onChangeTemplate={(id) => updateForm({ templateId: id })} />
         <GenerateBar
           documentsUploaded={documentsUploaded}
           missingFieldsCount={countMissingMandatoryFields(formState)}
+          extraPdfFormData={formState.vehicleFieldValues}
         />
       </div>
     </>

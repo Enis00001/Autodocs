@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Plus, ClipboardList, FileText, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Plus, ClipboardList, FileText, Car, Settings, LogOut } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts } from "@/utils/drafts";
 import { loadConcession, getConcessionInitials } from "@/utils/concession";
@@ -12,6 +12,7 @@ const navItems = [
   { title: "Nouveau bon", path: "/nouveau-bon", icon: Plus },
   { title: "Historique", path: "/historique", icon: ClipboardList },
   { title: "Templates", path: "/templates", icon: FileText },
+  { title: "Infos véhicule", path: "/infos-vehicule", icon: Car },
   { title: "Paramètres", path: "/parametres", icon: Settings },
 ];
 
@@ -66,7 +67,10 @@ const AppSidebar = () => {
 
       {/* Nav */}
       {navItems.map((item) => {
-        const isActive = location.pathname === item.path;
+        const isActive =
+          item.path === "/nouveau-bon"
+            ? location.pathname === "/nouveau-bon" || location.pathname.startsWith("/nouveau-bon/")
+            : location.pathname === item.path;
         return (
           <Link
             key={item.path}

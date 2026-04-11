@@ -153,14 +153,17 @@ async function firstPdfPageToPngDataUrl(templateBase64: string): Promise<string>
   return (canvas as HTMLCanvasElement).toDataURL("image/png");
 }
 
-export async function generatePDF() {
+export async function generatePDF(extraFormData?: Record<string, string>) {
   const templates = await loadTemplates();
   const selectedTemplate = guessSelectedTemplate(templates);
   if (!selectedTemplate?.contentBase64) {
     throw new Error("Aucun template PDF sélectionné/importé.");
   }
 
-  const formData = extractFormDataFromDom();
+  const formData = {
+    ...extractFormDataFromDom(),
+    ...(extraFormData ?? {}),
+  };
   const templateImageBase64 = await firstPdfPageToPngDataUrl(selectedTemplate.contentBase64);
   const cache = getLocalCoordsCache();
   const templateCacheKey = selectedTemplate.id;

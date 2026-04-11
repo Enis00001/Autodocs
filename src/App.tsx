@@ -10,6 +10,7 @@ import NouveauBon from "./pages/NouveauBon";
 import Dashboard from "./pages/Dashboard";
 import Historique from "./pages/Historique";
 import TemplatesPage from "./pages/Templates";
+import VehicleFieldsPage from "./pages/VehicleFields";
 import Parametres from "./pages/Parametres";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/Login";
@@ -70,6 +71,7 @@ const App = () => {
               <Route path="/nouveau-bon/:id" element={<NouveauBon />} />
               <Route path="/historique" element={<Historique />} />
               <Route path="/templates" element={<TemplatesPage />} />
+              <Route path="/infos-vehicule" element={<VehicleFieldsPage />} />
               <Route path="/parametres" element={<Parametres />} />
             </Route>
             <Route path="*" element={session ? <NotFound /> : <Navigate to="/login" replace />} />

@@ -1,0 +1,271 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { createClient } from "@supabase/supabase-js";
+import OpenAI from "openai";
+import { PDFDocument } from "pdf-lib";
+
+const BON_DRAFT_KEYS = [
+  "clientNom",
+  "clientPrenom",
+  "clientDateNaissance",
+  "clientNumeroCni",
+  "clientAdresse",
+  "ribTitulaire",
+  "ribIban",
+  "ribBic",
+  "ribBanque",
+  "clientEmail",
+  "clientTelephone",
+  "vehiculeModele",
+  "vehiculeVin",
+  "vehiculePremiereCirculation",
+  "vehiculeKilometrage",
+  "vehiculeCo2",
+  "vehiculeChevaux",
+  "vehiculePrix",
+  "optionsMode",
+  "optionsPrixTotal",
+  "optionsDetailJson",
+  "vehiculeCarteGrise",
+  "vehiculeFraisReprise",
+  "vehiculeRemise",
+  "vehiculeFinancement",
+  "vehiculeDateLivraison",
+  "vehiculeReprise",
+  "vehiculeCouleur",
+  "vehiculeOptions",
+  "acompte",
+  "modePaiement",
+  "apport",
+  "organismePreteur",
+  "montantCredit",
+  "tauxCredit",
+  "dureeMois",
+  "clauseSuspensive",
+  "vendeurNom",
+  "vendeurNotes",
+  "templateId",
+] as const;
+
+function safeJsonParse<T>(value: string): T | null {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function getSupabaseAdmin() {
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) {
+    return null;
+  }
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+function getStorageBucket(): string {
+  return process.env.SUPABASE_PDF_TEMPLATES_BUCKET ?? "pdf-templates";
+}
+
+async function loadPdfBytesFromRequest(body: Record<string, unknown>): Promise<Uint8Array> {
+  const pdf_base64 = typeof body.pdf_base64 === "string" ? body.pdf_base64.trim() : "";
+  if (pdf_base64) {
+    const raw = pdf_base64.includes(",") ? pdf_base64.split(",").pop()! : pdf_base64;
+    return Uint8Array.from(Buffer.from(raw, "base64"));
+  }
+
+  const storage_path = typeof body.storage_path === "string" ? body.storage_path.trim() : "";
+  if (!storage_path) {
+    throw new Error("Fournir storage_path (upload Storage) ou pdf_base64");
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    throw new Error("Supabase admin requis pour télécharger le fichier depuis Storage");
+  }
+
+  const bucket = getStorageBucket();
+  const { data, error } = await supabase.storage.from(bucket).download(storage_path);
+  if (error || !data) {
+    throw new Error(error?.message ?? "Téléchargement Storage impossible");
+  }
+  const ab = await data.arrayBuffer();
+  return new Uint8Array(ab);
+}
+
+function mappingPrompt(pdfFieldNames: string[]): string {
+  return [
+    "Tu es un expert en mapping de champs PDF AcroForm vers un formulaire applicatif.",
+    "Voici les noms EXACTS des champs du PDF :",
+    JSON.stringify(pdfFieldNames, null, 2),
+    "",
+    "Voici les clés autorisées du formulaire (BonDraftData) — chaque valeur du JSON doit être l'une de ces clés :",
+    JSON.stringify(BON_DRAFT_KEYS, null, 2),
+    "",
+    "Pour chaque champ PDF, indique quelle clé BonDraftData remplit ce champ.",
+    "Retourne UNIQUEMENT un JSON : { \"nomChampPDF\": \"cleBonDraft\" }",
+    "Si un champ PDF ne correspond à aucune clé, ne l'inclus pas.",
+    "Pas de markdown.",
+  ].join("\n");
+}
+
+function sanitizeFieldMapping(
+  raw: unknown,
+  pdfFieldNames: string[],
+  allowedKeys: Set<string>
+): Record<string, string> {
+  if (!raw || typeof raw !== "object") return {};
+  const allowedPdf = new Set(pdfFieldNames);
+  const out: Record<string, string> = {};
+  for (const [pdfName, draftKey] of Object.entries(raw as Record<string, unknown>)) {
+    if (!allowedPdf.has(pdfName)) continue;
+    const key = String(draftKey ?? "").trim();
+    if (!allowedKeys.has(key)) continue;
+    out[pdfName] = key;
+  }
+  return out;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const body = typeof req.body === "string" ? safeJsonParse<Record<string, unknown>>(req.body) : req.body;
+  if (!body || typeof body !== "object") {
+    return res.status(400).json({ error: "Corps JSON invalide" });
+  }
+
+  const dealer_id = body.dealer_id as string | undefined;
+  const template_name = body.template_name as string | undefined;
+  const storage_path = body.storage_path as string | undefined;
+
+  if (!dealer_id?.trim()) {
+    return res.status(400).json({ error: "dealer_id manquant" });
+  }
+  if (!template_name?.trim()) {
+    return res.status(400).json({ error: "template_name manquant" });
+  }
+  if (!storage_path?.trim() && !body.pdf_base64) {
+    return res.status(400).json({ error: "storage_path ou pdf_base64 requis" });
+  }
+
+  const pdf_field_names_override = body.pdf_field_names;
+  const form_data =
+    body.form_data && typeof body.form_data === "object"
+      ? (body.form_data as Record<string, unknown>)
+      : null;
+  const provided_mapping =
+    body.field_mapping && typeof body.field_mapping === "object"
+      ? (body.field_mapping as Record<string, unknown>)
+      : null;
+
+  let field_mapping: Record<string, string> = {};
+  let mapping_status: "pending" | "complete" | "failed" = "pending";
+  let extractedNames: string[] = [];
+
+  try {
+    const pdfBytes = await loadPdfBytesFromRequest(body);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const form = pdfDoc.getForm();
+    let fields: ReturnType<typeof form.getFields>;
+    try {
+      fields = form.getFields();
+    } catch (formErr: unknown) {
+      console.warn("[analyze-template] getFields() indisponible (PDF complexe)", formErr);
+      fields = [];
+    }
+    for (const field of fields) {
+      try {
+        extractedNames.push(field.getName());
+      } catch {
+        /* rich text / non supporté */
+      }
+    }
+
+    if (Array.isArray(pdf_field_names_override) && pdf_field_names_override.length > 0) {
+      extractedNames = pdf_field_names_override.map((x) => String(x));
+    }
+
+    const allowedKeys = new Set<string>([...BON_DRAFT_KEYS]);
+
+    if (provided_mapping) {
+      field_mapping = sanitizeFieldMapping(provided_mapping, extractedNames, allowedKeys);
+      mapping_status = Object.keys(field_mapping).length > 0 ? "complete" : "pending";
+    } else if (extractedNames.length === 0) {
+      field_mapping = {};
+      mapping_status = "pending";
+    } else {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: "OPENAI_API_KEY non configurée pour le mapping automatique" });
+      }
+      try {
+        const openai = new OpenAI({ apiKey });
+        const textPrompt =
+          form_data && Object.keys(form_data).length > 0
+            ? [
+                mappingPrompt(extractedNames),
+                "",
+                "Données exemple / contexte pour affiner le mapping :",
+                JSON.stringify(form_data, null, 2),
+              ].join("\n")
+            : mappingPrompt(extractedNames);
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          temperature: 0,
+          response_format: { type: "json_object" },
+          messages: [{ role: "user", content: textPrompt }],
+        });
+        const content = completion.choices?.[0]?.message?.content ?? "{}";
+        const parsed = safeJsonParse<Record<string, unknown>>(content) ?? {};
+        field_mapping = sanitizeFieldMapping(parsed, extractedNames, allowedKeys);
+        mapping_status = Object.keys(field_mapping).length > 0 ? "complete" : "pending";
+      } catch (err: unknown) {
+        console.error("[analyze-template] GPT mapping failed", err);
+        field_mapping = {};
+        mapping_status = "failed";
+      }
+    }
+  } catch (loadErr: unknown) {
+    console.error("[analyze-template] PDF load / extract failed", loadErr);
+    return res.status(400).json({
+      error: loadErr instanceof Error ? loadErr.message : "Erreur lecture PDF",
+      stage: "pdf_extract",
+    });
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    return res.status(500).json({
+      error:
+        "Supabase admin non configuré (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY requis pour l'insertion)",
+    });
+  }
+
+  const { data, error } = await supabase
+    .from("pdf_templates")
+    .insert({
+      dealer_id,
+      template_name: template_name.trim(),
+      storage_path: (storage_path ?? "").trim(),
+      field_mapping,
+      mapping_status,
+    })
+    .select("id, dealer_id, template_name, storage_path, field_mapping, mapping_status")
+    .single();
+
+  if (error) {
+    console.error("[analyze-template] insert pdf_templates:", error);
+    return res.status(500).json({ error: error.message, details: error });
+  }
+
+  return res.status(200).json({
+    ok: true,
+    row: data,
+    pdf_field_names: extractedNames,
+  });
+}

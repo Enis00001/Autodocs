@@ -2,12 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import TopBar from "@/components/layout/TopBar";
 import { Trash2 } from "lucide-react";
 import type { Template } from "@/utils/templates";
-import { loadTemplates, deleteTemplate, seedTemplatesIfEmpty, createTemplate, openTemplateInNewTab } from "@/utils/templates";
+import {
+  loadTemplates,
+  deleteTemplate,
+  seedTemplatesIfEmpty,
+  createTemplate,
+  openTemplateInNewTab,
+} from "@/utils/templates";
+import { supabase } from "@/lib/supabase";
+import { getCurrentUserId } from "@/lib/auth";
 
-const ACCEPT_IMPORT = ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const ACCEPT_IMPORT =
+  ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+const PDF_STORAGE_BUCKET = "pdf-templates";
+
+type BannerState = { variant: "info" | "success" | "error"; text: string } | null;
 
 const TemplatesPage = () => {
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateName, setTemplateName] = useState("");
+  const [banner, setBanner] = useState<BannerState>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -18,21 +33,96 @@ const TemplatesPage = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const name = file.name;
-    const dateStr = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      const [header, base64] = dataUrl.split(",");
-      const mimeType = header.replace("data:", "").replace(";base64", "").trim();
-      await createTemplate(name, dateStr, base64 ?? "", mimeType);
-      setTemplates(await loadTemplates());
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file) return;
+
+    const dateStr = new Date().toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const isPdf =
+      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = reader.result as string;
+        const [header, base64] = dataUrl.split(",");
+        const mimeType = header.replace("data:", "").replace(";base64", "").trim();
+        await createTemplate(file.name, dateStr, base64 ?? "", mimeType);
+        setTemplates(await loadTemplates());
+        setBanner(null);
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      setBanner({ variant: "error", text: "Vous devez être connecté pour importer un PDF." });
+      return;
+    }
+
+    const displayName = (
+      templateName.trim() ||
+      file.name.replace(/\.pdf$/i, "") ||
+      file.name
+    ).trim();
+
+    setBanner({ variant: "info", text: "Analyse en cours..." });
+
+    try {
+      const objectPath = `${userId}/${crypto.randomUUID()}.pdf`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(PDF_STORAGE_BUCKET)
+        .upload(objectPath, file, {
+          contentType: "application/pdf",
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      const storagePath = uploadData?.path ?? objectPath;
+
+      const res = await fetch("/api/analyze-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealer_id: userId,
+          template_name: displayName,
+          storage_path: storagePath,
+          pdf_field_names: null,
+        }),
+      });
+
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(json.error || `Erreur ${res.status}`);
+      }
+
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result as string);
+        r.onerror = () => reject(new Error("Lecture du fichier impossible"));
+        r.readAsDataURL(file);
+      });
+      const base64 = dataUrl.split(",")[1] ?? "";
+
+      setBanner({ variant: "success", text: "Template analysé et sauvegardé" });
+      await createTemplate(displayName, dateStr, base64, "application/pdf");
+      setTemplates(await loadTemplates());
+    } catch (err: unknown) {
+      setBanner({
+        variant: "error",
+        text: err instanceof Error ? err.message : "Erreur inconnue",
+      });
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -63,8 +153,35 @@ const TemplatesPage = () => {
           </button>
         }
       />
-      <div className="flex-1 overflow-y-auto p-7">
-        <div className="grid grid-cols-3 gap-5">
+      <div className="flex-1 overflow-y-auto p-4 pb-6 md:p-7 md:pb-7">
+        <div className="flex flex-col gap-3 mb-5 max-w-xl">
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-muted-foreground">Nom du template (PDF)</span>
+            <input
+              type="text"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="Ex. Bon de commande concession X"
+              className="field-input"
+            />
+          </label>
+          {banner && (
+            <div
+              className={`rounded-lg border px-3 py-2 text-sm ${
+                banner.variant === "info"
+                  ? "border-primary/40 bg-primary/10 text-foreground"
+                  : banner.variant === "success"
+                    ? "border-success/40 bg-success/10 text-success"
+                    : "border-destructive/40 bg-destructive/10 text-destructive"
+              }`}
+              role="status"
+            >
+              {banner.text}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
             <div
               key={t.id}
@@ -95,7 +212,6 @@ const TemplatesPage = () => {
             </div>
           ))}
 
-          {/* Add template */}
           <div
             role="button"
             tabIndex={0}

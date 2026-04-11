@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { BonDraftData, OptionDetail } from "@/utils/drafts";
 import { loadVendeurs } from "@/utils/vendeurs";
 import type { Vendeur } from "@/utils/vendeurs";
+import type { VehicleFieldRow } from "@/utils/vehicleFields";
 
 const FINANCEMENT_OPTIONS = ["Comptant", "Crédit classique", "LOA", "LLD"] as const;
 
@@ -16,9 +17,10 @@ type VehiculeForm = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & { id?
 type VehiculeVenteProps = {
   form: VehiculeForm;
   onChange: (patch: Partial<BonDraftData>) => void;
+  customVehicleFields?: VehicleFieldRow[];
 };
 
-const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
+const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVenteProps) => {
   const [vendeurs, setVendeurs] = useState<Vendeur[]>([]);
   const [isLoadingVendeurs, setIsLoadingVendeurs] = useState(true);
 
@@ -154,6 +156,34 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
               />
             </div>
           </div>
+
+          {customVehicleFields.length > 0 && (
+            <>
+              <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-2">
+                Champs concession
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                {customVehicleFields.map((f) => (
+                  <div key={f.id} className="flex flex-col gap-1.5 col-span-2">
+                    <label className="field-label">{f.label}</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={form.vehicleFieldValues?.[f.field_key] ?? ""}
+                      onChange={(e) =>
+                        onChange({
+                          vehicleFieldValues: {
+                            ...(form.vehicleFieldValues ?? {}),
+                            [f.field_key]: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* SECTION 2 — Prix & coûts */}
