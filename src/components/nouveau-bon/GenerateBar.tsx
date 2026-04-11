@@ -10,8 +10,8 @@ const MANDATORY_FIELDS = [
   "vehiculePrix",
 ] as const;
 
-export function countMissingMandatoryFields(form: Record<string, string>): number {
-  return MANDATORY_FIELDS.filter((key) => !(form[key]?.trim() ?? "")).length;
+export function countMissingMandatoryFields(form: Record<string, unknown>): number {
+  return MANDATORY_FIELDS.filter((key) => !String(form[key] ?? "").trim()).length;
 }
 
 type GenerateBarProps = {

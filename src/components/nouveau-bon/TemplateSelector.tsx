@@ -6,6 +6,8 @@ type TemplateSelectorProps = {
   loading: boolean;
   selectedTemplateId: string;
   onChangeTemplate: (id: string) => void;
+  /** Des entrées existent dans la table `templates`, mais aucun PDF analysé (`pdf_templates`). */
+  libraryEntriesButNoAnalyzedPdf?: boolean;
 };
 
 const TemplateSelector = ({
@@ -13,6 +15,7 @@ const TemplateSelector = ({
   loading,
   selectedTemplateId,
   onChangeTemplate,
+  libraryEntriesButNoAnalyzedPdf = false,
 }: TemplateSelectorProps) => {
   if (loading) {
     return (
@@ -31,13 +34,34 @@ const TemplateSelector = ({
         <div className="mb-4">
           <span className="card-title-autodocs">📄 Template bon de commande</span>
         </div>
-        <p className="text-sm text-destructive/90 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2">
-          Aucun template configuré — veuillez d&apos;abord uploader un template dans la section{" "}
-          <Link to="/templates" className="underline font-medium text-primary hover:text-primary/90">
-            Templates
-          </Link>
-          .
-        </p>
+        <div className="text-sm text-destructive/90 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 space-y-2">
+          {libraryEntriesButNoAnalyzedPdf ? (
+            <>
+              <p>
+                La page <strong>Templates</strong> affiche des fiches, mais aucun PDF n’a été
+                <strong> analysé</strong> (mapping AcroForm). La génération du bon utilise uniquement
+                les templates de la base <code className="text-xs opacity-90">pdf_templates</code>,
+                pas les anciens modèles d’exemple ni les fichiers Word.
+              </p>
+              <p>
+                Importez un fichier <strong>.pdf</strong> depuis{" "}
+                <Link to="/templates" className="underline font-medium text-primary hover:text-primary/90">
+                  Templates
+                </Link>{" "}
+                et attendez la fin de l’analyse, ou vérifiez en base que la politique RLS permet la
+                lecture de <code className="text-xs opacity-90">pdf_templates</code> pour votre compte.
+              </p>
+            </>
+          ) : (
+            <p>
+              Aucun template PDF analysé — uploader un fichier <strong>.pdf</strong> dans la section{" "}
+              <Link to="/templates" className="underline font-medium text-primary hover:text-primary/90">
+                Templates
+              </Link>
+              .
+            </p>
+          )}
+        </div>
       </div>
     );
   }

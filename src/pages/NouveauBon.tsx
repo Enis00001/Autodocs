@@ -10,7 +10,12 @@ import { toast } from "@/hooks/use-toast";
 import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
 import { getCurrentUserId } from "@/lib/auth";
 import { loadVehicleFields, type VehicleFieldRow } from "@/utils/vehicleFields";
-import { loadPdfTemplates, pickPdfTemplateId, type PdfTemplateRow } from "@/utils/pdfTemplates";
+import {
+  hasEntriesInTemplatesTable,
+  loadPdfTemplates,
+  pickPdfTemplateId,
+  type PdfTemplateRow,
+} from "@/utils/pdfTemplates";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -89,6 +94,8 @@ const NouveauBon = () => {
   const [customVehicleFields, setCustomVehicleFields] = useState<VehicleFieldRow[]>([]);
   const [pdfTemplates, setPdfTemplates] = useState<PdfTemplateRow[]>([]);
   const [pdfTemplatesLoading, setPdfTemplatesLoading] = useState(true);
+  /** La page Templates affiche des fiches, mais aucune ligne `pdf_templates` (ex. modèles seed, Word, ou RLS). */
+  const [libraryEntriesButNoAnalyzedPdf, setLibraryEntriesButNoAnalyzedPdf] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,12 +133,16 @@ const NouveauBon = () => {
         const uid = await getCurrentUserId();
         if (!uid) {
           setPdfTemplates([]);
+          setLibraryEntriesButNoAnalyzedPdf(false);
           return;
         }
 
         const list = await loadPdfTemplates(uid);
         if (cancelled) return;
         setPdfTemplates(list);
+        const hasLibraryRows = await hasEntriesInTemplatesTable();
+        if (cancelled) return;
+        setLibraryEntriesButNoAnalyzedPdf(list.length === 0 && hasLibraryRows);
 
         if (params.id) {
           const existing = await getDraft(params.id);
@@ -260,10 +271,11 @@ const NouveauBon = () => {
           loading={pdfTemplatesLoading}
           selectedTemplateId={formState.templateId}
           onChangeTemplate={(id) => updateForm({ templateId: id })}
+          libraryEntriesButNoAnalyzedPdf={libraryEntriesButNoAnalyzedPdf}
         />
         <GenerateBar
           documentsUploaded={documentsUploaded}
-          missingFieldsCount={countMissingMandatoryFields(formState)}
+          missingFieldsCount={countMissingMandatoryFields(formState as Record<string, unknown>)}
           formData={buildPdfFormData(formState)}
           templateId={formState.templateId}
         />
