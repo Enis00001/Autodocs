@@ -85,7 +85,18 @@ const TemplatesPage = () => {
         });
 
       if (uploadError) {
-        throw new Error(uploadError.message);
+        const raw = uploadError.message ?? "";
+        const low = raw.toLowerCase();
+        if (
+          low.includes("bucket") ||
+          low.includes("not found") ||
+          raw.includes("introuvable")
+        ) {
+          throw new Error(
+            'Bucket Storage « pdf-templates » absent. Dans Supabase → SQL Editor, exécutez la section Storage du fichier src/lib/schema.sql (création du bucket + politiques), ou créez manuellement un bucket privé nommé exactement pdf-templates puis réessayez.'
+          );
+        }
+        throw new Error(raw);
       }
 
       const storagePath = uploadData?.path ?? objectPath;

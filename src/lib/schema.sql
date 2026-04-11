@@ -84,9 +84,11 @@ CREATE TABLE IF NOT EXISTS concession (
 CREATE INDEX IF NOT EXISTS idx_concession_user_id ON concession (user_id);
 
 -- Templates PDF (analyse / mapping champs AcroForm par concession)
+-- Si PostgREST indique que public.pdf_templates est introuvable, exécutez d’abord
+-- le script autonome src/lib/sql_create_pdf_templates.sql dans le SQL Editor.
 CREATE TABLE IF NOT EXISTS pdf_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  dealer_id UUID NOT NULL,
+  dealer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   template_name TEXT NOT NULL,
   storage_path TEXT NOT NULL,
   field_mapping JSONB NOT NULL DEFAULT '{}',
@@ -100,8 +102,43 @@ ALTER TABLE pdf_templates ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "pdf_templates_select_own" ON pdf_templates;
 CREATE POLICY "pdf_templates_select_own" ON pdf_templates FOR SELECT USING (auth.uid() = dealer_id);
 
--- Storage Supabase : créer le bucket `pdf-templates` (privé) et des politiques pour
--- upload/download par utilisateur authentifié (ex. chemin `{user_id}/...`).
+-- ========== Storage : bucket `pdf-templates` (sinon erreur « Bucket not found » à l’upload) ==========
+-- À exécuter dans Supabase → SQL Editor (une fois). Les fichiers sont stockés sous `{user_id}/...`.
+INSERT INTO storage.buckets (id, name, public)
+SELECT 'pdf-templates', 'pdf-templates', false
+WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'pdf-templates');
+
+DROP POLICY IF EXISTS "pdf_templates_storage_insert" ON storage.objects;
+CREATE POLICY "pdf_templates_storage_insert"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (
+  bucket_id = 'pdf-templates'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
+
+DROP POLICY IF EXISTS "pdf_templates_storage_select" ON storage.objects;
+CREATE POLICY "pdf_templates_storage_select"
+ON storage.objects FOR SELECT TO authenticated
+USING (
+  bucket_id = 'pdf-templates'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
+
+DROP POLICY IF EXISTS "pdf_templates_storage_update" ON storage.objects;
+CREATE POLICY "pdf_templates_storage_update"
+ON storage.objects FOR UPDATE TO authenticated
+USING (
+  bucket_id = 'pdf-templates'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
+
+DROP POLICY IF EXISTS "pdf_templates_storage_delete" ON storage.objects;
+CREATE POLICY "pdf_templates_storage_delete"
+ON storage.objects FOR DELETE TO authenticated
+USING (
+  bucket_id = 'pdf-templates'
+  AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
 -- Champs véhicule personnalisés (concession = utilisateur connecté)
 CREATE TABLE IF NOT EXISTS vehicle_fields (

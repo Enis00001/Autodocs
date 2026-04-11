@@ -38,18 +38,24 @@ const TemplateSelector = ({
           {libraryEntriesButNoAnalyzedPdf ? (
             <>
               <p>
-                La page <strong>Templates</strong> affiche des fiches, mais aucun PDF n’a été
-                <strong> analysé</strong> (mapping AcroForm). La génération du bon utilise uniquement
-                les templates de la base <code className="text-xs opacity-90">pdf_templates</code>,
-                pas les anciens modèles d’exemple ni les fichiers Word.
+                Des fiches apparaissent dans <strong>Templates</strong>, mais la génération du bon
+                utilise uniquement les PDF <strong>analysés</strong> (table{" "}
+                <code className="text-xs opacity-90">pdf_templates</code>
+                ). Les modèles d’exemple ou les fichiers Word ne suffisent pas.
               </p>
               <p>
-                Importez un fichier <strong>.pdf</strong> depuis{" "}
+                Si l’erreur indique <code className="text-xs opacity-90">pdf_templates</code>{" "}
+                introuvable : exécutez{" "}
+                <code className="text-xs opacity-90">src/lib/sql_create_pdf_templates.sql</code> dans
+                Supabase → SQL Editor. Si « Bucket not found » : section Storage dans{" "}
+                <code className="text-xs opacity-90">src/lib/schema.sql</code>.
+              </p>
+              <p>
+                Ensuite importez un <strong>.pdf</strong> depuis{" "}
                 <Link to="/templates" className="underline font-medium text-primary hover:text-primary/90">
                   Templates
                 </Link>{" "}
-                et attendez la fin de l’analyse, ou vérifiez en base que la politique RLS permet la
-                lecture de <code className="text-xs opacity-90">pdf_templates</code> pour votre compte.
+                et attendez la fin de l’analyse.
               </p>
             </>
           ) : (
