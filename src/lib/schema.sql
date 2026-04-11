@@ -96,6 +96,10 @@ CREATE TABLE IF NOT EXISTS pdf_templates (
 );
 CREATE INDEX IF NOT EXISTS idx_pdf_templates_dealer_id ON pdf_templates (dealer_id);
 
+ALTER TABLE pdf_templates ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "pdf_templates_select_own" ON pdf_templates;
+CREATE POLICY "pdf_templates_select_own" ON pdf_templates FOR SELECT USING (auth.uid() = dealer_id);
+
 -- Storage Supabase : créer le bucket `pdf-templates` (privé) et des politiques pour
 -- upload/download par utilisateur authentifié (ex. chemin `{user_id}/...`).
 

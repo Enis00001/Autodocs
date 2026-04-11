@@ -10,6 +10,7 @@ import { toast } from "@/hooks/use-toast";
 import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
 import { getCurrentUserId } from "@/lib/auth";
 import { loadVehicleFields, type VehicleFieldRow } from "@/utils/vehicleFields";
+import { loadPdfTemplates, pickPdfTemplateId, type PdfTemplateRow } from "@/utils/pdfTemplates";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -56,7 +57,7 @@ const defaultFormState: DraftFormState = {
   clauseSuspensive: false,
   vendeurNom: "",
   vendeurNotes: "",
-  templateId: "1",
+  templateId: "",
   documentsScanned: {},
   vehicleFieldValues: {},
 };
@@ -86,6 +87,8 @@ const NouveauBon = () => {
   const [documentsUploaded, setDocumentsUploaded] = useState(0);
   const [highlightedFields, setHighlightedFields] = useState<Array<keyof DraftFormState>>([]);
   const [customVehicleFields, setCustomVehicleFields] = useState<VehicleFieldRow[]>([]);
+  const [pdfTemplates, setPdfTemplates] = useState<PdfTemplateRow[]>([]);
+  const [pdfTemplatesLoading, setPdfTemplatesLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,16 +120,54 @@ const NouveauBon = () => {
   }, [customVehicleFields, formState.id]);
 
   useEffect(() => {
-    if (params.id) {
-      getDraft(params.id).then((existing) => {
-        if (existing) {
-          const { id, createdAt, updatedAt, ...rest } = existing;
-          setFormState({ ...defaultFormState, ...rest, id });
+    let cancelled = false;
+    (async () => {
+      try {
+        const uid = await getCurrentUserId();
+        if (!uid) {
+          setPdfTemplates([]);
+          return;
         }
-      });
-    } else {
-      setFormState(defaultFormState);
-    }
+
+        const list = await loadPdfTemplates(uid);
+        if (cancelled) return;
+        setPdfTemplates(list);
+
+        if (params.id) {
+          const existing = await getDraft(params.id);
+          if (cancelled) return;
+          if (existing) {
+            const { id, createdAt, updatedAt, ...rest } = existing;
+            setFormState({
+              ...defaultFormState,
+              ...rest,
+              id,
+              templateId: pickPdfTemplateId(list, rest.templateId),
+            });
+            return;
+          }
+        }
+
+        setFormState((prev) => {
+          if (!params.id) {
+            return {
+              ...defaultFormState,
+              templateId: pickPdfTemplateId(list, ""),
+            };
+          }
+          return {
+            ...prev,
+            templateId: pickPdfTemplateId(list, prev.templateId),
+          };
+        });
+      } finally {
+        if (!cancelled) setPdfTemplatesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [params.id]);
 
   const updateForm = (patch: Partial<DraftFormState>) => {
@@ -214,7 +255,12 @@ const NouveauBon = () => {
           >}
         />
         <VehiculeVente form={formState} onChange={updateForm} customVehicleFields={customVehicleFields} />
-        <TemplateSelector selectedTemplateId={formState.templateId} onChangeTemplate={(id) => updateForm({ templateId: id })} />
+        <TemplateSelector
+          templates={pdfTemplates}
+          loading={pdfTemplatesLoading}
+          selectedTemplateId={formState.templateId}
+          onChangeTemplate={(id) => updateForm({ templateId: id })}
+        />
         <GenerateBar
           documentsUploaded={documentsUploaded}
           missingFieldsCount={countMissingMandatoryFields(formState)}

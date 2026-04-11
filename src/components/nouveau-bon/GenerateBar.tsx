@@ -32,9 +32,11 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   const canGenerate = documentsUploaded > 0 || missingFieldsCount < 5;
+  const templateIdOk =
+    templateId.trim() !== "" && templateId !== "1";
 
   const handleGenerate = async () => {
-    if (!canGenerate) return;
+    if (!canGenerate || !templateIdOk) return;
     setModalOpen(true);
     setIsGenerating(true);
     setIsSuccess(false);
@@ -91,11 +93,11 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
 
         <button
           type="button"
-          disabled={!canGenerate}
+          disabled={!canGenerate || !templateIdOk}
           className="relative z-10 gradient-primary px-6 py-3 rounded-[9px] font-display text-sm font-bold text-primary-foreground transition-all duration-200 flex items-center gap-2 border-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer hover:-translate-y-0.5"
           style={{ boxShadow: "0 4px 20px hsla(228,91%,64%,0.3)" }}
           onMouseEnter={(e) => {
-            if (canGenerate)
+            if (canGenerate && templateIdOk)
               (e.currentTarget as HTMLElement).style.boxShadow =
                 "0 8px 28px hsla(228,91%,64%,0.45)";
           }}
