@@ -20,6 +20,10 @@ export async function generatePDF(
   if (!templateId) {
     throw new Error("Aucun template sélectionné.");
   }
+  console.log("[generatePDF] payload envoyé à /api/fill-pdf:", {
+    templateId,
+    formData,
+  });
 
   const response = await fetch("/api/fill-pdf", {
     method: "POST",

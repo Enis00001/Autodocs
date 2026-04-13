@@ -11,6 +11,7 @@ import {
 } from "@/utils/templates";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserId } from "@/lib/auth";
+import { loadVehicleFields } from "@/utils/vehicleFields";
 
 const ACCEPT_IMPORT =
   ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -101,6 +102,9 @@ const TemplatesPage = () => {
 
       const storagePath = uploadData?.path ?? objectPath;
 
+      const vehicleFields = await loadVehicleFields(userId);
+      const vehicle_field_keys = vehicleFields.map((v) => v.field_key);
+
       const res = await fetch("/api/analyze-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,6 +113,7 @@ const TemplatesPage = () => {
           template_name: displayName,
           storage_path: storagePath,
           pdf_field_names: null,
+          vehicle_field_keys,
         }),
       });
 

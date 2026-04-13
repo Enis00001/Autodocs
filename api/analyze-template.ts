@@ -1,50 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
-import OpenAI from "openai";
 import { PDFDocument } from "pdf-lib";
-
-const BON_DRAFT_KEYS = [
-  "clientNom",
-  "clientPrenom",
-  "clientDateNaissance",
-  "clientNumeroCni",
-  "clientAdresse",
-  "ribTitulaire",
-  "ribIban",
-  "ribBic",
-  "ribBanque",
-  "clientEmail",
-  "clientTelephone",
-  "vehiculeModele",
-  "vehiculeVin",
-  "vehiculePremiereCirculation",
-  "vehiculeKilometrage",
-  "vehiculeCo2",
-  "vehiculeChevaux",
-  "vehiculePrix",
-  "optionsMode",
-  "optionsPrixTotal",
-  "optionsDetailJson",
-  "vehiculeCarteGrise",
-  "vehiculeFraisReprise",
-  "vehiculeRemise",
-  "vehiculeFinancement",
-  "vehiculeDateLivraison",
-  "vehiculeReprise",
-  "vehiculeCouleur",
-  "vehiculeOptions",
-  "acompte",
-  "modePaiement",
-  "apport",
-  "organismePreteur",
-  "montantCredit",
-  "tauxCredit",
-  "dureeMois",
-  "clauseSuspensive",
-  "vendeurNom",
-  "vendeurNotes",
-  "templateId",
-] as const;
+import {
+  BON_DRAFT_KEYS,
+  buildDeterministicFieldMapping,
+} from "./pdfFieldMapping";
 
 function safeJsonParse<T>(value: string): T | null {
   try {
@@ -94,22 +54,6 @@ async function loadPdfBytesFromRequest(body: Record<string, unknown>): Promise<U
   return new Uint8Array(ab);
 }
 
-function mappingPrompt(pdfFieldNames: string[]): string {
-  return [
-    "Tu es un expert en mapping de champs PDF AcroForm vers un formulaire applicatif.",
-    "Voici les noms EXACTS des champs du PDF :",
-    JSON.stringify(pdfFieldNames, null, 2),
-    "",
-    "Voici les clés autorisées du formulaire (BonDraftData) — chaque valeur du JSON doit être l'une de ces clés :",
-    JSON.stringify(BON_DRAFT_KEYS, null, 2),
-    "",
-    "Pour chaque champ PDF, indique quelle clé BonDraftData remplit ce champ.",
-    "Retourne UNIQUEMENT un JSON : { \"nomChampPDF\": \"cleBonDraft\" }",
-    "Si un champ PDF ne correspond à aucune clé, ne l'inclus pas.",
-    "Pas de markdown.",
-  ].join("\n");
-}
-
 function sanitizeFieldMapping(
   raw: unknown,
   pdfFieldNames: string[],
@@ -153,18 +97,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const pdf_field_names_override = body.pdf_field_names;
-  const form_data =
-    body.form_data && typeof body.form_data === "object"
-      ? (body.form_data as Record<string, unknown>)
-      : null;
   const provided_mapping =
     body.field_mapping && typeof body.field_mapping === "object"
       ? (body.field_mapping as Record<string, unknown>)
       : null;
 
+  const extraFormKeys = Array.isArray(body.vehicle_field_keys)
+    ? (body.vehicle_field_keys as unknown[])
+        .map((x) => String(x ?? "").trim())
+        .filter(Boolean)
+    : [];
+
   let field_mapping: Record<string, string> = {};
   let mapping_status: "pending" | "complete" | "failed" = "pending";
   let extractedNames: string[] = [];
+
+  const allowedKeys = new Set<string>([
+    ...BON_DRAFT_KEYS,
+    ...extraFormKeys,
+  ]);
 
   try {
     const pdfBytes = await loadPdfBytesFromRequest(body);
@@ -189,8 +140,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       extractedNames = pdf_field_names_override.map((x) => String(x));
     }
 
-    const allowedKeys = new Set<string>([...BON_DRAFT_KEYS]);
-
     if (provided_mapping) {
       field_mapping = sanitizeFieldMapping(provided_mapping, extractedNames, allowedKeys);
       mapping_status = Object.keys(field_mapping).length > 0 ? "complete" : "pending";
@@ -198,37 +147,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       field_mapping = {};
       mapping_status = "pending";
     } else {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: "OPENAI_API_KEY non configurée pour le mapping automatique" });
-      }
-      try {
-        const openai = new OpenAI({ apiKey });
-        const textPrompt =
-          form_data && Object.keys(form_data).length > 0
-            ? [
-                mappingPrompt(extractedNames),
-                "",
-                "Données exemple / contexte pour affiner le mapping :",
-                JSON.stringify(form_data, null, 2),
-              ].join("\n")
-            : mappingPrompt(extractedNames);
-
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o",
-          temperature: 0,
-          response_format: { type: "json_object" },
-          messages: [{ role: "user", content: textPrompt }],
-        });
-        const content = completion.choices?.[0]?.message?.content ?? "{}";
-        const parsed = safeJsonParse<Record<string, unknown>>(content) ?? {};
-        field_mapping = sanitizeFieldMapping(parsed, extractedNames, allowedKeys);
-        mapping_status = Object.keys(field_mapping).length > 0 ? "complete" : "pending";
-      } catch (err: unknown) {
-        console.error("[analyze-template] GPT mapping failed", err);
-        field_mapping = {};
-        mapping_status = "failed";
-      }
+      field_mapping = buildDeterministicFieldMapping(extractedNames, {
+        extraFormKeys,
+      });
+      mapping_status = Object.keys(field_mapping).length > 0 ? "complete" : "pending";
     }
   } catch (loadErr: unknown) {
     console.error("[analyze-template] PDF load / extract failed", loadErr);

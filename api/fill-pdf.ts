@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFTextField } from "pdf-lib";
 
 function safeJsonParse<T>(value: string): T | null {
   try {
@@ -36,6 +36,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     templateId?: string;
     formData?: Record<string, unknown>;
   };
+  const debug = {
+    templateId: typeof templateId === "string" ? templateId : null,
+    field_mapping: {} as Record<string, string>,
+    matches: [] as Array<{
+      pdfFieldName: string;
+      standardKey: string | null;
+      value: string;
+    }>,
+  };
 
   if (!templateId || typeof templateId !== "string") {
     return res.status(400).json({ error: "templateId manquant" });
@@ -62,6 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(404).json({
       error: `Template introuvable (id=${templateId})`,
       details: tplError,
+      debug,
     });
   }
 
@@ -70,17 +80,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? (tplRow.field_mapping as Record<string, string>)
       : {};
   const storagePath: string = tplRow.storage_path ?? "";
+  debug.field_mapping = fieldMapping;
 
   if (!storagePath) {
     return res
       .status(400)
-      .json({ error: "storage_path vide pour ce template" });
+      .json({ error: "storage_path vide pour ce template", debug });
   }
 
   if (Object.keys(fieldMapping).length === 0) {
     return res.status(400).json({
       error:
         "field_mapping vide pour ce template — relancez l'analyse du template",
+      debug,
     });
   }
 
@@ -92,6 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (dlError || !fileData) {
     return res.status(500).json({
       error: `Téléchargement du PDF impossible : ${dlError?.message ?? "fichier introuvable"}`,
+      debug,
     });
   }
 
@@ -100,32 +113,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const form = pdfDoc.getForm();
-    const fields = form.getFields();
+    const allFields = form.getFields();
 
-    for (const field of fields) {
+    // Désactive le rich formatting quand possible pour éviter les erreurs
+    // sur certains champs textuels (AcroForm RichText).
+    for (const field of allFields) {
       try {
-        const pdfFieldName = field.getName();
-        const standardKey = fieldMapping[pdfFieldName];
-        if (!standardKey) continue;
-
-        const value = String(formData[standardKey] ?? "").trim();
-        if (!value) continue;
-
-        const fieldType = field.constructor.name;
-        if (fieldType === "PDFTextField") {
-          const textField = form.getTextField(pdfFieldName);
-          if (typeof (textField as any).disableRichFormatting === "function") {
-            (textField as any).disableRichFormatting();
-          }
-          textField.setText(value);
-        } else if (fieldType === "PDFCheckBox") {
-          const normalized = value.toLowerCase();
-          if (["true", "1", "oui", "yes"].includes(normalized)) {
-            form.getCheckBox(pdfFieldName).check();
+        if (field.constructor.name === "PDFTextField") {
+          const textField = field as PDFTextField & {
+            disableRichFormatting?: () => void;
+          };
+          if (typeof textField.disableRichFormatting === "function") {
+            textField.disableRichFormatting();
           }
         }
-      } catch (err) {
-        console.warn("[fill-pdf] Champ ignoré:", field.getName(), err);
+      } catch {
+        // Ignore silencieusement les champs qui ne supportent pas l'opération.
+      }
+    }
+
+    for (const [pdfFieldName, standardKey] of Object.entries(fieldMapping)) {
+      try {
+        const rawValue = standardKey ? formData[standardKey] : undefined;
+        const value = String(rawValue ?? "").trim();
+        debug.matches.push({
+          pdfFieldName,
+          standardKey: standardKey ?? null,
+          value,
+        });
+        if (!standardKey || !rawValue) continue;
+
+        const field = form.getField(pdfFieldName);
+        if (field.constructor.name === "PDFTextField") {
+          (field as PDFTextField).setText(String(formData[standardKey]).trim());
+        }
+        // ignorer les autres types silencieusement
+      } catch (e) {
+        console.warn(`Champ ignoré: ${pdfFieldName}`, e);
       }
     }
 
@@ -135,7 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const filledBase64 = Buffer.from(filledBytes).toString("base64");
     return res
       .status(200)
-      .json({ pdfBase64: filledBase64, mapping: fieldMapping });
+      .json({ pdfBase64: filledBase64, mapping: fieldMapping, debug });
   } catch (err: any) {
     console.error("[fill-pdf] Erreur lors du remplissage", {
       message: err?.message,
@@ -144,6 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({
       error: err?.message ?? "Erreur pdf-lib lors du remplissage du PDF",
       stage: "pdf_fill",
+      debug,
     });
   }
 }
