@@ -38,6 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
   const debug = {
     templateId: typeof templateId === "string" ? templateId : null,
+    formData: {} as Record<string, unknown>,
     field_mapping: {} as Record<string, string>,
     matches: [] as Array<{
       pdfFieldName: string;
@@ -52,6 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!formData || typeof formData !== "object") {
     return res.status(400).json({ error: "formData manquant" });
   }
+  debug.formData = formData;
 
   const supabase = getSupabaseAdmin();
   if (!supabase) {
@@ -81,6 +83,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : {};
   const storagePath: string = tplRow.storage_path ?? "";
   debug.field_mapping = fieldMapping;
+  console.log("=== FORM DATA REÇU ===", JSON.stringify(formData, null, 2));
+  console.log("=== FIELD MAPPING ===", JSON.stringify(fieldMapping, null, 2));
+  console.log("=== MATCHES ===");
+  for (const [pdfFieldName, standardKey] of Object.entries(fieldMapping)) {
+    const value = standardKey ? formData[standardKey as string] : undefined;
+    console.log(`${pdfFieldName} -> ${standardKey} -> ${value}`);
+  }
 
   if (!storagePath) {
     return res
