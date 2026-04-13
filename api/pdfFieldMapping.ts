@@ -97,7 +97,8 @@ const RULES: Rule[] = [
     match: (n) =>
       /\b(nom|name|lastname|family\s*name|nom\s*du\s*client|raison\s*sociale\s*acheteur)\b/.test(n) &&
       !/pr[eé]nom|prenom|nom\s*commercial|denomination|nom\s*de\s*jeune|nom\s*d\s*usage/.test(n) &&
-      !/\bmarque\b/.test(n),
+      !/\bmarque\b/.test(n) &&
+      !/modele|modèle|vehicule|véhicule|v[eé]hicule|prix|vin\b|chassis|châssis|designation|version|finition/.test(n),
   },
   {
     key: "clientAdresse",
@@ -136,7 +137,9 @@ const RULES: Rule[] = [
   {
     key: "vehiculeModele",
     match: (n) =>
-      /modele|modèle|type\s*vehicule|designation|version|finition|gamme/.test(n) &&
+      (/modele|modèle|type\s*vehicule|designation|version|finition|gamme/.test(n) ||
+       /\bnom\b.*\b(vehicule|v[eé]hicule|modele|modèle)\b/.test(n) ||
+       /\b(vehicule|v[eé]hicule|modele|modèle)\b.*\bnom\b/.test(n)) &&
       !/^\s*marque\s*$|champ\s*marque\s*$/.test(n) &&
       !(/\bmarque\b/.test(n) && !/modele|modèle|type|designation/.test(n)),
   },
