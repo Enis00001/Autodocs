@@ -1,5 +1,4 @@
 ﻿import type { VercelRequest, VercelResponse } from "@vercel/node";
-import OpenAI from "openai";
 
 type DocumentKind =
   | "cni"
@@ -98,7 +97,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const prompt = getPrompt(kind as DocumentKind);
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const approxImageBytes = Math.floor((imageBase64.length * 3) / 4);
   console.error("[analyze] Avant appel OpenAI", {
     kind,
@@ -107,28 +105,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   });
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: imageBase64 } },
-          ],
+    const openaiRes = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
         },
-      ],
-    });
+        body: JSON.stringify({
+          model: "gpt-4o",
+          temperature: 0,
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: imageBase64 } },
+              ],
+            },
+          ],
+        }),
+      },
+    );
 
-    const message = completion.choices?.[0]?.message;
+    if (!openaiRes.ok) {
+      const errBody = await openaiRes.text().catch(() => "");
+      console.error("[analyze] OpenAI API error", {
+        status: openaiRes.status,
+        body: errBody.slice(0, 500),
+      });
+      return res.status(openaiRes.status >= 500 ? 502 : openaiRes.status).json({
+        error: `OpenAI API error ${openaiRes.status}`,
+        details: errBody.slice(0, 300),
+      });
+    }
+
+    const json = (await openaiRes.json()) as {
+      choices?: Array<{
+        message?: { content?: string | null; refusal?: string | null };
+      }>;
+    };
+
+    const message = json.choices?.[0]?.message;
     const refusal = message?.refusal ?? null;
     const rawContent = message?.content ?? null;
 
     if (refusal) {
       console.error("[analyze] refusal exact:", refusal);
-      return res.status(200).json({ choices: [{ message: { content: null, refusal } }] });
+      return res
+        .status(200)
+        .json({ choices: [{ message: { content: null, refusal } }] });
     }
 
     if (typeof rawContent !== "string" || !rawContent.trim()) {
@@ -139,7 +167,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       JSON.parse(rawContent);
     } catch {
-      console.error("[analyze] JSON invalide, contenu brut reçu:", rawContent);
+      console.error(
+        "[analyze] JSON invalide, contenu brut reçu:",
+        rawContent,
+      );
       return res.status(502).json({
         error: "Réponse JSON invalide du modèle",
         rawContent,
@@ -150,15 +181,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       choices: [{ message: { content: rawContent, refusal: null } }],
     });
   } catch (error: any) {
-    const status = typeof error?.status === "number" ? error.status : 502;
-    console.error("[analyze] openaiRes.ok = false", {
-      status,
-      body: error?.error ?? error,
-    });
-    return res.status(status >= 500 ? 502 : status).json({
-      error: error?.message ?? "Erreur OpenAI",
-      type: error?.type,
-      code: error?.code,
+    console.error("[analyze] fetch error", error);
+    return res.status(502).json({
+      error: error?.message ?? "Erreur appel OpenAI",
     });
   }
 }

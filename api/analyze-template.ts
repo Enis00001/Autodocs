@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 import { PDFDocument, PDFName } from "pdf-lib";
-import OpenAI from "openai";
 import {
   BON_DRAFT_KEYS,
   buildDeterministicFieldMapping,
@@ -199,6 +198,39 @@ const STANDARD_KEY_DESCRIPTIONS: Record<string, string> = {
   optionsDetailJson: "Détail ligne par ligne des options",
 };
 
+async function callOpenAIChat(
+  prompt: string,
+  apiKey: string,
+): Promise<string | null> {
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    console.warn(
+      `[analyze-template] OpenAI API ${resp.status}:`,
+      errText.slice(0, 300),
+    );
+    return null;
+  }
+
+  const json = (await resp.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  return json.choices?.[0]?.message?.content ?? null;
+}
+
 async function buildMappingWithAI(
   fieldInfos: FieldInfo[],
   allowedKeys: Set<string>,
@@ -248,15 +280,7 @@ RÈGLES :
 6. Les champs de type PDFCheckBox ou PDFRadioGroup correspondent souvent à clauseSuspensive, optionsMode, modePaiement, vehiculeFinancement`;
 
   try {
-    const openai = new OpenAI({ apiKey });
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const content = completion.choices?.[0]?.message?.content;
+    const content = await callOpenAIChat(prompt, apiKey);
     if (!content) {
       console.warn("[analyze-template] OpenAI returned empty content");
       return null;
