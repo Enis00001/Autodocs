@@ -4,7 +4,7 @@ import { PDFDocument, PDFName } from "pdf-lib";
 import {
   BON_DRAFT_KEYS,
   buildDeterministicFieldMapping,
-} from "./pdfFieldMapping";
+} from "./_pdfFieldMapping";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
