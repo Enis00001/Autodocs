@@ -17,7 +17,7 @@ import {
   updateVehicleField,
   type VehicleFieldRow,
 } from "@/utils/vehicleFields";
-import { loadFieldPreferences } from "@/utils/bonFieldPreferences";
+import { loadFieldPreferences, saveFieldPreferences } from "@/utils/bonFieldPreferences";
 import {
   hasEntriesInTemplatesTable,
   loadPdfTemplates,
@@ -196,6 +196,16 @@ const NouveauBon = () => {
     setFormState((prev) => ({ ...prev, ...patch }));
   };
 
+  const handleToggleStandardField = async (key: string) => {
+    const uid = await getCurrentUserId();
+    if (!uid) return;
+    const next = hiddenVehiculeVenteKeys.includes(key)
+      ? hiddenVehiculeVenteKeys.filter((k) => k !== key)
+      : [...hiddenVehiculeVenteKeys, key];
+    setHiddenVehiculeVenteKeys(next);
+    saveFieldPreferences(uid, { hiddenKeys: next });
+  };
+
   const handleAddCustomVehicleField = async (label: string) => {
     const uid = await getCurrentUserId();
     if (!uid) return;
@@ -357,6 +367,7 @@ const NouveauBon = () => {
           onChange={updateForm}
           customVehicleFields={customVehicleFields}
           hiddenFieldKeys={hiddenVehiculeVenteKeys}
+          onToggleStandardField={handleToggleStandardField}
           onAddCustomField={handleAddCustomVehicleField}
           onRenameCustomField={handleRenameCustomVehicleField}
           onDeleteCustomField={handleDeleteCustomVehicleField}
