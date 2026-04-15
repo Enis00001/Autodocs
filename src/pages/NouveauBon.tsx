@@ -9,7 +9,14 @@ import GenerateBar, { countMissingMandatoryFields } from "@/components/nouveau-b
 import { toast } from "@/hooks/use-toast";
 import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
 import { getCurrentUserId } from "@/lib/auth";
-import { loadVehicleFields, type VehicleFieldRow } from "@/utils/vehicleFields";
+import {
+  addVehicleField,
+  deleteVehicleField,
+  loadVehicleFields,
+  reorderVehicleFields,
+  updateVehicleField,
+  type VehicleFieldRow,
+} from "@/utils/vehicleFields";
 import { loadFieldPreferences } from "@/utils/bonFieldPreferences";
 import {
   hasEntriesInTemplatesTable,
@@ -189,6 +196,82 @@ const NouveauBon = () => {
     setFormState((prev) => ({ ...prev, ...patch }));
   };
 
+  const handleAddCustomVehicleField = async (label: string) => {
+    const uid = await getCurrentUserId();
+    if (!uid) return;
+    const created = await addVehicleField(uid, label);
+    if (!created) return;
+    setCustomVehicleFields((prev) =>
+      [...prev, created].sort((a, b) => a.position - b.position),
+    );
+    setFormState((prev) => ({
+      ...prev,
+      vehicleFieldValues: {
+        ...(prev.vehicleFieldValues ?? {}),
+        [created.field_key]: "",
+      },
+    }));
+  };
+
+  const handleRenameCustomVehicleField = async (id: string, label: string) => {
+    const uid = await getCurrentUserId();
+    if (!uid) return;
+    const previous = customVehicleFields.find((f) => f.id === id);
+    if (!previous) return;
+    const updated = await updateVehicleField(id, uid, label);
+    if (!updated) return;
+    setCustomVehicleFields((prev) =>
+      prev.map((f) => (f.id === id ? updated : f)).sort((a, b) => a.position - b.position),
+    );
+    if (previous.field_key !== updated.field_key) {
+      setFormState((prev) => {
+        const currentValues = { ...(prev.vehicleFieldValues ?? {}) };
+        const oldValue = currentValues[previous.field_key] ?? "";
+        delete currentValues[previous.field_key];
+        currentValues[updated.field_key] = oldValue;
+        return { ...prev, vehicleFieldValues: currentValues };
+      });
+    }
+  };
+
+  const handleDeleteCustomVehicleField = async (id: string) => {
+    const uid = await getCurrentUserId();
+    if (!uid) return;
+    const previous = customVehicleFields.find((f) => f.id === id);
+    const ok = await deleteVehicleField(id, uid);
+    if (!ok) return;
+    setCustomVehicleFields((prev) => prev.filter((f) => f.id !== id));
+    if (previous) {
+      setFormState((prev) => {
+        const nextValues = { ...(prev.vehicleFieldValues ?? {}) };
+        delete nextValues[previous.field_key];
+        return { ...prev, vehicleFieldValues: nextValues };
+      });
+    }
+  };
+
+  const handleReorderCustomVehicleFields = async (orderedIds: string[]) => {
+    const uid = await getCurrentUserId();
+    if (!uid || orderedIds.length === 0) return;
+    const before = customVehicleFields;
+    const byId = new Map(before.map((f) => [f.id, f]));
+    const next = orderedIds
+      .map((id, index) => {
+        const f = byId.get(id);
+        if (!f) return null;
+        return { ...f, position: index };
+      })
+      .filter((f): f is VehicleFieldRow => Boolean(f));
+    setCustomVehicleFields(next);
+    const ok = await reorderVehicleFields(uid, orderedIds);
+    if (!ok) {
+      setCustomVehicleFields(before);
+      return;
+    }
+    const refreshed = await loadVehicleFields(uid);
+    setCustomVehicleFields(refreshed);
+  };
+
   const handleExtractedData = (
     patch: Partial<DraftFormState>,
     fields: Array<keyof DraftFormState>
@@ -274,6 +357,10 @@ const NouveauBon = () => {
           onChange={updateForm}
           customVehicleFields={customVehicleFields}
           hiddenFieldKeys={hiddenVehiculeVenteKeys}
+          onAddCustomField={handleAddCustomVehicleField}
+          onRenameCustomField={handleRenameCustomVehicleField}
+          onDeleteCustomField={handleDeleteCustomVehicleField}
+          onReorderCustomFields={handleReorderCustomVehicleFields}
         />
         <TemplateSelector
           templates={pdfTemplates}

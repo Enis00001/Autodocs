@@ -19,6 +19,10 @@ type VehiculeVenteProps = {
   onChange: (patch: Partial<BonDraftData>) => void;
   customVehicleFields?: VehicleFieldRow[];
   hiddenFieldKeys?: string[];
+  onAddCustomField?: (label: string) => Promise<void> | void;
+  onRenameCustomField?: (id: string, label: string) => Promise<void> | void;
+  onDeleteCustomField?: (id: string) => Promise<void> | void;
+  onReorderCustomFields?: (orderedIds: string[]) => Promise<void> | void;
 };
 
 const VehiculeVente = ({
@@ -26,9 +30,17 @@ const VehiculeVente = ({
   onChange,
   customVehicleFields = [],
   hiddenFieldKeys = [],
+  onAddCustomField,
+  onRenameCustomField,
+  onDeleteCustomField,
+  onReorderCustomFields,
 }: VehiculeVenteProps) => {
   const [vendeurs, setVendeurs] = useState<Vendeur[]>([]);
   const [isLoadingVendeurs, setIsLoadingVendeurs] = useState(true);
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState("");
+  const [draggingFieldId, setDraggingFieldId] = useState<string | null>(null);
   const hiddenSet = useMemo(() => new Set(hiddenFieldKeys), [hiddenFieldKeys]);
   const isVisible = (key: string) => !hiddenSet.has(key);
 
@@ -85,6 +97,40 @@ const VehiculeVente = ({
 
   const removeOptionDetail = (index: number) => {
     setOptionsDetailList(optionsDetailList.filter((_, i) => i !== index));
+  };
+
+  const handleAddCustomField = async () => {
+    const label = newFieldLabel.trim();
+    if (!label || !onAddCustomField) return;
+    await onAddCustomField(label);
+    setNewFieldLabel("");
+  };
+
+  const handleStartEditCustomField = (field: VehicleFieldRow) => {
+    setEditingFieldId(field.id);
+    setEditingLabel(field.label);
+  };
+
+  const handleSaveEditCustomField = async () => {
+    if (!editingFieldId || !onRenameCustomField) return;
+    const label = editingLabel.trim();
+    if (!label) return;
+    await onRenameCustomField(editingFieldId, label);
+    setEditingFieldId(null);
+    setEditingLabel("");
+  };
+
+  const handleDropOnField = async (targetId: string) => {
+    if (!draggingFieldId || draggingFieldId === targetId || !onReorderCustomFields) return;
+    const ids = customVehicleFields.map((f) => f.id);
+    const from = ids.indexOf(draggingFieldId);
+    const to = ids.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const next = [...ids];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    await onReorderCustomFields(next);
+    setDraggingFieldId(null);
   };
 
   return (
@@ -170,10 +216,90 @@ const VehiculeVente = ({
               <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mt-4 mb-2">
                 Champs concession
               </h4>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="Ajouter un champ (ex: Marque du véhicule)"
+                  value={newFieldLabel}
+                  onChange={(e) => setNewFieldLabel(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && void handleAddCustomField()}
+                />
+                <button
+                  type="button"
+                  className="rounded-md gradient-primary px-3 py-2 text-xs font-medium text-primary-foreground border-0 cursor-pointer"
+                  onClick={() => void handleAddCustomField()}
+                >
+                  Ajouter
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {customVehicleFields.map((f) => (
-                  <div key={f.id} className="flex flex-col gap-1.5 col-span-2">
-                    <label className="field-label">{f.label}</label>
+                  <div
+                    key={f.id}
+                    className="flex flex-col gap-1.5 col-span-2 rounded-md border border-border/60 p-2 bg-background/30"
+                    draggable
+                    onDragStart={() => setDraggingFieldId(f.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => void handleDropOnField(f.id)}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      {editingFieldId === f.id ? (
+                        <div className="flex items-center gap-2 w-full">
+                          <input
+                            type="text"
+                            className="field-input"
+                            value={editingLabel}
+                            onChange={(e) => setEditingLabel(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && void handleSaveEditCustomField()}
+                          />
+                          <button
+                            type="button"
+                            className="rounded-md border border-border bg-transparent px-2 py-1 text-[11px] cursor-pointer"
+                            onClick={() => {
+                              setEditingFieldId(null);
+                              setEditingLabel("");
+                            }}
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md gradient-primary px-2 py-1 text-[11px] text-primary-foreground border-0 cursor-pointer"
+                            onClick={() => void handleSaveEditCustomField()}
+                          >
+                            OK
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <label className="field-label">{f.label}</label>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
+                              title="Glisser pour réordonner"
+                            >
+                              ↕
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-border px-2 py-1 text-[11px] cursor-pointer"
+                              onClick={() => handleStartEditCustomField(f)}
+                            >
+                              Modifier
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-destructive/50 px-2 py-1 text-[11px] text-destructive cursor-pointer"
+                              onClick={() => void onDeleteCustomField?.(f.id)}
+                            >
+                              Supprimer
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                     <input
                       type="text"
                       className="field-input"
