@@ -10,6 +10,7 @@ import { toast } from "@/hooks/use-toast";
 import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
 import { getCurrentUserId } from "@/lib/auth";
 import { loadVehicleFields, type VehicleFieldRow } from "@/utils/vehicleFields";
+import { loadFieldPreferences } from "@/utils/bonFieldPreferences";
 import {
   hasEntriesInTemplatesTable,
   loadPdfTemplates,
@@ -92,6 +93,7 @@ const NouveauBon = () => {
   const [documentsUploaded, setDocumentsUploaded] = useState(0);
   const [highlightedFields, setHighlightedFields] = useState<Array<keyof DraftFormState>>([]);
   const [customVehicleFields, setCustomVehicleFields] = useState<VehicleFieldRow[]>([]);
+  const [hiddenVehiculeVenteKeys, setHiddenVehiculeVenteKeys] = useState<string[]>([]);
   const [pdfTemplates, setPdfTemplates] = useState<PdfTemplateRow[]>([]);
   const [pdfTemplatesLoading, setPdfTemplatesLoading] = useState(true);
   /** La page Templates affiche des fiches, mais aucune ligne `pdf_templates` (ex. modèles seed, Word, ou RLS). */
@@ -105,6 +107,8 @@ const NouveauBon = () => {
       const defs = await loadVehicleFields(uid);
       if (cancelled) return;
       setCustomVehicleFields(defs);
+      const prefs = loadFieldPreferences(uid);
+      setHiddenVehiculeVenteKeys(prefs.hiddenKeys);
     })();
     return () => {
       cancelled = true;
@@ -265,7 +269,12 @@ const NouveauBon = () => {
             | "ribBanque"
           >}
         />
-        <VehiculeVente form={formState} onChange={updateForm} customVehicleFields={customVehicleFields} />
+        <VehiculeVente
+          form={formState}
+          onChange={updateForm}
+          customVehicleFields={customVehicleFields}
+          hiddenFieldKeys={hiddenVehiculeVenteKeys}
+        />
         <TemplateSelector
           templates={pdfTemplates}
           loading={pdfTemplatesLoading}

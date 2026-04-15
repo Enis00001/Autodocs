@@ -140,3 +140,31 @@ export async function deleteVehicleField(id: string, concessionId: string): Prom
   }
   return true;
 }
+
+export async function reorderVehicleFields(
+  concessionId: string,
+  orderedIds: string[]
+): Promise<boolean> {
+  try {
+    const updates = orderedIds.map((id, index) =>
+      supabase
+        .from("vehicle_fields")
+        .update({ position: index })
+        .eq("id", id)
+        .eq("concession_id", concessionId)
+    );
+    const results = await Promise.all(updates);
+    const hasError = results.some((r) => r.error);
+    if (hasError) {
+      console.error(
+        "reorderVehicleFields:",
+        results.map((r) => r.error).filter(Boolean)
+      );
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("reorderVehicleFields:", error);
+    return false;
+  }
+}

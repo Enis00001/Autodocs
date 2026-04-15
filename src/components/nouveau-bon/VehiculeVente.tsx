@@ -18,11 +18,19 @@ type VehiculeVenteProps = {
   form: VehiculeForm;
   onChange: (patch: Partial<BonDraftData>) => void;
   customVehicleFields?: VehicleFieldRow[];
+  hiddenFieldKeys?: string[];
 };
 
-const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVenteProps) => {
+const VehiculeVente = ({
+  form,
+  onChange,
+  customVehicleFields = [],
+  hiddenFieldKeys = [],
+}: VehiculeVenteProps) => {
   const [vendeurs, setVendeurs] = useState<Vendeur[]>([]);
   const [isLoadingVendeurs, setIsLoadingVendeurs] = useState(true);
+  const hiddenSet = useMemo(() => new Set(hiddenFieldKeys), [hiddenFieldKeys]);
+  const isVisible = (key: string) => !hiddenSet.has(key);
 
   useEffect(() => {
     loadVendeurs()
@@ -95,7 +103,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
             Infos du véhicule
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5 col-span-2">
+            <div className={`flex flex-col gap-1.5 col-span-2 ${isVisible("vehiculeModele") ? "" : "hidden"}`}>
               <label className="field-label">Modèle du véhicule</label>
               <input
                 type="text"
@@ -105,7 +113,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeModele: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
+            <div className={`flex flex-col gap-1.5 col-span-2 ${isVisible("vehiculeVin") ? "" : "hidden"}`}>
               <label className="field-label">Numéro d'identification VIN / N° de châssis</label>
               <input
                 type="text"
@@ -115,7 +123,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeVin: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculePremiereCirculation") ? "" : "hidden"}`}>
               <label className="field-label">Mois & année 1ère mise en circulation</label>
               <input
                 type="text"
@@ -125,7 +133,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculePremiereCirculation: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeKilometrage") ? "" : "hidden"}`}>
               <label className="field-label">Kilométrage</label>
               <input
                 type="text"
@@ -135,7 +143,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeKilometrage: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeCo2") ? "" : "hidden"}`}>
               <label className="field-label">Émission CO2 (g/km)</label>
               <input
                 type="text"
@@ -145,7 +153,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeCo2: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeChevaux") ? "" : "hidden"}`}>
               <label className="field-label">Nombre de chevaux (CV)</label>
               <input
                 type="text"
@@ -192,7 +200,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
             Prix & coûts
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculePrix") ? "" : "hidden"}`}>
               <label className="field-label">Prix de vente TTC (€)</label>
               <input
                 type="text"
@@ -202,7 +210,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculePrix: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
+            <div className={`flex flex-col gap-1.5 col-span-2 ${isVisible("optionsMode") || isVisible("optionsPrixTotal") || isVisible("optionsDetailJson") ? "" : "hidden"}`}>
               <label className="field-label">Options incluses</label>
               <div className="flex gap-2 mb-2">
                 <button
@@ -274,7 +282,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 </div>
               )}
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeCarteGrise") ? "" : "hidden"}`}>
               <label className="field-label">Coût de la carte grise (€)</label>
               <input
                 type="text"
@@ -284,7 +292,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeCarteGrise: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeFraisReprise") ? "" : "hidden"}`}>
               <label className="field-label">Frais de reprise (€)</label>
               <input
                 type="text"
@@ -294,7 +302,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeFraisReprise: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeRemise") ? "" : "hidden"}`}>
               <label className="field-label">Remise accordée (€)</label>
               <input
                 type="text"
@@ -319,7 +327,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
             Type de financement
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5 col-span-2">
+            <div className={`flex flex-col gap-1.5 col-span-2 ${isVisible("vehiculeFinancement") ? "" : "hidden"}`}>
               <label className="field-label">Type de financement</label>
               <select
                 className="field-input"
@@ -342,7 +350,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
 
           {isComptant && (
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
+              <div className={`flex flex-col gap-1.5 ${isVisible("acompte") ? "" : "hidden"}`}>
                 <label className="field-label">Montant d'acompte (€)</label>
                 <input
                   type="text"
@@ -358,7 +366,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                   {soldeRestantDu.toLocaleString("fr-FR")}
                 </div>
               </div>
-              <div className="flex flex-col gap-1.5 col-span-2">
+              <div className={`flex flex-col gap-1.5 col-span-2 ${isVisible("modePaiement") ? "" : "hidden"}`}>
                 <label className="field-label">Mode de paiement</label>
                 <div className="flex gap-2">
                   {(["virement", "cheque", "cb"] as const).map((mode) => (
@@ -382,7 +390,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
 
           {(isCredit || isLoaLld) && (
             <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
+              <div className={`flex flex-col gap-1.5 ${isVisible("apport") ? "" : "hidden"}`}>
                 <label className="field-label">Montant de l'apport (€)</label>
                 <input
                   type="text"
@@ -392,7 +400,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                   onChange={(e) => onChange({ apport: e.target.value })}
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className={`flex flex-col gap-1.5 ${isVisible("organismePreteur") ? "" : "hidden"}`}>
                 <label className="field-label">Organisme prêteur</label>
                 <input
                   type="text"
@@ -402,7 +410,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                   onChange={(e) => onChange({ organismePreteur: e.target.value })}
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className={`flex flex-col gap-1.5 ${isVisible("montantCredit") ? "" : "hidden"}`}>
                 <label className="field-label">Montant total du crédit (€)</label>
                 <input
                   type="text"
@@ -412,7 +420,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                   onChange={(e) => onChange({ montantCredit: e.target.value })}
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className={`flex flex-col gap-1.5 ${isVisible("tauxCredit") ? "" : "hidden"}`}>
                 <label className="field-label">Taux (%)</label>
                 <input
                   type="text"
@@ -422,7 +430,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                   onChange={(e) => onChange({ tauxCredit: e.target.value })}
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className={`flex flex-col gap-1.5 ${isVisible("dureeMois") ? "" : "hidden"}`}>
                 <label className="field-label">Durée (mois)</label>
                 <input
                   type="text"
@@ -433,7 +441,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 />
               </div>
               {isCredit && (
-                <div className="flex flex-col gap-1.5 col-span-2 flex items-center">
+                <div className={`flex flex-col gap-1.5 col-span-2 flex items-center ${isVisible("clauseSuspensive") ? "" : "hidden"}`}>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -459,7 +467,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
             Livraison & vendeur
           </h3>
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeDateLivraison") ? "" : "hidden"}`}>
               <label className="field-label">Date de livraison</label>
               <input
                 type="text"
@@ -469,7 +477,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeDateLivraison: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeReprise") ? "" : "hidden"}`}>
               <label className="field-label">Reprise véhicule (€)</label>
               <input
                 type="text"
@@ -479,7 +487,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeReprise: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vehiculeCouleur") ? "" : "hidden"}`}>
               <label className="field-label">Couleur / finition</label>
               <input
                 type="text"
@@ -489,7 +497,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 onChange={(e) => onChange({ vehiculeCouleur: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className={`flex flex-col gap-1.5 ${isVisible("vendeurNom") ? "" : "hidden"}`}>
               <label className="field-label">Vendeur</label>
               <select
                 className="field-input"
@@ -512,7 +520,7 @@ const VehiculeVente = ({ form, onChange, customVehicleFields = [] }: VehiculeVen
                 </p>
               )}
             </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
+            <div className={`flex flex-col gap-1.5 col-span-2 ${isVisible("vendeurNotes") ? "" : "hidden"}`}>
               <label className="field-label">Notes vendeur</label>
               <input
                 type="text"

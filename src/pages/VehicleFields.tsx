@@ -5,9 +5,15 @@ import {
   addVehicleField,
   deleteVehicleField,
   loadVehicleFields,
+  reorderVehicleFields,
   updateVehicleField,
   type VehicleFieldRow,
 } from "@/utils/vehicleFields";
+import {
+  loadFieldPreferences,
+  saveFieldPreferences,
+  STANDARD_VEHICULE_VENTE_FIELDS,
+} from "@/utils/bonFieldPreferences";
 
 const VehicleFieldsPage = () => {
   const [rows, setRows] = useState<VehicleFieldRow[]>([]);
@@ -16,6 +22,8 @@ const VehicleFieldsPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [hiddenKeys, setHiddenKeys] = useState<string[]>([]);
 
   const refresh = async (concessionId: string) => {
     setLoading(true);
@@ -32,9 +40,21 @@ const VehicleFieldsPage = () => {
         setError("Utilisateur non connecté.");
         return;
       }
+      setUserId(uid);
+      const prefs = loadFieldPreferences(uid);
+      setHiddenKeys(prefs.hiddenKeys);
       refresh(uid);
     });
   }, []);
+
+  const toggleStandardField = (key: string) => {
+    if (!userId) return;
+    const next = hiddenKeys.includes(key)
+      ? hiddenKeys.filter((k) => k !== key)
+      : [...hiddenKeys, key];
+    setHiddenKeys(next);
+    saveFieldPreferences(userId, { hiddenKeys: next });
+  };
 
   const handleAdd = async () => {
     const uid = await getCurrentUserId();
@@ -90,6 +110,32 @@ const VehicleFieldsPage = () => {
     await refresh(uid);
   };
 
+  const moveField = async (id: string, direction: "up" | "down") => {
+    const uid = await getCurrentUserId();
+    if (!uid) return;
+    const currentIndex = rows.findIndex((r) => r.id === id);
+    if (currentIndex < 0) return;
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= rows.length) return;
+
+    const next = [...rows];
+    const [moved] = next.splice(currentIndex, 1);
+    next.splice(targetIndex, 0, moved);
+
+    setRows(next);
+    const ok = await reorderVehicleFields(
+      uid,
+      next.map((r) => r.id),
+    );
+    if (!ok) {
+      setError("Impossible de réordonner les champs.");
+      await refresh(uid);
+      return;
+    }
+    setError(null);
+    await refresh(uid);
+  };
+
   return (
     <>
       <TopBar title="Infos véhicule" />
@@ -109,6 +155,41 @@ const VehicleFieldsPage = () => {
         )}
 
         <div className="card-autodocs max-w-3xl">
+          <div className="card-title-autodocs mb-4">Champs standard véhicule / vente</div>
+          <p className="text-xs text-muted-foreground mb-4">
+            Désactivez les champs que vous ne voulez plus voir dans Nouveau bon (ex: masquer “Modèle du
+            véhicule” et garder seulement vos propres champs).
+          </p>
+          <ul className="flex flex-col gap-2 mb-5">
+            {STANDARD_VEHICULE_VENTE_FIELDS.map((f) => {
+              const enabled = !hiddenKeys.includes(f.key);
+              return (
+                <li
+                  key={f.key}
+                  className="flex items-center justify-between rounded-lg border border-border bg-secondary/40 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-foreground">{f.label}</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {f.section === "vehicule" ? "Section véhicule" : "Section vente"}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium border cursor-pointer ${
+                      enabled
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground"
+                    }`}
+                    onClick={() => toggleStandardField(f.key)}
+                  >
+                    {enabled ? "Affiché" : "Masqué"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
           <div className="card-title-autodocs mb-4">Champs configurés</div>
 
           {loading ? (
@@ -157,6 +238,22 @@ const VehicleFieldsPage = () => {
                         </div>
                       </div>
                       <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          className="rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-foreground hover:border-primary cursor-pointer"
+                          onClick={() => void moveField(row.id, "up")}
+                          disabled={rows[0]?.id === row.id}
+                        >
+                          Monter
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-foreground hover:border-primary cursor-pointer"
+                          onClick={() => void moveField(row.id, "down")}
+                          disabled={rows[rows.length - 1]?.id === row.id}
+                        >
+                          Descendre
+                        </button>
                         <button
                           type="button"
                           className="rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-foreground hover:border-primary cursor-pointer"
