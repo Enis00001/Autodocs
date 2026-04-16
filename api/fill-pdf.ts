@@ -1,6 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
-import { PDFDocument, PDFTextField } from "pdf-lib";
+import {
+  PDFCheckBox,
+  PDFDocument,
+  PDFDropdown,
+  PDFOptionList,
+  PDFRadioGroup,
+  PDFTextField,
+} from "pdf-lib";
 
 function safeJsonParse<T>(value: string): T | null {
   try {
@@ -123,6 +130,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const form = pdfDoc.getForm();
     const allFields = form.getFields();
+    const allFieldNames = new Set(allFields.map((f) => f.getName()));
+    const formDataKeys = new Set(Object.keys(formData));
+
+    const mappingEntries = Object.entries(fieldMapping);
+    const directScore = mappingEntries.reduce((acc, [pdfFieldName, standardKey]) => {
+      const okPdf = allFieldNames.has(pdfFieldName);
+      const okData = formDataKeys.has(standardKey);
+      return acc + (okPdf && okData ? 1 : 0);
+    }, 0);
+    const reverseScore = mappingEntries.reduce((acc, [left, right]) => {
+      const okPdf = allFieldNames.has(right);
+      const okData = formDataKeys.has(left);
+      return acc + (okPdf && okData ? 1 : 0);
+    }, 0);
+
+    const resolvedMapping: Record<string, string> =
+      reverseScore > directScore
+        ? Object.fromEntries(mappingEntries.map(([k, v]) => [v, k]))
+        : fieldMapping;
 
     // Désactive le rich formatting quand possible pour éviter les erreurs
     // sur certains champs textuels (AcroForm RichText).
@@ -141,7 +167,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    for (const [pdfFieldName, standardKey] of Object.entries(fieldMapping)) {
+    let filledCount = 0;
+    let skippedCount = 0;
+
+    for (const [pdfFieldName, standardKey] of Object.entries(resolvedMapping)) {
       try {
         const rawValue = standardKey ? formData[standardKey] : undefined;
         const value = String(rawValue ?? "").trim();
@@ -150,17 +179,72 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           standardKey: standardKey ?? null,
           value,
         });
-        if (!standardKey || !rawValue) continue;
+        if (!standardKey) {
+          skippedCount += 1;
+          continue;
+        }
 
         const field = form.getField(pdfFieldName);
-        if (field.constructor.name === "PDFTextField") {
-          (field as PDFTextField).setText(String(formData[standardKey]).trim());
+        if (field instanceof PDFTextField) {
+          if (!value) {
+            skippedCount += 1;
+            continue;
+          }
+          field.setText(value);
+          filledCount += 1;
+          continue;
         }
-        // ignorer les autres types silencieusement
+
+        if (field instanceof PDFCheckBox) {
+          const normalized = value.toLowerCase();
+          const shouldCheck =
+            normalized === "oui" ||
+            normalized === "true" ||
+            normalized === "1" ||
+            normalized === "yes" ||
+            normalized === "x" ||
+            normalized === "on";
+          if (shouldCheck) field.check();
+          else field.uncheck();
+          filledCount += 1;
+          continue;
+        }
+
+        if (field instanceof PDFRadioGroup) {
+          if (!value) {
+            skippedCount += 1;
+            continue;
+          }
+          field.select(value);
+          filledCount += 1;
+          continue;
+        }
+
+        if (field instanceof PDFDropdown || field instanceof PDFOptionList) {
+          if (!value) {
+            skippedCount += 1;
+            continue;
+          }
+          field.select(value);
+          filledCount += 1;
+          continue;
+        }
+
+        skippedCount += 1;
       } catch (e) {
         console.warn(`Champ ignoré: ${pdfFieldName}`, e);
+        skippedCount += 1;
       }
     }
+
+    console.log("[fill-pdf] Mapping score", {
+      directScore,
+      reverseScore,
+      mappingInverted: reverseScore > directScore,
+      filledCount,
+      skippedCount,
+      totalMappingEntries: Object.keys(resolvedMapping).length,
+    });
 
     form.flatten();
 
@@ -168,7 +252,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const filledBase64 = Buffer.from(filledBytes).toString("base64");
     return res
       .status(200)
-      .json({ pdfBase64: filledBase64, mapping: fieldMapping, debug });
+      .json({ pdfBase64: filledBase64, mapping: resolvedMapping, debug });
   } catch (err: any) {
     console.error("[fill-pdf] Erreur lors du remplissage", {
       message: err?.message,
