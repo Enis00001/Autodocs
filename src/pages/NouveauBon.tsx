@@ -97,6 +97,9 @@ function buildPdfFormData(form: DraftFormState): Record<string, string> {
   const customKeys = Object.keys(form.vehicleFieldValues ?? {});
   const customSnapshot: Record<string, string> = {};
   for (const k of customKeys) { customSnapshot[k] = out[k] ?? '(MISSING)'; }
+  console.log('%c[DEBUG d51c4f] buildPdfFormData — champs véhicule standard','color:cyan;font-weight:bold', vehicleSnapshot);
+  console.log('%c[DEBUG d51c4f] buildPdfFormData — champs custom','color:cyan;font-weight:bold', customSnapshot);
+  console.log('%c[DEBUG d51c4f] buildPdfFormData — total clés','color:cyan;font-weight:bold', Object.keys(out).length, 'templateId:', form.templateId);
   fetch('http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d51c4f'},body:JSON.stringify({sessionId:'d51c4f',runId:'run1',hypothesisId:'H2',location:'NouveauBon.tsx:buildPdfFormData',message:'formData built',data:{totalKeys:Object.keys(out).length,vehicleStandardFields:vehicleSnapshot,customFields:customSnapshot,templateId:form.templateId},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   return out;
