@@ -20,10 +20,12 @@ export async function generatePDF(
   if (!templateId) {
     throw new Error("Aucun template sélectionné.");
   }
-  console.log("[generatePDF] payload envoyé à /api/fill-pdf:", {
-    templateId,
-    formData,
-  });
+
+  // #region agent log — H2,H3: formData envoyé
+  const nonEmptyKeys = Object.entries(formData).filter(([,v]) => v.trim() !== "").map(([k,v]) => [k, v.slice(0, 80)]);
+  const emptyKeys = Object.keys(formData).filter(k => formData[k].trim() === "");
+  fetch('http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d51c4f'},body:JSON.stringify({sessionId:'d51c4f',runId:'run1',hypothesisId:'H2_H3',location:'generatePDF.ts:BEFORE_FETCH',message:'formData envoyé à fill-pdf',data:{templateId,nonEmptyFields:Object.fromEntries(nonEmptyKeys),emptyFieldCount:emptyKeys.length,emptyFieldNames:emptyKeys,totalFields:Object.keys(formData).length},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const response = await fetch("/api/fill-pdf", {
     method: "POST",
@@ -33,12 +35,24 @@ export async function generatePDF(
 
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
+    // #region agent log — error response
+    fetch('http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d51c4f'},body:JSON.stringify({sessionId:'d51c4f',runId:'run1',hypothesisId:'H_ERROR',location:'generatePDF.ts:ERROR',message:'fill-pdf returned error',data:{status:response.status,errBody},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     throw new Error(
       errBody?.error || `Erreur génération PDF (${response.status})`
     );
   }
 
-  const json = (await response.json()) as { pdfBase64: string };
+  const json = (await response.json()) as { pdfBase64: string; mapping?: Record<string, string>; debug?: { field_mapping?: Record<string, string>; matches?: Array<{ pdfFieldName: string; standardKey: string | null; value: string }>; formData?: Record<string, unknown> } };
+
+  // #region agent log — H1,H4,H5: server response debug
+  const dbg = json.debug;
+  const mappingEntries = dbg?.field_mapping ? Object.entries(dbg.field_mapping) : [];
+  const matchesWithValue = (dbg?.matches ?? []).filter(m => m.value && m.value.trim() !== "");
+  const matchesWithoutValue = (dbg?.matches ?? []).filter(m => !m.value || m.value.trim() === "");
+  fetch('http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d51c4f'},body:JSON.stringify({sessionId:'d51c4f',runId:'run1',hypothesisId:'H1_H4_H5',location:'generatePDF.ts:AFTER_FETCH',message:'fill-pdf response debug',data:{fieldMappingCount:mappingEntries.length,fieldMappingRaw:Object.fromEntries(mappingEntries.slice(0,30)),resolvedMapping:json.mapping ? Object.fromEntries(Object.entries(json.mapping).slice(0,30)) : null,matchesFilledCount:matchesWithValue.length,matchesSkippedCount:matchesWithoutValue.length,matchesFilled:matchesWithValue.slice(0,30),matchesSkipped:matchesWithoutValue.slice(0,30)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   if (!json?.pdfBase64) {
     throw new Error("Réponse invalide du serveur PDF.");
   }
