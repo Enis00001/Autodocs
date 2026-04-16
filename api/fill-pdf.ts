@@ -17,6 +17,102 @@ function safeJsonParse<T>(value: string): T | null {
   }
 }
 
+/* ================================================================== */
+/*  Fallback: bridge custom form keys → standard mapping keys         */
+/* ================================================================== */
+
+const STANDARD_KEY_ALIASES: Record<string, string[]> = {
+  vehiculeModele: ["modele", "model", "designation", "version", "type_vehicule", "gamme", "finition"],
+  vehiculeVin: ["vin", "chassis", "serie", "n_serie", "numero_serie", "n_de_serie", "numero_chassis"],
+  vehiculeCarteGrise: ["immat", "immatriculation", "carte_grise", "plaque", "numero_immatriculation"],
+  vehiculePrix: ["prix", "prix_vente", "prix_de_vente", "tarif", "montant_ttc", "prix_ttc"],
+  vehiculeKilometrage: ["km", "kilometrage", "kilométrage", "odometre"],
+  vehiculeCo2: ["co2", "emission", "emissions", "g_km"],
+  vehiculeChevaux: ["chevaux", "cv", "puissance", "din", "puissance_fiscale"],
+  vehiculeCouleur: ["couleur", "teinte", "coloris"],
+  vehiculePremiereCirculation: ["mec", "mise_en_circulation", "premiere_circulation", "1ere_circulation", "date_circulation", "date_mec"],
+  vehiculeFinancement: ["financement", "type_financement", "mode_financement"],
+  vehiculeDateLivraison: ["livraison", "date_livraison", "date_de_livraison", "remise_cles"],
+  vehiculeReprise: ["reprise", "vehicule_reprise", "ancien_vehicule", "montant_reprise"],
+  vehiculeRemise: ["remise", "remise_commerciale", "discount", "ristourne"],
+  vehiculeFraisReprise: ["frais_reprise", "frais_mise", "frais"],
+  vehiculeOptions: ["options", "equipements", "packs", "equipement"],
+  acompte: ["acompte", "arrhes", "depot_garantie"],
+  apport: ["apport", "apport_personnel"],
+  modePaiement: ["mode_paiement", "paiement", "reglement", "mode_de_paiement"],
+  organismePreteur: ["organisme", "preteur", "banque_pret", "organisme_credit"],
+  montantCredit: ["montant_credit", "capital", "montant_pret"],
+  tauxCredit: ["taux", "taux_credit", "taeg", "taux_interet"],
+  dureeMois: ["duree", "duree_mois", "mensualites", "nombre_mois"],
+  clauseSuspensive: ["clause_suspensive", "clause", "suspensive"],
+  vendeurNom: ["vendeur", "commercial", "conseiller", "representant", "nom_vendeur"],
+  vendeurNotes: ["notes_vendeur", "commentaire", "remarques", "notes"],
+  clientNom: ["nom", "nom_client", "nom_acheteur", "raison_sociale"],
+  clientPrenom: ["prenom", "prenom_client"],
+  clientAdresse: ["adresse", "adresse_client", "adresse_complete"],
+  clientEmail: ["email", "mail", "courriel", "e_mail"],
+  clientTelephone: ["telephone", "tel", "mobile", "portable", "gsm", "numero_tel"],
+  clientDateNaissance: ["date_naissance", "naissance", "ddn", "ne_le", "date_de_naissance"],
+  clientNumeroCni: ["cni", "identite", "numero_cni", "piece_identite", "numero_identite"],
+  ribIban: ["iban"],
+  ribBic: ["bic", "swift"],
+  ribTitulaire: ["titulaire", "titulaire_compte"],
+  ribBanque: ["banque", "nom_banque", "domiciliation"],
+  optionsPrixTotal: ["total_options", "prix_options", "montant_options"],
+  optionsDetailJson: ["detail_options", "liste_options"],
+};
+
+function normalizeForMatch(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function findFallbackValue(
+  standardKey: string,
+  formData: Record<string, unknown>,
+): { value: string; fromKey: string } | null {
+  const aliases = STANDARD_KEY_ALIASES[standardKey];
+  if (!aliases) return null;
+
+  const normalizedAliases = aliases.map(normalizeForMatch);
+
+  for (const [fdKey, fdVal] of Object.entries(formData)) {
+    const val = String(fdVal ?? "").trim();
+    if (!val) continue;
+    const nk = normalizeForMatch(fdKey);
+    if (nk.length < 2) continue;
+    for (const na of normalizedAliases) {
+      if (nk === na || (na.length >= 3 && nk.includes(na)) || (nk.length >= 3 && na.includes(nk))) {
+        return { value: val, fromKey: fdKey };
+      }
+    }
+  }
+
+  const stdParts = standardKey
+    .replace(/([A-Z])/g, "_$1")
+    .toLowerCase()
+    .split("_")
+    .filter((p) => p.length >= 3);
+
+  for (const [fdKey, fdVal] of Object.entries(formData)) {
+    const val = String(fdVal ?? "").trim();
+    if (!val) continue;
+    const nk = normalizeForMatch(fdKey);
+    if (nk.length < 3) continue;
+    for (const part of stdParts) {
+      const np = normalizeForMatch(part);
+      if (np.length >= 3 && (nk.includes(np) || np.includes(nk))) {
+        return { value: val, fromKey: fdKey };
+      }
+    }
+  }
+
+  return null;
+}
+
 function getSupabaseAdmin() {
   const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
   const key =
@@ -169,11 +265,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let filledCount = 0;
     let skippedCount = 0;
+    let fallbackCount = 0;
 
     for (const [pdfFieldName, standardKey] of Object.entries(resolvedMapping)) {
       try {
         const rawValue = standardKey ? formData[standardKey] : undefined;
-        const value = String(rawValue ?? "").trim();
+        let value = String(rawValue ?? "").trim();
+
+        if (!value && standardKey) {
+          const fb = findFallbackValue(standardKey, formData);
+          if (fb) {
+            value = fb.value;
+            fallbackCount += 1;
+            console.log(`[fill-pdf] Fallback: ${standardKey} <- ${fb.fromKey} = "${fb.value}"`);
+          }
+        }
+
         debug.matches.push({
           pdfFieldName,
           standardKey: standardKey ?? null,
@@ -243,6 +350,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mappingInverted: reverseScore > directScore,
       filledCount,
       skippedCount,
+      fallbackCount,
       totalMappingEntries: Object.keys(resolvedMapping).length,
     });
 
@@ -252,7 +360,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const filledBase64 = Buffer.from(filledBytes).toString("base64");
     return res
       .status(200)
-      .json({ pdfBase64: filledBase64, mapping: resolvedMapping, debug });
+      .json({ pdfBase64: filledBase64, mapping: resolvedMapping, debug, stats: { filledCount, skippedCount, fallbackCount } });
   } catch (err: any) {
     console.error("[fill-pdf] Erreur lors du remplissage", {
       message: err?.message,

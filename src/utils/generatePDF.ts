@@ -46,7 +46,7 @@ export async function generatePDF(
     );
   }
 
-  const json = (await response.json()) as { pdfBase64: string; mapping?: Record<string, string>; debug?: { field_mapping?: Record<string, string>; matches?: Array<{ pdfFieldName: string; standardKey: string | null; value: string }>; formData?: Record<string, unknown> } };
+  const json = (await response.json()) as { pdfBase64: string; mapping?: Record<string, string>; debug?: { field_mapping?: Record<string, string>; matches?: Array<{ pdfFieldName: string; standardKey: string | null; value: string }>; formData?: Record<string, unknown> }; stats?: { filledCount?: number; skippedCount?: number; fallbackCount?: number } };
 
   // #region agent log — H1,H4,H5: server response debug
   const dbg = json.debug;
@@ -58,7 +58,7 @@ export async function generatePDF(
   console.log('%c[DEBUG d51c4f] fill-pdf RÉPONSE — resolvedMapping utilisé','color:lime;font-weight:bold', json.mapping);
   console.log('%c[DEBUG d51c4f] fill-pdf RÉPONSE — matches REMPLIS','color:lime;font-weight:bold', matchesWithValue);
   console.log('%c[DEBUG d51c4f] fill-pdf RÉPONSE — matches IGNORÉS (vide)','color:orange;font-weight:bold', matchesWithoutValue);
-  console.log('%c[DEBUG d51c4f] RÉSUMÉ','color:yellow;font-weight:bold', `Mapping: ${mappingEntries.length} entrées | Remplis: ${matchesWithValue.length} | Ignorés: ${matchesWithoutValue.length}`);
+  console.log('%c[DEBUG d51c4f] RÉSUMÉ','color:yellow;font-weight:bold', `Mapping: ${mappingEntries.length} entrées | Remplis: ${matchesWithValue.length} | Ignorés: ${matchesWithoutValue.length} | Fallbacks: ${json.stats?.fallbackCount ?? '?'}`);
   fetch('http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d51c4f'},body:JSON.stringify({sessionId:'d51c4f',runId:'run1',hypothesisId:'H1_H4_H5',location:'generatePDF.ts:AFTER_FETCH',message:'fill-pdf response debug',data:_dbgResp,timestamp:Date.now()})}).catch(()=>{});
   // #endregion
 
