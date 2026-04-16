@@ -9,38 +9,33 @@ function downloadBase64Pdf(base64: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Génère un bon de commande PDF via le template HTML côté serveur.
+ * Envoie toutes les données du formulaire (standard + custom) à /api/generate-pdf
+ * qui remplace les placeholders dans le template HTML puis convertit en PDF.
+ */
 export async function generatePDF(
   formData: Record<string, string>,
-  templateId: string
+  _templateId?: string,
 ) {
-  if (!templateId) {
-    throw new Error("Aucun template sélectionné.");
-  }
-
   const nonEmpty = Object.entries(formData).filter(([, v]) => v.trim() !== "");
-  console.log(`[generatePDF] Envoi: templateId=${templateId}, ${nonEmpty.length} champs non-vides`);
+  console.log(`[generatePDF] Envoi de ${nonEmpty.length} champs à /api/generate-pdf`);
 
-  const response = await fetch("/api/fill-pdf", {
+  const response = await fetch("/api/generate-pdf", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ templateId, formData }),
+    body: JSON.stringify({ formData }),
   });
 
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
-    console.error("[generatePDF] Erreur serveur:", errBody);
+    console.error("[generatePDF] Erreur:", errBody);
     throw new Error(
-      errBody?.error || `Erreur génération PDF (${response.status})`
+      errBody?.error || `Erreur génération PDF (${response.status})`,
     );
   }
 
-  const json = (await response.json()) as {
-    pdfBase64?: string;
-    debug?: { method?: string; filledCount?: number; totalPdfFields?: number; liveMapping?: number };
-  };
-
-  console.log("[generatePDF] Résultat:", json.debug);
-
+  const json = (await response.json()) as { pdfBase64?: string };
   if (!json?.pdfBase64) {
     throw new Error("Réponse invalide du serveur PDF.");
   }
