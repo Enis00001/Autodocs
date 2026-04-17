@@ -112,7 +112,7 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
 
       {modalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in-0 duration-200"
+          className="fixed inset-y-0 right-0 left-[230px] z-50 flex items-center justify-center p-4 animate-in fade-in-0 duration-200"
           style={{ background: "rgba(0,0,0,0.6)" }}
           onClick={() => {
             if (!isGenerating) setModalOpen(false);

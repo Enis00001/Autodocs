@@ -315,6 +315,15 @@ const NouveauBon = () => {
       />
       <div className="page-shell">
         <div className="page-content">
+          <div className="mb-5">
+            <GenerateBar
+              documentsUploaded={0}
+              missingFieldsCount={countMissingMandatoryFields(formState as Record<string, unknown>)}
+              formData={buildPdfFormData(formState)}
+              templateId={formState.templateId}
+            />
+          </div>
+
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
             <div className="space-y-5">
               <ProfilClient
@@ -342,15 +351,6 @@ const NouveauBon = () => {
               onDeleteCustomField={handleDeleteCustomVehicleField}
               onReorderCustomFields={handleReorderCustomVehicleFields}
             />
-
-            <div className="xl:col-span-2 sticky bottom-0 z-20 pb-1 pt-2">
-              <GenerateBar
-                documentsUploaded={0}
-                missingFieldsCount={countMissingMandatoryFields(formState as Record<string, unknown>)}
-                formData={buildPdfFormData(formState)}
-                templateId={formState.templateId}
-              />
-            </div>
           </div>
         </div>
       </div>
