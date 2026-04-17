@@ -313,8 +313,8 @@ const NouveauBon = () => {
           </>
         }
       />
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1500px] px-5 py-6 md:px-7 md:py-7">
+      <div className="page-shell">
+        <div className="page-content">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
             <div className="space-y-5">
               <ProfilClient

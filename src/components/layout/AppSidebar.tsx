@@ -59,7 +59,7 @@ const AppSidebar = () => {
   };
 
   return (
-    <aside className="w-[220px] min-h-screen bg-card border-r border-border flex flex-col py-6 px-4 gap-1 shrink-0">
+    <aside className="w-[230px] min-h-screen bg-card/95 border-r border-border/80 flex flex-col py-6 px-4 gap-1 shrink-0 backdrop-blur-sm">
       {/* Logo */}
       <div className="font-display font-extrabold text-xl px-3 pb-6 tracking-tight">
         Auto<span className="gradient-text">Docs</span>
@@ -75,10 +75,10 @@ const AppSidebar = () => {
           <Link
             key={item.path}
             to={item.path}
-            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 interactive-lift ${
               isActive
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                ? "bg-primary/12 text-primary border border-primary/25 shadow-[0_0_0_1px_hsla(228,91%,64%,0.2)]"
+                : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground border border-transparent"
             }`}
           >
             <item.icon className="w-4 h-4" />
@@ -89,7 +89,7 @@ const AppSidebar = () => {
 
       {/* Bottom badge */}
       <div className="mt-auto border-t border-border pt-4">
-        <div className="flex items-center gap-2.5 px-3 py-2.5 bg-secondary rounded-lg border border-border">
+        <div className="flex items-center gap-2.5 px-3 py-2.5 bg-secondary/80 rounded-lg border border-border interactive-lift">
           <div className="w-[30px] h-[30px] rounded-md flex items-center justify-center text-xs font-bold font-display text-primary-foreground shrink-0 overflow-hidden gradient-primary">
             {concession.logoBase64 ? (
               <img
@@ -112,7 +112,7 @@ const AppSidebar = () => {
         </div>
         <button
           type="button"
-          className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer"
+          className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer interactive-lift"
           onClick={handleLogout}
         >
           <LogOut className="w-3.5 h-3.5" />

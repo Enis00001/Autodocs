@@ -68,7 +68,8 @@ const Parametres = () => {
   return (
     <>
       <TopBar title="Paramètres" />
-      <div className="flex-1 overflow-y-auto p-7 space-y-5 max-w-3xl">
+      <div className="page-shell">
+        <div className="page-content space-y-5 max-w-3xl">
         {/* Concession */}
         <div className="card-autodocs space-y-4">
           <div className="card-title-autodocs">🏢 Concession</div>
@@ -107,7 +108,7 @@ const Parametres = () => {
               <button
                 type="button"
                 onClick={handleLogoClick}
-                className="border-2 border-dashed border-border rounded-lg p-6 flex items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-primary transition-colors bg-transparent w-full"
+                className="border-2 border-dashed border-border rounded-lg p-6 flex items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-primary transition-colors bg-transparent w-full interactive-lift"
               >
                 {concession.logoBase64 ? (
                   <img
@@ -150,7 +151,7 @@ const Parametres = () => {
             {vendeurs.map((v) => (
               <div
                 key={v.id}
-                className="flex items-center justify-between px-3 py-2.5 bg-secondary rounded-lg border border-border"
+                className="flex items-center justify-between px-3 py-2.5 bg-secondary rounded-lg border border-border row-hover"
               >
                 <span className="text-sm">
                   {v.prenom} {v.nom}
@@ -240,15 +241,16 @@ const Parametres = () => {
         {/* Abonnement */}
         <div className="card-autodocs space-y-4">
           <div className="card-title-autodocs">💳 Abonnement</div>
-          <div className="flex items-center justify-between px-3 py-3 bg-secondary rounded-lg border border-border">
+          <div className="flex items-center justify-between px-3 py-3 bg-secondary rounded-lg border border-border row-hover">
             <div>
               <div className="text-sm font-medium">Plan Pro</div>
               <div className="text-[11px] text-muted-foreground">Bons illimités · Support prioritaire</div>
             </div>
-            <button className="px-3 py-1.5 rounded-lg text-xs border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer">
+            <button className="px-3 py-1.5 rounded-lg text-xs border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer interactive-lift">
               Gérer
             </button>
           </div>
+        </div>
         </div>
       </div>
     </>

@@ -118,6 +118,17 @@ const VehiculeVente = ({
     setDragOverFieldId(null);
   };
 
+  const getEstimatedCustomFieldLength = (field: VehicleFieldRow): number => {
+    const currentValue = String(form.vehicleFieldValues?.[field.field_key] ?? "").trim();
+    const labelLength = field.label.trim().length;
+    return Math.max(currentValue.length, labelLength);
+  };
+
+  const isCompactCustomField = (field: VehicleFieldRow): boolean => {
+    if (editMode) return false;
+    return getEstimatedCustomFieldLength(field) <= 22;
+  };
+
   /* ---------- small UI pieces ---------- */
 
   const ToggleBtn = ({ fieldKey }: { fieldKey: string }) => {
@@ -221,12 +232,16 @@ const VehiculeVente = ({
               <p className="text-xs text-muted-foreground">Aucun champ personnalisé. Cliquez sur « Personnaliser » pour en ajouter.</p>
             )}
 
-            <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 md:[grid-auto-flow:dense] gap-2">
               {customVehicleFields.map((f) => (
                 <div
                   key={f.id}
                   className={`rounded-lg border p-2.5 transition-colors ${
-                    dragOverFieldId === f.id ? "border-primary bg-primary/5" : "border-border/60 bg-background/30"
+                    isCompactCustomField(f) ? "md:col-span-1" : "md:col-span-2"
+                  } ${
+                    dragOverFieldId === f.id
+                      ? "border-primary bg-primary/5"
+                      : "border-border/60 bg-background/30"
                   }`}
                   draggable={editMode}
                   onDragStart={() => { if (editMode) setDraggingFieldId(f.id); }}
@@ -305,19 +320,34 @@ const VehiculeVente = ({
                       </>
                     )}
                   </div>
-                  <input
-                    type="text"
-                    className="field-input"
-                    value={form.vehicleFieldValues?.[f.field_key] ?? ""}
-                    onChange={(e) =>
-                      onChange({
-                        vehicleFieldValues: {
-                          ...(form.vehicleFieldValues ?? {}),
-                          [f.field_key]: e.target.value,
-                        },
-                      })
-                    }
-                  />
+                  <div className="flex">
+                    <input
+                      type="text"
+                      className={`field-input ${
+                        isCompactCustomField(f) ? "w-full md:w-auto md:min-w-[14ch]" : "w-full"
+                      }`}
+                      style={
+                        isCompactCustomField(f)
+                          ? {
+                              width: `${Math.min(
+                                32,
+                                Math.max(14, getEstimatedCustomFieldLength(f) + 3)
+                              )}ch`,
+                              maxWidth: "100%",
+                            }
+                          : undefined
+                      }
+                      value={form.vehicleFieldValues?.[f.field_key] ?? ""}
+                      onChange={(e) =>
+                        onChange({
+                          vehicleFieldValues: {
+                            ...(form.vehicleFieldValues ?? {}),
+                            [f.field_key]: e.target.value,
+                          },
+                        })
+                      }
+                    />
+                  </div>
                 </div>
               ))}
             </div>

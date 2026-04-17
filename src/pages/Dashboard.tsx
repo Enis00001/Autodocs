@@ -54,11 +54,12 @@ const Dashboard = () => {
           </button>
         }
       />
-      <div className="flex-1 overflow-y-auto p-7 space-y-5">
+      <div className="page-shell">
+        <div className="page-content space-y-5">
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {stats.map((s) => (
-            <div key={s.label} className="card-autodocs flex items-center gap-4">
+            <div key={s.label} className="card-autodocs flex items-center gap-4 interactive-lift">
               <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                 <s.icon className="w-5 h-5 text-primary" />
               </div>
@@ -97,7 +98,7 @@ const Dashboard = () => {
               </thead>
               <tbody>
                 {drafts.map((d) => (
-                  <tr key={d.id} className="border-b border-border/50 last:border-0">
+                  <tr key={d.id} className="border-b border-border/50 last:border-0 row-hover">
                     <td className="py-3 font-medium">
                       {d.clientPrenom || d.clientNom
                         ? `${d.clientPrenom} ${d.clientNom}`.trim()
@@ -146,6 +147,7 @@ const Dashboard = () => {
               </tbody>
             </table>
           )}
+        </div>
         </div>
       </div>
     </>

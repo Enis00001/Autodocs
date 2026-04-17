@@ -174,7 +174,8 @@ const TemplatesPage = () => {
           </button>
         }
       />
-      <div className="flex-1 overflow-y-auto p-4 pb-6 md:p-7 md:pb-7">
+      <div className="page-shell">
+        <div className="page-content">
         <div className="flex flex-col gap-3 mb-5 max-w-xl">
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="text-muted-foreground">Nom du template (PDF)</span>
@@ -208,7 +209,9 @@ const TemplatesPage = () => {
               key={t.id}
               role={t.contentBase64 ? "button" : undefined}
               tabIndex={t.contentBase64 ? 0 : undefined}
-              className={`card-autodocs flex flex-col gap-3 ${t.contentBase64 ? "cursor-pointer hover:border-primary/50 transition-colors" : ""}`}
+              className={`card-autodocs flex flex-col gap-3 ${
+                t.contentBase64 ? "cursor-pointer hover:border-primary/50 transition-colors interactive-lift" : ""
+              }`}
               onClick={() => t.contentBase64 && openTemplateInNewTab(t)}
               onKeyDown={(e) => t.contentBase64 && e.key === "Enter" && openTemplateInNewTab(t)}
             >
@@ -236,13 +239,14 @@ const TemplatesPage = () => {
           <div
             role="button"
             tabIndex={0}
-            className="card-autodocs border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-muted-foreground transition-colors min-h-[200px]"
+            className="card-autodocs border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-muted-foreground transition-colors min-h-[200px] interactive-lift"
             onClick={openImportDialog}
             onKeyDown={(e) => e.key === "Enter" && openImportDialog()}
           >
             <span className="text-3xl">＋</span>
             <span className="text-sm">Importer un template</span>
           </div>
+        </div>
         </div>
       </div>
     </>

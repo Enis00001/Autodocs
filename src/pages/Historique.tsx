@@ -51,7 +51,8 @@ const Historique = () => {
   return (
     <>
       <TopBar title="Historique" />
-      <div className="flex-1 overflow-y-auto p-7 space-y-5">
+      <div className="page-shell">
+        <div className="page-content space-y-5">
         <div className="flex gap-3 flex-wrap items-center">
           <div className="flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -118,7 +119,7 @@ const Historique = () => {
                 </tr>
               ) : (
                 filteredDrafts.map((d) => (
-                  <tr key={d.id} className="border-b border-border/50 last:border-0">
+                  <tr key={d.id} className="border-b border-border/50 last:border-0 row-hover">
                     <td className="py-3 font-medium">{clientLabel(d)}</td>
                     <td className="py-3 text-muted-foreground">{d.vehiculeModele || "—"}</td>
                     <td className="py-3 text-muted-foreground">{d.vendeurNom || "—"}</td>
@@ -143,6 +144,7 @@ const Historique = () => {
               )}
             </tbody>
           </table>
+        </div>
         </div>
       </div>
     </>
