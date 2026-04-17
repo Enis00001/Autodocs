@@ -19,7 +19,7 @@ const TemplateSelector = ({
 }: TemplateSelectorProps) => {
   if (loading) {
     return (
-      <div className="card-autodocs col-span-2">
+      <div className="card-autodocs">
         <div className="mb-4">
           <span className="card-title-autodocs">📄 Template bon de commande</span>
         </div>
@@ -30,7 +30,7 @@ const TemplateSelector = ({
 
   if (templates.length === 0) {
     return (
-      <div className="card-autodocs col-span-2">
+      <div className="card-autodocs">
         <div className="mb-4">
           <span className="card-title-autodocs">📄 Template bon de commande</span>
         </div>
@@ -73,10 +73,13 @@ const TemplateSelector = ({
   }
 
   return (
-    <div className="card-autodocs col-span-2">
+    <div className="card-autodocs">
       <div className="mb-4">
         <span className="card-title-autodocs">📄 Template bon de commande</span>
       </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Sélectionnez le modèle PDF à utiliser pour ce bon de commande.
+      </p>
 
       <div className="flex flex-wrap gap-3">
         {templates.map((t) => (
@@ -86,10 +89,10 @@ const TemplateSelector = ({
             tabIndex={0}
             onClick={() => onChangeTemplate(t.id)}
             onKeyDown={(e) => e.key === "Enter" && onChangeTemplate(t.id)}
-            className={`flex-1 min-w-[140px] p-3.5 border-2 rounded-[10px] cursor-pointer transition-all duration-150 flex items-center gap-3 ${
+            className={`flex-1 min-w-[180px] p-3.5 border-2 rounded-[10px] cursor-pointer transition-all duration-150 flex items-center gap-3 ${
               selectedTemplateId === t.id
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-muted-foreground"
+                ? "border-primary bg-primary/5 shadow-[0_0_0_1px_hsla(228,91%,64%,0.2)]"
+                : "border-border hover:border-muted-foreground hover:bg-secondary/50"
             }`}
           >
             <div className="w-9 h-11 bg-secondary rounded border border-border flex items-center justify-center text-lg shrink-0">
@@ -113,7 +116,7 @@ const TemplateSelector = ({
 
         <Link
           to="/templates"
-          className="flex-1 min-w-[140px] p-3.5 border-2 border-dashed border-border rounded-[10px] cursor-pointer hover:border-muted-foreground transition-colors flex flex-col items-center justify-center gap-1.5 text-muted-foreground no-underline"
+          className="flex-1 min-w-[180px] p-3.5 border-2 border-dashed border-border rounded-[10px] cursor-pointer hover:border-muted-foreground hover:bg-secondary/30 transition-colors flex flex-col items-center justify-center gap-1.5 text-muted-foreground no-underline"
         >
           <span className="text-[22px]">＋</span>
           <span className="text-xs text-center">Ajouter un template (page Templates)</span>

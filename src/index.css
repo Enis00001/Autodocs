@@ -97,7 +97,8 @@
   }
 
   .card-autodocs {
-    @apply bg-card border border-border rounded-xl p-5;
+    @apply bg-card/95 border border-border rounded-xl p-5;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   }
 
   .card-title-autodocs {
@@ -110,6 +111,10 @@
 
   .field-input {
     @apply bg-secondary border border-border rounded-[7px] px-3 py-2.5 text-[13px] text-foreground font-body outline-none transition-colors duration-150;
+  }
+
+  .card-soft-divider {
+    @apply border-t border-border/60 pt-4 mt-4;
   }
 
   .field-input:focus {

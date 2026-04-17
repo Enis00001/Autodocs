@@ -52,7 +52,11 @@ const ProfilClient = ({ form, onChange, autoFilledFields = [] }: ProfilClientPro
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <p className="text-xs text-muted-foreground mb-4">
+        Vérifiez les informations client avant génération du bon.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="field-label">Nom</label>
           <input
@@ -89,7 +93,7 @@ const ProfilClient = ({ form, onChange, autoFilledFields = [] }: ProfilClientPro
             className={`field-input field-input-auto ${isAuto("clientNumeroCni") ? autoClass : ""}`}
           />
         </div>
-        <div className="flex flex-col gap-1.5 col-span-2">
+        <div className="flex flex-col gap-1.5 md:col-span-2">
           <label className="field-label">Adresse</label>
           <input
             type="text"
@@ -98,11 +102,11 @@ const ProfilClient = ({ form, onChange, autoFilledFields = [] }: ProfilClientPro
             className={`field-input field-input-auto ${isAuto("clientAdresse") ? autoClass : ""}`}
           />
         </div>
-        <div className="flex flex-col gap-1.5 col-span-2">
+        <div className="flex flex-col gap-1.5 md:col-span-2 card-soft-divider">
           <label className="card-title-autodocs" style={{ textTransform: "uppercase" }}>
             🏦 RIB
           </label>
-          <div className="grid grid-cols-2 gap-3 mt-1.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1.5">
             <div className="flex flex-col gap-1.5">
               <label className="field-label">Titulaire</label>
               <input

@@ -54,7 +54,7 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
 
   return (
     <>
-      <div className="card-autodocs col-span-2 flex items-center justify-between relative overflow-hidden">
+      <div className="card-autodocs col-span-1 xl:col-span-2 flex flex-col gap-4 md:flex-row md:items-center md:justify-between relative overflow-hidden backdrop-blur-sm">
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -92,7 +92,7 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
         <button
           type="button"
           disabled={!canGenerate}
-          className="relative z-10 gradient-primary px-6 py-3 rounded-[9px] font-display text-sm font-bold text-primary-foreground transition-all duration-200 flex items-center gap-2 border-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer hover:-translate-y-0.5"
+          className="relative z-10 w-full md:w-auto gradient-primary px-6 py-3 rounded-[9px] font-display text-sm font-bold text-primary-foreground transition-all duration-200 flex items-center justify-center gap-2 border-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer hover:-translate-y-0.5"
           style={{ boxShadow: "0 4px 20px hsla(228,91%,64%,0.3)" }}
           onMouseEnter={(e) => {
             if (canGenerate)

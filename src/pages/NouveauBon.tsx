@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import TopBar from "@/components/layout/TopBar";
-import DocumentsClient from "@/components/nouveau-bon/DocumentsClient";
 import ProfilClient from "@/components/nouveau-bon/ProfilClient";
 import VehiculeVente from "@/components/nouveau-bon/VehiculeVente";
 import TemplateSelector from "@/components/nouveau-bon/TemplateSelector";
@@ -97,8 +96,6 @@ const NouveauBon = () => {
   const navigate = useNavigate();
   const params = useParams<{ id: string }>();
   const [formState, setFormState] = useState<DraftFormState>(defaultFormState);
-  const [documentsUploaded, setDocumentsUploaded] = useState(0);
-  const [highlightedFields, setHighlightedFields] = useState<Array<keyof DraftFormState>>([]);
   const [customVehicleFields, setCustomVehicleFields] = useState<VehicleFieldRow[]>([]);
   const [hiddenVehiculeVenteKeys, setHiddenVehiculeVenteKeys] = useState<string[]>([]);
   const [pdfTemplates, setPdfTemplates] = useState<PdfTemplateRow[]>([]);
@@ -282,16 +279,6 @@ const NouveauBon = () => {
     setCustomVehicleFields(refreshed);
   };
 
-  const handleExtractedData = (
-    patch: Partial<DraftFormState>,
-    fields: Array<keyof DraftFormState>
-  ) => {
-    setFormState((prev) => ({ ...prev, ...patch }));
-    if (fields.length > 0) {
-      setHighlightedFields((prev) => Array.from(new Set([...prev, ...fields])));
-    }
-  };
-
   const handleSaveDraft = async () => {
     const saved = await upsertDraft(formState);
     const { dismiss } = toast({
@@ -326,66 +313,46 @@ const NouveauBon = () => {
           </>
         }
       />
-      <div className="flex-1 overflow-y-auto p-7 grid grid-cols-2 gap-5 content-start">
-        <DocumentsClient
-          vehiculeFinancement={formState.vehiculeFinancement}
-          onDocumentsChange={setDocumentsUploaded}
-          initialDocumentsScanned={formState.documentsScanned}
-          onDocumentsScannedChange={(documentsScanned) => updateForm({ documentsScanned })}
-          currentAdresse={formState.clientAdresse}
-          ribTitulaire={formState.ribTitulaire}
-          ribIban={formState.ribIban}
-          ribBic={formState.ribBic}
-          ribBanque={formState.ribBanque}
-          onExtractedData={(
-            patch: Partial<BonDraftData>,
-            fields: Array<keyof BonDraftData>
-          ) =>
-            handleExtractedData(
-              patch as Partial<DraftFormState>,
-              fields as Array<keyof DraftFormState>
-            )
-          }
-        />
-        <ProfilClient
-          form={formState}
-          onChange={updateForm}
-          autoFilledFields={highlightedFields as Array<
-            | "clientNom"
-            | "clientPrenom"
-            | "clientDateNaissance"
-            | "clientNumeroCni"
-            | "clientAdresse"
-            | "ribTitulaire"
-            | "ribIban"
-            | "ribBic"
-            | "ribBanque"
-          >}
-        />
-        <VehiculeVente
-          form={formState}
-          onChange={updateForm}
-          customVehicleFields={customVehicleFields}
-          hiddenFieldKeys={hiddenVehiculeVenteKeys}
-          onToggleStandardField={handleToggleStandardField}
-          onAddCustomField={handleAddCustomVehicleField}
-          onRenameCustomField={handleRenameCustomVehicleField}
-          onDeleteCustomField={handleDeleteCustomVehicleField}
-          onReorderCustomFields={handleReorderCustomVehicleFields}
-        />
-        <TemplateSelector
-          templates={pdfTemplates}
-          loading={pdfTemplatesLoading}
-          selectedTemplateId={formState.templateId}
-          onChangeTemplate={(id) => updateForm({ templateId: id })}
-          libraryEntriesButNoAnalyzedPdf={libraryEntriesButNoAnalyzedPdf}
-        />
-        <GenerateBar
-          documentsUploaded={documentsUploaded}
-          missingFieldsCount={countMissingMandatoryFields(formState as Record<string, unknown>)}
-          formData={buildPdfFormData(formState)}
-          templateId={formState.templateId}
-        />
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[1500px] px-5 py-6 md:px-7 md:py-7">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+            <div className="space-y-5">
+              <ProfilClient
+                form={formState}
+                onChange={updateForm}
+                autoFilledFields={[]}
+              />
+              <TemplateSelector
+                templates={pdfTemplates}
+                loading={pdfTemplatesLoading}
+                selectedTemplateId={formState.templateId}
+                onChangeTemplate={(id) => updateForm({ templateId: id })}
+                libraryEntriesButNoAnalyzedPdf={libraryEntriesButNoAnalyzedPdf}
+              />
+            </div>
+
+            <VehiculeVente
+              form={formState}
+              onChange={updateForm}
+              customVehicleFields={customVehicleFields}
+              hiddenFieldKeys={hiddenVehiculeVenteKeys}
+              onToggleStandardField={handleToggleStandardField}
+              onAddCustomField={handleAddCustomVehicleField}
+              onRenameCustomField={handleRenameCustomVehicleField}
+              onDeleteCustomField={handleDeleteCustomVehicleField}
+              onReorderCustomFields={handleReorderCustomVehicleFields}
+            />
+
+            <div className="xl:col-span-2 sticky bottom-0 z-20 pb-1 pt-2">
+              <GenerateBar
+                documentsUploaded={0}
+                missingFieldsCount={countMissingMandatoryFields(formState as Record<string, unknown>)}
+                formData={buildPdfFormData(formState)}
+                templateId={formState.templateId}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </>
   );
