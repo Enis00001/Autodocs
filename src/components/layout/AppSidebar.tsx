@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, Link, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Plus, ClipboardList, FileText, Car, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts } from "@/utils/drafts";
 import { loadConcession, getConcessionInitials } from "@/utils/concession";
@@ -11,7 +11,6 @@ const navItems = [
   { title: "Dashboard", path: "/", icon: LayoutDashboard },
   { title: "Nouveau bon", path: "/nouveau-bon", icon: Plus },
   { title: "Historique", path: "/historique", icon: ClipboardList },
-  { title: "Templates", path: "/templates", icon: FileText },
   { title: "Infos véhicule", path: "/infos-vehicule", icon: Car },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
   { title: "Paramètres", path: "/parametres", icon: Settings },
