@@ -91,7 +91,6 @@ const Dashboard = () => {
                 <tr className="border-b border-border text-muted-foreground text-left">
                   <th className="pb-3 font-medium">Client</th>
                   <th className="pb-3 font-medium">Véhicule</th>
-                  <th className="pb-3 font-medium">Vendeur</th>
                   <th className="pb-3 font-medium">Mis à jour</th>
                   <th className="pb-3 font-medium text-right">Actions</th>
                 </tr>
@@ -106,9 +105,6 @@ const Dashboard = () => {
                     </td>
                     <td className="py-3 text-muted-foreground">
                       {d.vehiculeModele || "—"}
-                    </td>
-                    <td className="py-3 text-muted-foreground">
-                      {d.vendeurNom || "—"}
                     </td>
                     <td className="py-3 text-muted-foreground">
                       {new Date(d.updatedAt).toLocaleString("fr-FR", {

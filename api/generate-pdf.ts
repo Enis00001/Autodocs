@@ -3,7 +3,7 @@ import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
 /* ================================================================== */
-/*  HTML template (inlined to avoid filesystem issues on Vercel)       */
+/*  HTML template (inliné pour éviter les problèmes de FS sur Vercel)  */
 /* ================================================================== */
 
 function getHtmlTemplate(): string {
@@ -16,148 +16,175 @@ function getHtmlTemplate(): string {
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; font-size: 11px; color: #1a1a2e; line-height: 1.45; }
   .page { width: 100%; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #2c3e8f; padding-bottom: 14px; margin-bottom: 16px; }
-  .header-left h1 { font-size: 20px; font-weight: 800; color: #2c3e8f; letter-spacing: -0.3px; }
-  .header-left p { font-size: 10px; color: #666; margin-top: 2px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #2c3e8f; padding-bottom: 14px; margin-bottom: 18px; }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .logo-placeholder { width: 54px; height: 54px; border: 2px dashed #c8cde0; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #9ea3b8; font-size: 9px; text-align: center; line-height: 1.1; }
+  .concession-block h1 { font-size: 18px; font-weight: 800; color: #2c3e8f; letter-spacing: -0.3px; }
+  .concession-block .subtitle { font-size: 10px; color: #666; margin-top: 2px; }
   .header-right { text-align: right; font-size: 10px; color: #555; }
   .header-right .ref { font-size: 13px; font-weight: 700; color: #2c3e8f; }
+  .header-right .doc-title { font-size: 16px; font-weight: 800; color: #1a1a2e; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
   .section { margin-bottom: 14px; }
-  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #fff; background: #2c3e8f; padding: 5px 10px; margin-bottom: 0; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #fff; background: #2c3e8f; padding: 6px 10px; }
   table { width: 100%; border-collapse: collapse; }
   table td, table th { padding: 5px 8px; border: 1px solid #d0d4e4; font-size: 10.5px; vertical-align: top; }
-  table th { background: #eef0f8; font-weight: 600; color: #333; text-align: left; width: 34%; white-space: nowrap; }
-  table td { color: #1a1a2e; }
-  .two-col { display: flex; gap: 12px; }
-  .two-col > .col { flex: 1; }
-  .summary-row { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 11px; }
-  .summary-row.total { font-weight: 800; font-size: 13px; background: #eef0f8; border: 2px solid #2c3e8f; margin-top: 2px; }
-  .summary-row .label { color: #444; }
-  .summary-row .value { font-weight: 600; color: #1a1a2e; }
-  .signatures { display: flex; gap: 20px; margin-top: 18px; }
-  .sig-box { flex: 1; border: 1px solid #d0d4e4; padding: 10px; min-height: 80px; }
+  table th { background: #eef0f8; font-weight: 600; color: #333; text-align: left; width: 38%; white-space: nowrap; }
+  .reglement { border: 1px solid #d0d4e4; padding: 10px 12px; }
+  .reglement-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 11px; }
+  .reglement-row.negative .value { color: #b34242; }
+  .reglement-row .value { font-weight: 600; }
+  .reglement-row.net { font-weight: 800; font-size: 13px; background: #eef0f8; padding: 6px 10px; margin: 4px -2px; border: 2px solid #2c3e8f; }
+  .reglement-row.solde { font-weight: 800; font-size: 12px; border-top: 1px dashed #c0c5d8; padding-top: 6px; margin-top: 2px; }
+  .mode-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; background: #2c3e8f; color: #fff; letter-spacing: 0.4px; text-transform: uppercase; }
+  .signatures { display: flex; gap: 20px; margin-top: 20px; }
+  .sig-box { flex: 1; border: 1px solid #d0d4e4; padding: 10px; min-height: 90px; }
   .sig-box .sig-title { font-size: 10px; font-weight: 700; color: #2c3e8f; margin-bottom: 4px; }
-  .sig-box .sig-line { border-bottom: 1px dotted #999; height: 40px; }
+  .sig-box .sig-name { font-size: 10px; margin-bottom: 4px; }
+  .sig-box .sig-line { border-bottom: 1px dotted #999; height: 46px; }
   .sig-box .sig-date { font-size: 9px; color: #888; margin-top: 6px; }
   .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #d0d4e4; font-size: 8.5px; color: #888; text-align: center; }
 </style>
 </head>
 <body>
 <div class="page">
+
   <div class="header">
     <div class="header-left">
-      <h1>BON DE COMMANDE</h1>
-      <p>Véhicule d'occasion / neuf</p>
+      <div class="logo-placeholder">LOGO</div>
+      <div class="concession-block">
+        <h1>{{concessionNom}}</h1>
+        <div class="subtitle">Véhicule d'occasion / neuf</div>
+      </div>
     </div>
     <div class="header-right">
+      <div class="doc-title">Bon de commande</div>
       <div class="ref">N° {{bonNumero}}</div>
       <div>Date : {{bonDate}}</div>
-      <div>Vendeur : {{vendeurNom}}</div>
     </div>
   </div>
-
-  <div class="two-col">
-    <div class="col">
-      <div class="section">
-        <div class="section-title">Acheteur</div>
-        <table>
-          <tr><th>Nom</th><td>{{clientNom}}</td></tr>
-          <tr><th>Prénom</th><td>{{clientPrenom}}</td></tr>
-          <tr><th>Date de naissance</th><td>{{clientDateNaissance}}</td></tr>
-          <tr><th>N° CNI</th><td>{{clientNumeroCni}}</td></tr>
-          <tr><th>Adresse</th><td>{{clientAdresse}}</td></tr>
-          <tr><th>Téléphone</th><td>{{clientTelephone}}</td></tr>
-          <tr><th>E-mail</th><td>{{clientEmail}}</td></tr>
-        </table>
-      </div>
-    </div>
-    <div class="col">
-      <div class="section">
-        <div class="section-title">Véhicule</div>
-        <table>
-          <tr><th>Modèle</th><td>{{vehiculeModele}}</td></tr>
-          <tr><th>N° VIN / Châssis</th><td>{{vehiculeVin}}</td></tr>
-          <tr><th>Immatriculation</th><td>{{vehiculeCarteGrise}}</td></tr>
-          <tr><th>1ère mise en circulation</th><td>{{vehiculePremiereCirculation}}</td></tr>
-          <tr><th>Kilométrage</th><td>{{vehiculeKilometrage}}</td></tr>
-          <tr><th>Couleur</th><td>{{vehiculeCouleur}}</td></tr>
-          <tr><th>Puissance (CV)</th><td>{{vehiculeChevaux}}</td></tr>
-          <tr><th>CO2 (g/km)</th><td>{{vehiculeCo2}}</td></tr>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  {{customVehicleFieldsHtml}}
 
   <div class="section">
-    <div class="section-title">Tarification</div>
-    <div style="border: 1px solid #d0d4e4; padding: 8px;">
-      <div class="summary-row"><span class="label">Prix de vente TTC</span><span class="value">{{vehiculePrix}} €</span></div>
-      <div class="summary-row"><span class="label">Options</span><span class="value">{{optionsPrixTotal}} €</span></div>
-      <div class="summary-row"><span class="label">Frais de reprise</span><span class="value">{{vehiculeFraisReprise}} €</span></div>
-      <div class="summary-row"><span class="label">Remise accordée</span><span class="value">- {{vehiculeRemise}} €</span></div>
-      <div class="summary-row"><span class="label">Reprise ancien véhicule</span><span class="value">- {{vehiculeReprise}} €</span></div>
-      <div class="summary-row total"><span class="label">TOTAL À PAYER TTC</span><span class="value">{{totalFinal}} €</span></div>
-    </div>
+    <div class="section-title">Acheteur</div>
+    <table>
+      <tr>
+        <th>Nom</th><td>{{clientNom}}</td>
+        <th>Prénom</th><td>{{clientPrenom}}</td>
+      </tr>
+      <tr>
+        <th>Date de naissance</th><td>{{clientDateNaissance}}</td>
+        <th>N° pièce d'identité</th><td>{{clientNumeroCni}}</td>
+      </tr>
+      <tr>
+        <th>Adresse</th><td colspan="3">{{clientAdresse}}</td>
+      </tr>
+    </table>
   </div>
 
-  <div class="two-col">
-    <div class="col">
-      <div class="section">
-        <div class="section-title">Financement</div>
-        <table>
-          <tr><th>Type</th><td>{{vehiculeFinancement}}</td></tr>
-          <tr><th>Apport</th><td>{{apport}} €</td></tr>
-          <tr><th>Organisme</th><td>{{organismePreteur}}</td></tr>
-          <tr><th>Montant crédit</th><td>{{montantCredit}} €</td></tr>
-          <tr><th>Taux</th><td>{{tauxCredit}} %</td></tr>
-          <tr><th>Durée</th><td>{{dureeMois}} mois</td></tr>
-          <tr><th>Clause suspensive</th><td>{{clauseSuspensive}}</td></tr>
-        </table>
+  <div class="section">
+    <div class="section-title">Véhicule vendu</div>
+    <table>
+      <tr><th>Modèle / Désignation</th><td colspan="3">{{vehiculeModele}}</td></tr>
+      <tr>
+        <th>N° VIN / Châssis</th><td>{{vehiculeVin}}</td>
+        <th>1ère mise en circulation</th><td>{{vehiculePremiereCirculation}}</td>
+      </tr>
+      <tr>
+        <th>Kilométrage</th><td>{{vehiculeKilometrage}}</td>
+        <th>Couleur</th><td>{{vehiculeCouleur}}</td>
+      </tr>
+      <tr>
+        <th>Puissance (CV)</th><td>{{vehiculeChevaux}}</td>
+        <th>CO2 (g/km)</th><td>{{vehiculeCo2}}</td>
+      </tr>
+    </table>
+  </div>
+
+  <!--REPRISE_SECTION_START-->
+  <div class="section">
+    <div class="section-title">Reprise véhicule</div>
+    <table>
+      <tr>
+        <th>Véhicule repris</th>
+        <td colspan="3">{{reprise_marque}} {{reprise_modele}} ({{reprise_annee}}) — Plaque : <strong>{{reprise_plaque}}</strong></td>
+      </tr>
+      <tr>
+        <th>Première circulation</th>
+        <td colspan="3">{{reprise_premiere_circulation}}</td>
+      </tr>
+      <tr>
+        <th>Valeur de reprise déduite</th>
+        <td colspan="3"><strong style="color:#b34242;">- {{reprise_valeur}} €</strong></td>
+      </tr>
+    </table>
+  </div>
+  <!--REPRISE_SECTION_END-->
+
+  <div class="section">
+    <div class="section-title">Règlement</div>
+    <div class="reglement">
+      <div class="reglement-row">
+        <span>Prix véhicule TTC</span>
+        <span class="value">{{vehiculePrix}} €</span>
       </div>
-    </div>
-    <div class="col">
-      <div class="section">
-        <div class="section-title">Règlement</div>
-        <table>
-          <tr><th>Acompte</th><td>{{acompte}} €</td></tr>
-          <tr><th>Mode de paiement</th><td>{{modePaiement}}</td></tr>
-          <tr><th>Livraison prévue</th><td>{{vehiculeDateLivraison}}</td></tr>
-        </table>
+      <!--REMISE_ROW_START-->
+      <div class="reglement-row negative">
+        <span>Remise accordée</span>
+        <span class="value">- {{vehiculeRemise}} €</span>
       </div>
-      <div class="section">
-        <div class="section-title">RIB</div>
-        <table>
-          <tr><th>Titulaire</th><td>{{ribTitulaire}}</td></tr>
-          <tr><th>IBAN</th><td>{{ribIban}}</td></tr>
-          <tr><th>BIC</th><td>{{ribBic}}</td></tr>
-          <tr><th>Banque</th><td>{{ribBanque}}</td></tr>
-        </table>
+      <!--REMISE_ROW_END-->
+      <!--REPRISE_ROW_START-->
+      <div class="reglement-row negative">
+        <span>Reprise véhicule ancien</span>
+        <span class="value">- {{reprise_valeur}} €</span>
+      </div>
+      <!--REPRISE_ROW_END-->
+      <div class="reglement-row net">
+        <span>Net à payer TTC</span>
+        <span class="value">{{netAPayer}} €</span>
+      </div>
+      <!--ACOMPTE_BLOCK_START-->
+      <div class="reglement-row">
+        <span>Acompte versé</span>
+        <span class="value">- {{acompte}} €</span>
+      </div>
+      <div class="reglement-row solde">
+        <span>Solde restant dû à la livraison</span>
+        <span class="value">{{solde}} €</span>
+      </div>
+      <!--ACOMPTE_BLOCK_END-->
+      <div class="reglement-row" style="margin-top: 10px;">
+        <span>Mode de paiement</span>
+        <span class="mode-pill">{{modePaiementLabel}}</span>
+      </div>
+      <div class="reglement-row">
+        <span>Date de livraison prévue</span>
+        <span class="value">{{vehiculeDateLivraison}}</span>
       </div>
     </div>
   </div>
-
-  {{vendeurNotesHtml}}
 
   <div class="signatures">
     <div class="sig-box">
-      <div class="sig-title">L'acheteur (lu et approuvé, bon pour accord)</div>
-      <div style="font-size: 10px; margin-bottom: 4px;">{{clientPrenom}} {{clientNom}}</div>
+      <div class="sig-title">L'acheteur</div>
+      <div class="sig-name">{{clientPrenom}} {{clientNom}}</div>
+      <div style="font-size: 9px; color: #666; margin-bottom: 6px;">Lu et approuvé, bon pour accord</div>
       <div class="sig-line"></div>
       <div class="sig-date">Date : {{bonDate}}</div>
     </div>
     <div class="sig-box">
       <div class="sig-title">Le vendeur</div>
-      <div style="font-size: 10px; margin-bottom: 4px;">{{vendeurNom}}</div>
+      <div class="sig-name">{{concessionNom}}</div>
+      <div style="font-size: 9px; color: #666; margin-bottom: 6px;">Cachet & signature</div>
       <div class="sig-line"></div>
       <div class="sig-date">Date : {{bonDate}}</div>
     </div>
   </div>
 
   <div class="footer">
-    Ce bon de commande constitue un engagement ferme et définitif des deux parties, sous réserve des conditions suspensives mentionnées ci-dessus.
+    Ce bon de commande constitue un engagement ferme et définitif entre les parties, sous réserve des conditions suspensives éventuellement indiquées.
     Conformément aux articles L. 221-18 et suivants du Code de la consommation, l'acheteur dispose d'un délai de rétractation de 14 jours pour les ventes à distance.
   </div>
+
 </div>
 </body>
 </html>`;
@@ -176,127 +203,120 @@ function escapeHtml(s: string): string {
 }
 
 function parseNum(s: string): number {
-  const n = parseFloat(String(s).replace(/\s/g, "").replace(",", "."));
+  const n = parseFloat(String(s ?? "").replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatMoney(s: string): string {
-  const n = parseNum(s);
-  if (n === 0 && !s.trim()) return "—";
+function formatMoney(n: number): string {
   return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const STANDARD_KEYS = new Set([
-  "clientNom", "clientPrenom", "clientDateNaissance", "clientNumeroCni",
-  "clientAdresse", "clientEmail", "clientTelephone",
-  "ribTitulaire", "ribIban", "ribBic", "ribBanque",
-  "vehiculeModele", "vehiculeVin", "vehiculePremiereCirculation",
-  "vehiculeKilometrage", "vehiculeCo2", "vehiculeChevaux",
-  "vehiculePrix", "vehiculeCouleur", "vehiculeOptions",
-  "vehiculeCarteGrise", "vehiculeFraisReprise", "vehiculeRemise",
-  "vehiculeFinancement", "vehiculeDateLivraison", "vehiculeReprise",
-  "acompte", "modePaiement", "apport", "organismePreteur",
-  "montantCredit", "tauxCredit", "dureeMois", "clauseSuspensive",
-  "vendeurNom", "vendeurNotes", "optionsMode", "optionsPrixTotal",
-  "optionsDetailJson", "templateId",
-]);
+function stripBlock(html: string, startMarker: string, endMarker: string): string {
+  const re = new RegExp(`${startMarker}[\\s\\S]*?${endMarker}`, "g");
+  return html.replace(re, "");
+}
+
+function keepBlock(html: string, startMarker: string, endMarker: string): string {
+  return html
+    .replace(new RegExp(startMarker, "g"), "")
+    .replace(new RegExp(endMarker, "g"), "");
+}
+
+/* ================================================================== */
+/*  Build HTML                                                         */
+/* ================================================================== */
 
 function buildHtml(formData: Record<string, string>): string {
   let html = getHtmlTemplate();
 
-  const get = (key: string) => escapeHtml(formData[key]?.trim() ?? "");
-  const getMoney = (key: string) => formatMoney(formData[key] ?? "");
+  const get = (key: string) => escapeHtml((formData[key] ?? "").trim());
 
   const today = new Date().toLocaleDateString("fr-FR", {
     day: "2-digit", month: "2-digit", year: "numeric",
   });
   const bonNumero = `BC-${Date.now().toString(36).toUpperCase()}`;
 
-  const prix = parseNum(formData.vehiculePrix ?? "");
-  const options = parseNum(formData.optionsPrixTotal ?? "");
-  const frais = parseNum(formData.vehiculeFraisReprise ?? "");
-  const remise = parseNum(formData.vehiculeRemise ?? "");
-  const reprise = parseNum(formData.vehiculeReprise ?? "");
-  const totalFinal = Math.max(0, prix + options + frais - remise - reprise);
+  // Montants
+  const prix = parseNum(formData.vehiculePrix);
+  const remise = parseNum(formData.vehiculeRemise);
+  // La reprise n'est prise en compte que si l'utilisateur a saisi une valeur > 0.
+  // C'est le seul critère d'affichage pour l'utilisateur final : pas besoin de
+  // s'appuyer sur un toggle séparé dans le PDF.
+  const repriseValeur = parseNum(formData.reprise_valeur);
+  const repriseActive = repriseValeur > 0;
+  const netAPayer = Math.max(0, prix - remise - repriseValeur);
+  const acompte = parseNum(formData.acompte);
+  const solde = Math.max(0, netAPayer - acompte);
+
+  // Sections conditionnelles
+  if (repriseActive) {
+    html = keepBlock(html, "<!--REPRISE_SECTION_START-->", "<!--REPRISE_SECTION_END-->");
+    html = keepBlock(html, "<!--REPRISE_ROW_START-->", "<!--REPRISE_ROW_END-->");
+  } else {
+    html = stripBlock(html, "<!--REPRISE_SECTION_START-->", "<!--REPRISE_SECTION_END-->");
+    html = stripBlock(html, "<!--REPRISE_ROW_START-->", "<!--REPRISE_ROW_END-->");
+  }
+
+  if (remise > 0) {
+    html = keepBlock(html, "<!--REMISE_ROW_START-->", "<!--REMISE_ROW_END-->");
+  } else {
+    html = stripBlock(html, "<!--REMISE_ROW_START-->", "<!--REMISE_ROW_END-->");
+  }
+
+  if (acompte > 0) {
+    html = keepBlock(html, "<!--ACOMPTE_BLOCK_START-->", "<!--ACOMPTE_BLOCK_END-->");
+  } else {
+    html = stripBlock(html, "<!--ACOMPTE_BLOCK_START-->", "<!--ACOMPTE_BLOCK_END-->");
+  }
+
+  // Libellé mode paiement
+  const modeRaw = (formData.modePaiement ?? "").trim().toLowerCase();
+  const modePaiementLabel = modeRaw === "financement" ? "Financement" : "Comptant";
+
+  // Concession : fallback sur env/placeholder
+  const concessionNom =
+    get("concessionNom") || escapeHtml(process.env.CONCESSION_NOM ?? "") || "Concession";
 
   const replacements: Record<string, string> = {
+    concessionNom,
     bonNumero,
     bonDate: today,
+
     clientNom: get("clientNom"),
     clientPrenom: get("clientPrenom"),
     clientDateNaissance: get("clientDateNaissance"),
     clientNumeroCni: get("clientNumeroCni"),
     clientAdresse: get("clientAdresse"),
-    clientTelephone: get("clientTelephone"),
-    clientEmail: get("clientEmail"),
+
     vehiculeModele: get("vehiculeModele"),
     vehiculeVin: get("vehiculeVin"),
-    vehiculeCarteGrise: get("vehiculeCarteGrise"),
     vehiculePremiereCirculation: get("vehiculePremiereCirculation"),
     vehiculeKilometrage: get("vehiculeKilometrage"),
     vehiculeCouleur: get("vehiculeCouleur"),
     vehiculeChevaux: get("vehiculeChevaux"),
     vehiculeCo2: get("vehiculeCo2"),
-    vehiculePrix: getMoney("vehiculePrix"),
-    optionsPrixTotal: getMoney("optionsPrixTotal"),
-    vehiculeFraisReprise: getMoney("vehiculeFraisReprise"),
-    vehiculeRemise: getMoney("vehiculeRemise"),
-    vehiculeReprise: getMoney("vehiculeReprise"),
-    totalFinal: totalFinal.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-    vehiculeFinancement: get("vehiculeFinancement"),
-    apport: getMoney("apport"),
-    organismePreteur: get("organismePreteur"),
-    montantCredit: getMoney("montantCredit"),
-    tauxCredit: get("tauxCredit"),
-    dureeMois: get("dureeMois"),
-    clauseSuspensive: formData.clauseSuspensive === "oui" ? "Oui (14 jours)" : "Non",
-    acompte: getMoney("acompte"),
-    modePaiement: get("modePaiement"),
+    vehiculePrix: formatMoney(prix),
+
+    reprise_plaque: get("reprise_plaque"),
+    reprise_marque: get("reprise_marque"),
+    reprise_modele: get("reprise_modele"),
+    reprise_annee: get("reprise_annee"),
+    reprise_premiere_circulation: get("reprise_premiere_circulation"),
+    reprise_valeur: formatMoney(repriseValeur),
+
+    vehiculeRemise: formatMoney(remise),
+    netAPayer: formatMoney(netAPayer),
+    acompte: formatMoney(acompte),
+    solde: formatMoney(solde),
+    modePaiementLabel,
     vehiculeDateLivraison: get("vehiculeDateLivraison"),
-    ribTitulaire: get("ribTitulaire"),
-    ribIban: get("ribIban"),
-    ribBic: get("ribBic"),
-    ribBanque: get("ribBanque"),
-    vendeurNom: get("vendeurNom"),
   };
 
   for (const [key, value] of Object.entries(replacements)) {
     html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value || "—");
   }
 
-  const customEntries: Array<[string, string]> = [];
-  for (const [key, value] of Object.entries(formData)) {
-    if (STANDARD_KEYS.has(key)) continue;
-    const val = (value ?? "").trim();
-    if (!val) continue;
-    const label = key
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-    customEntries.push([label, escapeHtml(val)]);
-  }
-
-  if (customEntries.length > 0) {
-    const rows = customEntries
-      .map(([label, val]) => `<tr><th>${label}</th><td>${val}</td></tr>`)
-      .join("");
-    html = html.replace(
-      "{{customVehicleFieldsHtml}}",
-      `<div class="section"><div class="section-title">Informations complémentaires</div><table>${rows}</table></div>`,
-    );
-  } else {
-    html = html.replace("{{customVehicleFieldsHtml}}", "");
-  }
-
-  const notes = (formData.vendeurNotes ?? "").trim();
-  if (notes) {
-    html = html.replace(
-      "{{vendeurNotesHtml}}",
-      `<div class="section"><div class="section-title">Observations</div><div style="border:1px solid #d0d4e4;padding:8px;font-size:10.5px;">${escapeHtml(notes)}</div></div>`,
-    );
-  } else {
-    html = html.replace("{{vendeurNotesHtml}}", "");
-  }
-
+  // Remplace tout placeholder restant par "—"
   html = html.replace(/\{\{[a-zA-Z0-9_]+\}\}/g, "—");
 
   return html;
@@ -314,7 +334,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let body: Record<string, unknown>;
   if (typeof req.body === "string") {
-    try { body = JSON.parse(req.body); } catch { return res.status(400).json({ error: "JSON invalide" }); }
+    try {
+      body = JSON.parse(req.body);
+    } catch {
+      return res.status(400).json({ error: "JSON invalide" });
+    }
   } else {
     body = req.body ?? {};
   }
@@ -345,13 +369,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const pdfBase64 = Buffer.from(pdfBuffer).toString("base64");
-
     return res.status(200).json({ pdfBase64 });
-  } catch (err: any) {
-    console.error("[generate-pdf] Error:", err?.message, err?.stack);
-    return res.status(500).json({
-      error: err?.message ?? "Erreur lors de la génération du PDF",
-    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[generate-pdf] Error:", message);
+    return res.status(500).json({ error: message || "Erreur lors de la génération du PDF" });
   } finally {
     if (browser) {
       await browser.close().catch(() => {});

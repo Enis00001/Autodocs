@@ -8,20 +8,11 @@ import { loadDrafts } from "@/utils/drafts";
 const Historique = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
   const [filterDate, setFilterDate] = useState<string>("");
-  const [filterVendeur, setFilterVendeur] = useState<string>("");
   const navigate = useNavigate();
 
   useEffect(() => {
     loadDrafts().then(setDrafts);
   }, []);
-
-  const vendeurNoms = useMemo(() => {
-    const set = new Set<string>();
-    drafts.forEach((d) => {
-      if (d.vendeurNom?.trim()) set.add(d.vendeurNom.trim());
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [drafts]);
 
   const filteredDrafts = useMemo(() => {
     return drafts.filter((d) => {
@@ -33,10 +24,9 @@ const Historique = () => {
         const draftDateStr = `${y}-${m}-${day}`;
         if (draftDateStr !== filterDate) return false;
       }
-      if (filterVendeur && (d.vendeurNom?.trim() || "") !== filterVendeur) return false;
       return true;
     });
-  }, [drafts, filterDate, filterVendeur]);
+  }, [drafts, filterDate]);
 
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString("fr-FR", {
@@ -82,18 +72,6 @@ const Historique = () => {
               </button>
             ) : null}
           </div>
-          <select
-            className="field-input cursor-pointer min-w-[180px]"
-            value={filterVendeur}
-            onChange={(e) => setFilterVendeur(e.target.value)}
-          >
-            <option value="">Tous les vendeurs</option>
-            {vendeurNoms.map((nom) => (
-              <option key={nom} value={nom}>
-                {nom}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div className="card-autodocs">
@@ -102,7 +80,6 @@ const Historique = () => {
               <tr className="border-b border-border text-muted-foreground text-left">
                 <th className="pb-3 font-medium">Client</th>
                 <th className="pb-3 font-medium">Véhicule</th>
-                <th className="pb-3 font-medium">Vendeur</th>
                 <th className="pb-3 font-medium">Date</th>
                 <th className="pb-3 font-medium">Statut</th>
                 <th className="pb-3 font-medium"></th>
@@ -111,7 +88,7 @@ const Historique = () => {
             <tbody>
               {filteredDrafts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-muted-foreground text-sm">
+                  <td colSpan={5} className="py-8 text-center text-muted-foreground text-sm">
                     {drafts.length === 0
                       ? "Aucun bon de commande pour le moment"
                       : "Aucun bon ne correspond aux filtres"}
@@ -122,7 +99,6 @@ const Historique = () => {
                   <tr key={d.id} className="border-b border-border/50 last:border-0 row-hover">
                     <td className="py-3 font-medium">{clientLabel(d)}</td>
                     <td className="py-3 text-muted-foreground">{d.vehiculeModele || "—"}</td>
-                    <td className="py-3 text-muted-foreground">{d.vendeurNom || "—"}</td>
                     <td className="py-3 text-muted-foreground">{formatDate(d.createdAt)}</td>
                     <td className="py-3">
                       <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-warning/15 text-warning">

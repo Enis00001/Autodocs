@@ -1,56 +1,57 @@
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserId } from "@/lib/auth";
 
-/** Une option détaillée (nom + prix) pour la section Prix & coûts */
-export type OptionDetail = { name: string; price: string };
-
 export type DocumentScannedState = {
   status: "ok" | "invalid" | "unreadable";
   detail: string;
   extractedData?: Record<string, string>;
 };
 
+/**
+ * V1 simplifiée — 3 sections : Client / Véhicule (+ reprise optionnelle) / Règlement.
+ * Les champs hérités (options, financement complexe, RIB, vendeur, templates…) ne
+ * font plus partie du formulaire. Les colonnes DB correspondantes restent en place
+ * (DEFAULT '') pour préserver les anciens brouillons.
+ */
 export type BonDraftData = {
   id: string;
   createdAt: string;
   updatedAt: string;
+
+  // Section 1 — Client
   clientNom: string;
   clientPrenom: string;
   clientDateNaissance: string;
   clientNumeroCni: string;
   clientAdresse: string;
+
+  // Section 2 — Véhicule (auto-rempli depuis stock)
   vehiculeModele: string;
   vehiculeVin: string;
   vehiculePremiereCirculation: string;
   vehiculeKilometrage: string;
   vehiculeCo2: string;
   vehiculeChevaux: string;
-  vehiculePrix: string;
-  optionsMode: "total" | "detail";
-  optionsPrixTotal: string;
-  optionsDetailJson: string;
-  vehiculeCarteGrise: string;
-  vehiculeFraisReprise: string;
-  vehiculeRemise: string;
-  vehiculeFinancement: string;
-  vehiculeDateLivraison: string;
-  vehiculeReprise: string;
   vehiculeCouleur: string;
-  vehiculeOptions: string;
+  vehiculePrix: string;
+
+  // Section 2b — Reprise véhicule (toggle + recherche par plaque)
+  repriseActive: boolean;
+  reprisePlaque: string;
+  repriseMarque: string;
+  repriseModele: string;
+  repriseAnnee: string;
+  reprisePremiereCirculation: string;
+  repriseValeur: string;
+
+  // Section 3 — Règlement
+  modePaiement: "comptant" | "financement";
   acompte: string;
-  modePaiement: "virement" | "cheque" | "cb";
-  apport: string;
-  organismePreteur: string;
-  montantCredit: string;
-  tauxCredit: string;
-  dureeMois: string;
-  clauseSuspensive: boolean;
-  vendeurNom: string;
-  vendeurNotes: string;
-  templateId: string;
+  vehiculeRemise: string;
+  vehiculeDateLivraison: string;
+
+  // Scans de documents (CNI, etc.)
   documentsScanned: Record<string, DocumentScannedState>;
-  /** Valeurs des champs véhicule configurés (clés = field_key). */
-  vehicleFieldValues: Record<string, string>;
 };
 
 type BrouillonRow = {
@@ -68,30 +69,18 @@ type BrouillonRow = {
   vehicule_kilometrage: string;
   vehicule_co2: string;
   vehicule_chevaux: string;
-  vehicule_prix: string;
-  options_mode: string;
-  options_prix_total: string;
-  options_detail_json: string;
-  vehicule_carte_grise: string;
-  vehicule_frais_reprise: string;
-  vehicule_remise: string;
-  vehicule_financement: string;
-  vehicule_date_livraison: string;
-  vehicule_reprise: string;
   vehicule_couleur: string;
-  vehicule_options: string;
+  vehicule_prix: string;
+  vehicule_remise: string;
+  vehicule_date_livraison: string;
   acompte: string;
   mode_paiement: string;
-  apport: string;
-  organisme_preteur: string;
-  montant_credit: string;
-  taux_credit: string;
-  duree_mois: string;
-  clause_suspensive: boolean;
-  vendeur_nom: string;
-  vendeur_notes: string;
-  template_id: string;
   documents_scanned: unknown;
+  /**
+   * JSONB libre. Utilisé en V1 pour stocker les champs reprise_* (pas de migration
+   * DB nécessaire) : reprise_active, reprise_plaque, reprise_marque, reprise_modele,
+   * reprise_annee, reprise_premiere_circulation, reprise_valeur.
+   */
   vehicle_field_values: unknown;
 };
 
@@ -122,7 +111,7 @@ function sanitizeScannedDocuments(value: unknown): Record<string, DocumentScanne
   return out;
 }
 
-function sanitizeVehicleFieldValues(value: unknown): Record<string, string> {
+function readKv(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object") return {};
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
@@ -132,6 +121,8 @@ function sanitizeVehicleFieldValues(value: unknown): Record<string, string> {
 }
 
 function rowToDraft(row: BrouillonRow): BonDraftData {
+  const kv = readKv(row.vehicle_field_values);
+  const mode = row.mode_paiement === "financement" ? "financement" : "comptant";
   return {
     id: row.id,
     createdAt: row.created_at,
@@ -147,39 +138,34 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     vehiculeKilometrage: row.vehicule_kilometrage ?? "",
     vehiculeCo2: row.vehicule_co2 ?? "",
     vehiculeChevaux: row.vehicule_chevaux ?? "",
-    vehiculePrix: row.vehicule_prix ?? "",
-    optionsMode: (row.options_mode === "detail" ? "detail" : "total") as "total" | "detail",
-    optionsPrixTotal: row.options_prix_total ?? "",
-    optionsDetailJson: row.options_detail_json ?? "[]",
-    vehiculeCarteGrise: row.vehicule_carte_grise ?? "",
-    vehiculeFraisReprise: row.vehicule_frais_reprise ?? "",
-    vehiculeRemise: row.vehicule_remise ?? "",
-    vehiculeFinancement: row.vehicule_financement ?? "",
-    vehiculeDateLivraison: row.vehicule_date_livraison ?? "",
-    vehiculeReprise: row.vehicule_reprise ?? "",
     vehiculeCouleur: row.vehicule_couleur ?? "",
-    vehiculeOptions: row.vehicule_options ?? "",
+    vehiculePrix: row.vehicule_prix ?? "",
+    repriseActive: kv.reprise_active === "true",
+    reprisePlaque: kv.reprise_plaque ?? "",
+    repriseMarque: kv.reprise_marque ?? "",
+    repriseModele: kv.reprise_modele ?? "",
+    repriseAnnee: kv.reprise_annee ?? "",
+    reprisePremiereCirculation: kv.reprise_premiere_circulation ?? "",
+    repriseValeur: kv.reprise_valeur ?? "",
+    modePaiement: mode,
     acompte: row.acompte ?? "",
-    modePaiement: (row.mode_paiement === "cheque" ? "cheque" : row.mode_paiement === "cb" ? "cb" : "virement") as "virement" | "cheque" | "cb",
-    apport: row.apport ?? "",
-    organismePreteur: row.organisme_preteur ?? "",
-    montantCredit: row.montant_credit ?? "",
-    tauxCredit: row.taux_credit ?? "",
-    dureeMois: row.duree_mois ?? "",
-    clauseSuspensive: Boolean(row.clause_suspensive),
-    vendeurNom: row.vendeur_nom ?? "",
-    vendeurNotes: row.vendeur_notes ?? "",
-    templateId: row.template_id ?? "",
+    vehiculeRemise: row.vehicule_remise ?? "",
+    vehiculeDateLivraison: row.vehicule_date_livraison ?? "",
     documentsScanned: sanitizeScannedDocuments(row.documents_scanned),
-    vehicleFieldValues: sanitizeVehicleFieldValues(row.vehicle_field_values),
   };
 }
 
-function draftToRow(d: BonDraftData): Omit<BrouillonRow, "created_at" | "updated_at"> & { created_at?: string; updated_at?: string } {
+function draftToPayload(d: BonDraftData) {
+  const kv: Record<string, string> = {
+    reprise_active: d.repriseActive ? "true" : "false",
+    reprise_plaque: d.reprisePlaque,
+    reprise_marque: d.repriseMarque,
+    reprise_modele: d.repriseModele,
+    reprise_annee: d.repriseAnnee,
+    reprise_premiere_circulation: d.reprisePremiereCirculation,
+    reprise_valeur: d.repriseValeur,
+  };
   return {
-    id: d.id,
-    created_at: d.createdAt,
-    updated_at: d.updatedAt,
     client_nom: d.clientNom,
     client_prenom: d.clientPrenom,
     client_date_naissance: d.clientDateNaissance,
@@ -191,31 +177,14 @@ function draftToRow(d: BonDraftData): Omit<BrouillonRow, "created_at" | "updated
     vehicule_kilometrage: d.vehiculeKilometrage,
     vehicule_co2: d.vehiculeCo2,
     vehicule_chevaux: d.vehiculeChevaux,
-    vehicule_prix: d.vehiculePrix,
-    options_mode: d.optionsMode,
-    options_prix_total: d.optionsPrixTotal,
-    options_detail_json: d.optionsDetailJson,
-    vehicule_carte_grise: d.vehiculeCarteGrise,
-    vehicule_frais_reprise: d.vehiculeFraisReprise,
-    vehicule_remise: d.vehiculeRemise,
-    vehicule_financement: d.vehiculeFinancement,
-    vehicule_date_livraison: d.vehiculeDateLivraison,
-    vehicule_reprise: d.vehiculeReprise,
     vehicule_couleur: d.vehiculeCouleur,
-    vehicule_options: d.vehiculeOptions,
+    vehicule_prix: d.vehiculePrix,
+    vehicule_remise: d.vehiculeRemise,
+    vehicule_date_livraison: d.vehiculeDateLivraison,
     acompte: d.acompte,
     mode_paiement: d.modePaiement,
-    apport: d.apport,
-    organisme_preteur: d.organismePreteur,
-    montant_credit: d.montantCredit,
-    taux_credit: d.tauxCredit,
-    duree_mois: d.dureeMois,
-    clause_suspensive: d.clauseSuspensive,
-    vendeur_nom: d.vendeurNom,
-    vendeur_notes: d.vendeurNotes,
-    template_id: d.templateId,
     documents_scanned: d.documentsScanned ?? {},
-    vehicle_field_values: d.vehicleFieldValues ?? {},
+    vehicle_field_values: kv,
   };
 }
 
@@ -237,7 +206,12 @@ export async function loadDrafts(): Promise<BonDraftData[]> {
 export async function getDraft(id: string): Promise<BonDraftData | undefined> {
   const userId = await getCurrentUserId();
   if (!userId) return undefined;
-  const { data, error } = await supabase.from("brouillons").select("*").eq("id", id).eq("user_id", userId).maybeSingle();
+  const { data, error } = await supabase
+    .from("brouillons")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
   if (error) {
     console.error("getDraft:", error);
     return undefined;
@@ -272,54 +246,15 @@ export async function upsertDraft(
       .eq("user_id", userId)
       .maybeSingle();
     if (existing) {
-      const updated: BonDraftData = {
+      const merged: BonDraftData = {
         ...rowToDraft(existing as BrouillonRow),
         ...partial,
         id: partial.id,
         updatedAt: now,
       };
-      const row = draftToRow(updated);
       const { error } = await supabase
         .from("brouillons")
-        .update({
-          updated_at: now,
-          client_nom: row.client_nom,
-          client_prenom: row.client_prenom,
-          client_date_naissance: row.client_date_naissance,
-          client_numero_cni: row.client_numero_cni,
-          client_adresse: row.client_adresse,
-          vehicule_modele: row.vehicule_modele,
-          vehicule_vin: row.vehicule_vin,
-          vehicule_premiere_circulation: row.vehicule_premiere_circulation,
-          vehicule_kilometrage: row.vehicule_kilometrage,
-          vehicule_co2: row.vehicule_co2,
-          vehicule_chevaux: row.vehicule_chevaux,
-          vehicule_prix: row.vehicule_prix,
-          options_mode: row.options_mode,
-          options_prix_total: row.options_prix_total,
-          options_detail_json: row.options_detail_json,
-          vehicule_carte_grise: row.vehicule_carte_grise,
-          vehicule_frais_reprise: row.vehicule_frais_reprise,
-          vehicule_remise: row.vehicule_remise,
-          vehicule_financement: row.vehicule_financement,
-          vehicule_date_livraison: row.vehicule_date_livraison,
-          vehicule_reprise: row.vehicule_reprise,
-          vehicule_couleur: row.vehicule_couleur,
-          vehicule_options: row.vehicule_options,
-          acompte: row.acompte,
-          mode_paiement: row.mode_paiement,
-          apport: row.apport,
-          organisme_preteur: row.organisme_preteur,
-          montant_credit: row.montant_credit,
-          taux_credit: row.taux_credit,
-          duree_mois: row.duree_mois,
-          clause_suspensive: row.clause_suspensive,
-          vendeur_nom: row.vendeur_nom,
-          vendeur_notes: row.vendeur_notes,
-          template_id: row.template_id,
-          documents_scanned: row.documents_scanned,
-          vehicle_field_values: row.vehicle_field_values,
-        })
+        .update({ updated_at: now, ...draftToPayload(merged) })
         .eq("id", partial.id)
         .eq("user_id", userId);
       if (error) {
@@ -329,7 +264,7 @@ export async function upsertDraft(
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("autodocs_drafts_updated"));
       }
-      return updated;
+      return merged;
     }
   }
 
@@ -341,48 +276,12 @@ export async function upsertDraft(
     createdAt: now,
     updatedAt: now,
   };
-  const row = draftToRow(created);
   const { error } = await supabase.from("brouillons").insert({
     user_id: userId,
-    id: row.id,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    client_nom: row.client_nom,
-    client_prenom: row.client_prenom,
-    client_date_naissance: row.client_date_naissance,
-    client_numero_cni: row.client_numero_cni,
-    client_adresse: row.client_adresse,
-    vehicule_modele: row.vehicule_modele,
-    vehicule_vin: row.vehicule_vin,
-    vehicule_premiere_circulation: row.vehicule_premiere_circulation,
-    vehicule_kilometrage: row.vehicule_kilometrage,
-    vehicule_co2: row.vehicule_co2,
-    vehicule_chevaux: row.vehicule_chevaux,
-    vehicule_prix: row.vehicule_prix,
-    options_mode: row.options_mode,
-    options_prix_total: row.options_prix_total,
-    options_detail_json: row.options_detail_json,
-    vehicule_carte_grise: row.vehicule_carte_grise,
-    vehicule_frais_reprise: row.vehicule_frais_reprise,
-    vehicule_remise: row.vehicule_remise,
-    vehicule_financement: row.vehicule_financement,
-    vehicule_date_livraison: row.vehicule_date_livraison,
-    vehicule_reprise: row.vehicule_reprise,
-    vehicule_couleur: row.vehicule_couleur,
-    vehicule_options: row.vehicule_options,
-    acompte: row.acompte,
-    mode_paiement: row.mode_paiement,
-    apport: row.apport,
-    organisme_preteur: row.organisme_preteur,
-    montant_credit: row.montant_credit,
-    taux_credit: row.taux_credit,
-    duree_mois: row.duree_mois,
-    clause_suspensive: row.clause_suspensive,
-    vendeur_nom: row.vendeur_nom,
-    vendeur_notes: row.vendeur_notes,
-    template_id: row.template_id,
-    documents_scanned: row.documents_scanned,
-    vehicle_field_values: row.vehicle_field_values,
+    id,
+    created_at: now,
+    updated_at: now,
+    ...draftToPayload(created),
   });
   if (error) {
     console.error("upsertDraft insert:", error);
