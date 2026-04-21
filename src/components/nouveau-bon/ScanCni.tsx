@@ -223,17 +223,23 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
       </div>
 
       {modalOpen && (
-        <div
-          className="fixed top-0 left-0 w-full h-full z-[9999] flex items-center justify-center p-4 animate-in fade-in-0 duration-200"
-          style={{ background: "rgba(0,0,0,0.6)" }}
-          onClick={() => setModalOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-cni-title"
-        >
+        <>
           <div
-            className="w-full max-w-[640px] max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-5 md:p-6"
+            className="fixed top-0 left-0 w-[100vw] h-[100vh] z-[9998] animate-in fade-in-0 duration-200"
+            style={{ background: "rgba(0,0,0,0.5)" }}
+            onClick={() => setModalOpen(false)}
+          />
+          <div
+            className="fixed z-[9999] w-[calc(100vw-2rem)] max-w-[640px] max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-5 md:p-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-200"
+            style={{
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+            }}
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-cni-title"
           >
             <h2 id="modal-cni-title" className="font-display text-lg font-bold mb-4">
               Carte d'identité
@@ -337,7 +343,7 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

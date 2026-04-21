@@ -111,25 +111,29 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
       </div>
 
       {modalOpen && (
-        <div
-          className="fixed top-0 left-0 w-full h-full z-[9999] flex items-center justify-center p-4 animate-in fade-in-0 duration-200"
-          style={{ background: "rgba(0,0,0,0.6)" }}
-          onClick={() => {
-            if (!isGenerating) setModalOpen(false);
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-generate-title"
-        >
+        <>
           <div
-            className="w-full max-w-[400px] animate-in fade-in-0 slide-in-from-bottom-4 duration-200"
+            className="fixed top-0 left-0 w-[100vw] h-[100vh] z-[9998] animate-in fade-in-0 duration-200"
+            style={{ background: "rgba(0,0,0,0.5)" }}
+            onClick={() => {
+              if (!isGenerating) setModalOpen(false);
+            }}
+          />
+          <div
+            className="fixed z-[9999] w-[calc(100vw-2rem)] max-w-[400px] animate-in fade-in-0 slide-in-from-bottom-4 duration-200"
             style={{
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
               borderRadius: 16,
               background: "#111118",
               border: "1px solid #2a2a35",
               padding: 28,
             }}
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-generate-title"
           >
             <h2
               id="modal-generate-title"
@@ -190,7 +194,7 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
               </div>
             )}
           </div>
-        </div>
+        </>
       )}
     </>
   );
