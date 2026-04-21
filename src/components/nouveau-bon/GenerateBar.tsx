@@ -120,11 +120,11 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
             }}
           />
           <div
-            className="fixed z-[9999] w-[calc(100vw-2rem)] max-w-[400px] animate-in fade-in-0 slide-in-from-bottom-4 duration-200"
+            className="fixed z-[9999] w-[calc(100vw-2rem)] max-w-[400px] animate-in fade-in-0 slide-in-from-top-4 duration-200"
             style={{
-              top: "50%",
+              top: "2.5rem",
               left: "50%",
-              transform: "translate(-50%, -50%)",
+              transform: "translateX(-50%)",
               borderRadius: 16,
               background: "#111118",
               border: "1px solid #2a2a35",

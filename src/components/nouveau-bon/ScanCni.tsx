@@ -230,11 +230,11 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
             onClick={() => setModalOpen(false)}
           />
           <div
-            className="fixed z-[9999] w-[calc(100vw-2rem)] max-w-[640px] max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card p-5 md:p-6 animate-in fade-in-0 slide-in-from-bottom-4 duration-200"
+            className="fixed z-[9999] w-[calc(100vw-2rem)] max-w-[640px] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-2xl border border-border bg-card p-5 md:p-6 animate-in fade-in-0 slide-in-from-top-4 duration-200"
             style={{
-              top: "50%",
+              top: "2.5rem",
               left: "50%",
-              transform: "translate(-50%, -50%)",
+              transform: "translateX(-50%)",
             }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
