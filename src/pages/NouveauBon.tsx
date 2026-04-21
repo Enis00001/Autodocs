@@ -280,15 +280,25 @@ const NouveauBon = () => {
   };
 
   const handleSaveDraft = async () => {
-    const saved = await upsertDraft(formState);
-    const { dismiss } = toast({
-      title: "Brouillon sauvegardé ✓",
-    });
-    setTimeout(() => {
-      dismiss();
-    }, 3000);
-    navigate("/");
-    setFormState((prev) => ({ ...prev, id: saved.id }));
+    try {
+      const saved = await upsertDraft(formState);
+      const { dismiss } = toast({
+        title: "Brouillon sauvegardé ✓",
+      });
+      setTimeout(() => {
+        dismiss();
+      }, 3000);
+      navigate("/");
+      setFormState((prev) => ({ ...prev, id: saved.id }));
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Impossible de sauvegarder le brouillon.";
+      toast({
+        title: "Échec de sauvegarde",
+        description: message,
+        variant: "destructive",
+      });
+    }
   };
 
   return (

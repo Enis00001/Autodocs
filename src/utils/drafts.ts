@@ -284,14 +284,7 @@ export async function upsertDraft(
 ): Promise<BonDraftData> {
   const userId = await getCurrentUserId();
   if (!userId) {
-    const nowNoUser = new Date().toISOString();
-    const idNoUser = partial.id ?? crypto.randomUUID?.() ?? String(Date.now());
-    return {
-      ...(partial as Omit<BonDraftData, "id" | "createdAt" | "updatedAt">),
-      id: idNoUser,
-      createdAt: nowNoUser,
-      updatedAt: nowNoUser,
-    };
+    throw new Error("Session expirée. Reconnectez-vous pour sauvegarder le brouillon.");
   }
   const now = new Date().toISOString();
 
@@ -359,7 +352,10 @@ export async function upsertDraft(
         })
         .eq("id", partial.id)
         .eq("user_id", userId);
-      if (error) console.error("upsertDraft update:", error);
+      if (error) {
+        console.error("upsertDraft update:", error);
+        throw new Error(error.message || "Erreur lors de la mise à jour du brouillon.");
+      }
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("autodocs_drafts_updated"));
       }
@@ -424,7 +420,10 @@ export async function upsertDraft(
     documents_scanned: row.documents_scanned,
     vehicle_field_values: row.vehicle_field_values,
   });
-  if (error) console.error("upsertDraft insert:", error);
+  if (error) {
+    console.error("upsertDraft insert:", error);
+    throw new Error(error.message || "Erreur lors de la création du brouillon.");
+  }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("autodocs_drafts_updated"));
   }

@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import Historique from "./pages/Historique";
 import TemplatesPage from "./pages/Templates";
 import VehicleFieldsPage from "./pages/VehicleFields";
+import StockVehicules from "./pages/StockVehicules";
 import Parametres from "./pages/Parametres";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/Login";
@@ -72,6 +73,7 @@ const App = () => {
               <Route path="/historique" element={<Historique />} />
               <Route path="/templates" element={<TemplatesPage />} />
               <Route path="/infos-vehicule" element={<VehicleFieldsPage />} />
+              <Route path="/stock-vehicules" element={<StockVehicules />} />
               <Route path="/parametres" element={<Parametres />} />
             </Route>
             <Route path="*" element={session ? <NotFound /> : <Navigate to="/login" replace />} />

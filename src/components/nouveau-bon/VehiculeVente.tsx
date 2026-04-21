@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, X } from "lucide-react";
 import type { BonDraftData, OptionDetail } from "@/utils/drafts";
 import { loadVendeurs } from "@/utils/vendeurs";
 import type { Vendeur } from "@/utils/vendeurs";
 import type { VehicleFieldRow } from "@/utils/vehicleFields";
 import { STANDARD_VEHICULE_VENTE_FIELDS } from "@/utils/bonFieldPreferences";
+import { getCurrentUserId } from "@/lib/auth";
+import {
+  searchVehicules,
+  vehiculeLabel,
+  type StockVehicule,
+} from "@/utils/stockVehicules";
 
 const FINANCEMENT_OPTIONS = ["Comptant", "Crédit classique", "LOA", "LLD"] as const;
 
@@ -40,6 +47,13 @@ const VehiculeVente = ({
   const [vendeurs, setVendeurs] = useState<Vendeur[]>([]);
   const [isLoadingVendeurs, setIsLoadingVendeurs] = useState(true);
   const [editMode, setEditMode] = useState(false);
+  const [concessionId, setConcessionId] = useState<string | null>(null);
+  const [stockQuery, setStockQuery] = useState("");
+  const [stockSuggestions, setStockSuggestions] = useState<StockVehicule[]>([]);
+  const [isStockSearching, setIsStockSearching] = useState(false);
+  const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<StockVehicule | null>(null);
+  const stockWrapperRef = useRef<HTMLDivElement | null>(null);
   const [newFieldLabel, setNewFieldLabel] = useState("");
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState("");
@@ -53,6 +67,61 @@ const VehiculeVente = ({
       .then(setVendeurs)
       .finally(() => setIsLoadingVendeurs(false));
   }, []);
+
+  useEffect(() => {
+    getCurrentUserId().then(setConcessionId);
+  }, []);
+
+  // Recherche stock avec debounce
+  useEffect(() => {
+    if (!concessionId) return;
+    const q = stockQuery.trim();
+    if (q.length < 1) {
+      setStockSuggestions([]);
+      setIsStockSearching(false);
+      return;
+    }
+    setIsStockSearching(true);
+    const handle = window.setTimeout(async () => {
+      const results = await searchVehicules(concessionId, q);
+      setStockSuggestions(results);
+      setIsStockSearching(false);
+    }, 220);
+    return () => window.clearTimeout(handle);
+  }, [stockQuery, concessionId]);
+
+  // Fermer le dropdown au clic extérieur
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!stockWrapperRef.current) return;
+      if (!stockWrapperRef.current.contains(e.target as Node)) {
+        setIsStockDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const handleSelectStockVehicule = (v: StockVehicule) => {
+    setSelectedStock(v);
+    setStockQuery("");
+    setStockSuggestions([]);
+    setIsStockDropdownOpen(false);
+    onChange({
+      vehiculeModele: vehiculeLabel(v),
+      vehiculePrix: v.prix ?? "",
+      vehiculeVin: v.vin ?? "",
+      vehiculeKilometrage: v.kilometrage ?? "",
+      vehiculeCouleur: v.couleur ?? "",
+      vehiculeChevaux: v.puissance ?? "",
+      vehiculeCo2: v.co2 ?? "",
+      vehiculePremiereCirculation: v.premiere_circulation ?? "",
+    });
+  };
+
+  const handleDeselectStockVehicule = () => {
+    setSelectedStock(null);
+  };
 
   const isComptant = form.vehiculeFinancement === "Comptant";
   const isCredit = form.vehiculeFinancement === "Crédit classique";
@@ -191,6 +260,101 @@ const VehiculeVente = ({
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
             Infos du véhicule
           </h3>
+
+          {/* --- Recherche stock véhicules --- */}
+          <div
+            ref={stockWrapperRef}
+            className="relative mb-4 rounded-lg border border-border/60 bg-background/30 p-3"
+          >
+            {selectedStock ? (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full font-semibold bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] whitespace-nowrap">
+                    ✓ Véhicule sélectionné
+                  </span>
+                  <span className="text-sm font-medium truncate" title={vehiculeLabel(selectedStock)}>
+                    {vehiculeLabel(selectedStock) || "—"}
+                  </span>
+                  {selectedStock.annee && (
+                    <span className="text-xs text-muted-foreground">({selectedStock.annee})</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer"
+                  onClick={handleDeselectStockVehicule}
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Désélectionner
+                </button>
+              </div>
+            ) : (
+              <>
+                <label className="field-label flex items-center gap-1.5 mb-1.5">
+                  <Search className="w-3.5 h-3.5" />
+                  Rechercher un véhicule dans le stock
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    className="field-input w-full"
+                    placeholder="ex: Peugeot 308, Clio IV, VIN…"
+                    value={stockQuery}
+                    onChange={(e) => {
+                      setStockQuery(e.target.value);
+                      setIsStockDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsStockDropdownOpen(true)}
+                  />
+                  {isStockDropdownOpen && stockQuery.trim() && (
+                    <div className="absolute top-full left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg z-30">
+                      {isStockSearching && stockSuggestions.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          Recherche…
+                        </div>
+                      )}
+                      {!isStockSearching && stockSuggestions.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">
+                          Aucun véhicule trouvé dans le stock
+                        </div>
+                      )}
+                      {stockSuggestions.map((v) => (
+                        <button
+                          type="button"
+                          key={v.id}
+                          className="w-full text-left px-3 py-2 hover:bg-secondary/80 transition-colors border-b border-border/40 last:border-b-0 cursor-pointer"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSelectStockVehicule(v);
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium truncate">
+                              {vehiculeLabel(v) || "—"}
+                            </span>
+                            {v.prix && (
+                              <span className="text-xs font-semibold text-primary whitespace-nowrap">
+                                {v.prix} €
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
+                            {v.annee && <span>{v.annee}</span>}
+                            {v.kilometrage && <span>• {v.kilometrage} km</span>}
+                            {v.couleur && <span>• {v.couleur}</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Aucune sélection : les champs ci-dessous restent éditables manuellement.
+                </p>
+              </>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className={stdFieldWrapperClass("vehiculeModele", "col-span-2")}>
               <StdFieldHeader fieldKey="vehiculeModele" label="Modèle du véhicule" />

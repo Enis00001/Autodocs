@@ -13,6 +13,7 @@ const navItems = [
   { title: "Historique", path: "/historique", icon: ClipboardList },
   { title: "Templates", path: "/templates", icon: FileText },
   { title: "Infos véhicule", path: "/infos-vehicule", icon: Car },
+  { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
   { title: "Paramètres", path: "/parametres", icon: Settings },
 ];
 
