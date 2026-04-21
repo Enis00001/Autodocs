@@ -35,9 +35,8 @@ const defaultFormState: DraftFormState = {
   reprisePlaque: "",
   repriseMarque: "",
   repriseModele: "",
-  repriseAnnee: "",
+  repriseVin: "",
   reprisePremiereCirculation: "",
-  repriseCouleur: "",
   repriseValeur: "",
   // Section 3 — Règlement
   modePaiement: "comptant",
@@ -76,9 +75,8 @@ function buildPdfFormData(form: DraftFormState): Record<string, string> {
     reprise_plaque: repriseOn ? form.reprisePlaque : "",
     reprise_marque: repriseOn ? form.repriseMarque : "",
     reprise_modele: repriseOn ? form.repriseModele : "",
-    reprise_annee: repriseOn ? form.repriseAnnee : "",
+    reprise_vin: repriseOn ? form.repriseVin : "",
     reprise_premiere_circulation: repriseOn ? form.reprisePremiereCirculation : "",
-    reprise_couleur: repriseOn ? form.repriseCouleur : "",
     reprise_valeur: repriseOn ? form.repriseValeur : "",
 
     modePaiement: form.modePaiement,

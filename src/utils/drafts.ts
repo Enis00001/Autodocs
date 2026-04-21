@@ -35,14 +35,13 @@ export type BonDraftData = {
   vehiculeCouleur: string;
   vehiculePrix: string;
 
-  // Section 2b — Reprise véhicule (toggle + recherche par plaque)
+  // Section 2b — Reprise véhicule (toggle + formulaire manuel)
   repriseActive: boolean;
   reprisePlaque: string;
   repriseMarque: string;
   repriseModele: string;
-  repriseAnnee: string;
+  repriseVin: string;
   reprisePremiereCirculation: string;
-  repriseCouleur: string;
   repriseValeur: string;
 
   // Section 3 — Règlement
@@ -80,7 +79,7 @@ type BrouillonRow = {
   /**
    * JSONB libre. Utilisé en V1 pour stocker les champs reprise_* (pas de migration
    * DB nécessaire) : reprise_active, reprise_plaque, reprise_marque, reprise_modele,
-   * reprise_annee, reprise_premiere_circulation, reprise_valeur.
+   * reprise_vin, reprise_premiere_circulation, reprise_valeur.
    */
   vehicle_field_values: unknown;
 };
@@ -145,9 +144,8 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     reprisePlaque: kv.reprise_plaque ?? "",
     repriseMarque: kv.reprise_marque ?? "",
     repriseModele: kv.reprise_modele ?? "",
-    repriseAnnee: kv.reprise_annee ?? "",
+    repriseVin: kv.reprise_vin ?? "",
     reprisePremiereCirculation: kv.reprise_premiere_circulation ?? "",
-    repriseCouleur: kv.reprise_couleur ?? "",
     repriseValeur: kv.reprise_valeur ?? "",
     modePaiement: mode,
     acompte: row.acompte ?? "",
@@ -163,9 +161,8 @@ function draftToPayload(d: BonDraftData) {
     reprise_plaque: d.reprisePlaque,
     reprise_marque: d.repriseMarque,
     reprise_modele: d.repriseModele,
-    reprise_annee: d.repriseAnnee,
+    reprise_vin: d.repriseVin,
     reprise_premiere_circulation: d.reprisePremiereCirculation,
-    reprise_couleur: d.repriseCouleur,
     reprise_valeur: d.repriseValeur,
   };
   return {

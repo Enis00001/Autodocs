@@ -105,7 +105,11 @@ function getHtmlTemplate(): string {
     <table>
       <tr>
         <th>Véhicule repris</th>
-        <td colspan="3">{{reprise_marque}} {{reprise_modele}} ({{reprise_annee}}) — Plaque : <strong>{{reprise_plaque}}</strong></td>
+        <td colspan="3">{{reprise_marque}} {{reprise_modele}} — Plaque : <strong>{{reprise_plaque}}</strong></td>
+      </tr>
+      <tr>
+        <th>N° VIN / Châssis</th>
+        <td colspan="3">{{reprise_vin}}</td>
       </tr>
       <tr>
         <th>Première circulation</th>
@@ -300,9 +304,8 @@ function buildHtml(formData: Record<string, string>): string {
     reprise_plaque: get("reprise_plaque"),
     reprise_marque: get("reprise_marque"),
     reprise_modele: get("reprise_modele"),
-    reprise_annee: get("reprise_annee"),
+    reprise_vin: get("reprise_vin"),
     reprise_premiere_circulation: get("reprise_premiere_circulation"),
-    reprise_couleur: get("reprise_couleur"),
     reprise_valeur: formatMoney(repriseValeur),
 
     vehiculeRemise: formatMoney(remise),

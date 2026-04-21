@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Search,
-  X,
-  Repeat2,
-  Loader2,
-  RotateCcw,
-  AlertCircle,
-  CheckCircle2,
-} from "lucide-react";
+import { Search, X, Check } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { getCurrentUserId } from "@/lib/auth";
 import {
@@ -15,7 +7,6 @@ import {
   vehiculeLabel,
   type StockVehicule,
 } from "@/utils/stockVehicules";
-import { lookupByPlate, cleanPlate } from "@/utils/vehiculeReprise";
 
 type VehiculeForm = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & { id?: string };
 
@@ -84,68 +75,20 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
 
   const handleDeselectStockVehicule = () => setSelectedStock(null);
 
-  // --- Reprise véhicule : recherche par plaque ------------------------------
-  const [plateInput, setPlateInput] = useState<string>(form.reprisePlaque ?? "");
-  const [isLookingUp, setIsLookingUp] = useState<boolean>(false);
-  const [lookupError, setLookupError] = useState<string | null>(null);
-
-  // Un véhicule est considéré "trouvé" dès qu'au moins un champ identifiant est rempli.
-  const repriseFound = Boolean(
-    form.repriseMarque || form.repriseModele || form.repriseAnnee,
-  );
-
-  const clearRepriseFields = () => {
-    onChange({
-      reprisePlaque: "",
-      repriseMarque: "",
-      repriseModele: "",
-      repriseAnnee: "",
-      reprisePremiereCirculation: "",
-      repriseCouleur: "",
-      repriseValeur: "",
-    });
-  };
-
+  // --- Reprise véhicule : formulaire manuel --------------------------------
   const handleToggleReprise = () => {
     const next = !form.repriseActive;
     onChange({ repriseActive: next });
     if (!next) {
-      setPlateInput("");
-      setLookupError(null);
-      clearRepriseFields();
-    }
-  };
-
-  const handleLookupPlate = async () => {
-    setLookupError(null);
-    setIsLookingUp(true);
-    const result = await lookupByPlate(plateInput);
-    setIsLookingUp(false);
-    if (result.ok && result.data) {
-      setPlateInput(result.data.plaque);
+      // OFF → on vide tout pour éviter qu'un ancien brouillon pollue le PDF.
       onChange({
-        reprisePlaque: result.data.plaque,
-        repriseMarque: result.data.marque,
-        repriseModele: result.data.modele,
-        repriseAnnee: result.data.annee,
-        reprisePremiereCirculation: result.data.premiere_circulation,
-        repriseCouleur: result.data.couleur,
+        reprisePlaque: "",
+        repriseMarque: "",
+        repriseModele: "",
+        repriseVin: "",
+        reprisePremiereCirculation: "",
+        repriseValeur: "",
       });
-    } else {
-      setLookupError(result.message);
-    }
-  };
-
-  const handleResetReprise = () => {
-    setPlateInput("");
-    setLookupError(null);
-    clearRepriseFields();
-  };
-
-  const handlePlateKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (!isLookingUp) void handleLookupPlate();
     }
   };
 
@@ -336,156 +279,144 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
 
       {/* --- Sous-section Reprise véhicule --- */}
       <div className="mt-6 pt-5 border-t border-border/40">
+        {/* Toggle ON/OFF — rouge (pas de reprise) / vert (reprise active) */}
         <button
           type="button"
           onClick={handleToggleReprise}
-          className="w-full flex items-center justify-between gap-3 text-left group"
+          aria-pressed={form.repriseActive}
+          className={`w-full rounded-lg border-2 p-3.5 flex items-center justify-between gap-4 transition-colors ${
+            form.repriseActive
+              ? "border-[hsl(var(--success))]/60 bg-[hsl(var(--success))]/10 hover:bg-[hsl(var(--success))]/15"
+              : "border-[hsl(var(--destructive))]/60 bg-[hsl(var(--destructive))]/10 hover:bg-[hsl(var(--destructive))]/15"
+          }`}
         >
-          <span className="inline-flex items-center gap-2">
+          <span className="flex items-center gap-3 min-w-0 text-left">
             <span
-              className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 transition-colors ${
+              className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
                 form.repriseActive
-                  ? "bg-primary/15 text-primary"
-                  : "bg-secondary/60 text-muted-foreground group-hover:text-foreground"
+                  ? "bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]"
+                  : "bg-[hsl(var(--destructive))]/20 text-[hsl(var(--destructive))]"
               }`}
             >
-              <Repeat2 className="w-4 h-4" />
+              {form.repriseActive ? (
+                <Check className="w-5 h-5" />
+              ) : (
+                <X className="w-5 h-5" />
+              )}
             </span>
-            <span className="flex flex-col">
-              <span className="text-sm font-medium">Reprise véhicule</span>
+            <span className="flex flex-col min-w-0">
+              <span
+                className={`text-sm font-semibold ${
+                  form.repriseActive
+                    ? "text-[hsl(var(--success))]"
+                    : "text-[hsl(var(--destructive))]"
+                }`}
+              >
+                {form.repriseActive ? "Reprise d'un véhicule" : "Pas de reprise"}
+              </span>
               <span className="text-[11px] text-muted-foreground">
-                Le client nous cède son ancien véhicule en déduction du prix
+                {form.repriseActive
+                  ? "Un ancien véhicule est déduit du prix de vente"
+                  : "Le client n'a pas de véhicule à céder"}
               </span>
             </span>
           </span>
+
+          {/* switch pill */}
           <span
-            className={`relative w-10 h-5 rounded-full border transition-colors shrink-0 ${
-              form.repriseActive ? "bg-primary border-primary" : "bg-secondary/60 border-border"
+            className={`relative w-12 h-6 rounded-full transition-colors shrink-0 ${
+              form.repriseActive
+                ? "bg-[hsl(var(--success))]"
+                : "bg-[hsl(var(--destructive))]"
             }`}
             aria-hidden
           >
             <span
-              className={`absolute top-0.5 w-4 h-4 rounded-full bg-background shadow transition-all ${
-                form.repriseActive ? "left-[22px]" : "left-0.5"
+              className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-all ${
+                form.repriseActive ? "left-[26px]" : "left-0.5"
               }`}
             />
           </span>
         </button>
 
         {form.repriseActive && (
-          <div className="mt-4 space-y-3">
-            {!repriseFound ? (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <label className="field-label">Plaque d'immatriculation</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="ex: AB-123-CD"
-                      className="field-input flex-1 uppercase tracking-wider"
-                      value={plateInput}
-                      onChange={(e) => {
-                        setPlateInput(e.target.value);
-                        if (lookupError) setLookupError(null);
-                      }}
-                      onKeyDown={handlePlateKeyDown}
-                      disabled={isLookingUp}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleLookupPlate()}
-                      disabled={isLookingUp || !cleanPlate(plateInput)}
-                      className="min-h-10 px-4 rounded-md text-sm font-medium gradient-primary text-primary-foreground border-0 cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                    >
-                      {isLookingUp ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Recherche…
-                        </>
-                      ) : (
-                        <>
-                          <Search className="w-4 h-4" />
-                          Rechercher
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Les infos du véhicule sont récupérées automatiquement via le fichier des cartes grises.
-                  </p>
-                </div>
-
-                {lookupError && (
-                  <div className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-500">
-                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                    <span>{lookupError}</span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="rounded-lg border border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/10 p-3">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full font-semibold bg-[hsl(var(--success))]/20 text-[hsl(var(--success))]">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Véhicule trouvé
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleResetReprise}
-                      className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Autre plaque
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <div className="col-span-2">
-                      <div className="text-[11px] text-muted-foreground">Plaque</div>
-                      <div className="font-semibold tracking-wider">{form.reprisePlaque || "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-muted-foreground">Marque</div>
-                      <div className="font-medium">{form.repriseMarque || "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-muted-foreground">Modèle</div>
-                      <div className="font-medium">{form.repriseModele || "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-muted-foreground">Année</div>
-                      <div className="font-medium">{form.repriseAnnee || "—"}</div>
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-muted-foreground">1ère mise en circulation</div>
-                      <div className="font-medium">{form.reprisePremiereCirculation || "—"}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <div className="text-[11px] text-muted-foreground">Couleur</div>
-                      <div className="font-medium">{form.repriseCouleur || "—"}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="field-label">Valeur de reprise (€)</label>
-                  <input
-                    type="text"
-                    placeholder="ex: 3 500"
-                    className="field-input"
-                    value={form.repriseValeur}
-                    onChange={(e) => onChange({ repriseValeur: e.target.value })}
-                    autoFocus
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Montant déduit du prix de vente sur le bon de commande.
-                  </p>
-                </div>
-              </>
-            )}
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="field-label">Plaque d'immatriculation</label>
+              <input
+                type="text"
+                placeholder="ex: AB-123-CD"
+                className="field-input uppercase tracking-wider"
+                value={form.reprisePlaque}
+                onChange={(e) => onChange({ reprisePlaque: e.target.value })}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="field-label">Marque</label>
+              <input
+                type="text"
+                placeholder="ex: Renault"
+                className="field-input"
+                value={form.repriseMarque}
+                onChange={(e) => onChange({ repriseMarque: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="field-label">Modèle</label>
+              <input
+                type="text"
+                placeholder="ex: Clio IV Estate"
+                className="field-input"
+                value={form.repriseModele}
+                onChange={(e) => onChange({ repriseModele: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="field-label">VIN / N° de châssis</label>
+              <input
+                type="text"
+                placeholder="ex: VF1RFD00854..."
+                className="field-input"
+                value={form.repriseVin}
+                onChange={(e) => onChange({ repriseVin: e.target.value })}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="field-label">Première mise en circulation</label>
+              <input
+                type="text"
+                placeholder="ex: 21/07/2016"
+                className="field-input"
+                value={form.reprisePremiereCirculation}
+                onChange={(e) =>
+                  onChange({ reprisePremiereCirculation: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="field-label flex items-center gap-1.5">
+                <span className="text-[hsl(var(--success))]">●</span>
+                Valeur de reprise (€)
+                <span className="text-[10px] font-normal text-muted-foreground ml-auto">
+                  Requis
+                </span>
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="ex: 3 500"
+                className="field-input text-base font-semibold"
+                value={form.repriseValeur}
+                onChange={(e) => onChange({ repriseValeur: e.target.value })}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Montant déduit du prix de vente sur le bon de commande.
+              </p>
+            </div>
           </div>
         )}
       </div>
