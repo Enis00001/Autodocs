@@ -224,7 +224,7 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
 
       {modalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in-0 duration-200"
+          className="fixed top-0 left-0 w-full h-full z-[9999] flex items-center justify-center p-4 animate-in fade-in-0 duration-200"
           style={{ background: "rgba(0,0,0,0.6)" }}
           onClick={() => setModalOpen(false)}
           role="dialog"
