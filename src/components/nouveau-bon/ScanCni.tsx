@@ -169,8 +169,13 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
     );
   };
 
-  const openModal = () => {
+  const openModal = (mode: "import" | "scan" = "import") => {
     setModalOpen(true);
+    // Déclenche automatiquement le sélecteur approprié pour le recto.
+    setTimeout(() => {
+      if (mode === "scan") rectoCameraRef.current?.click();
+      else rectoImportRef.current?.click();
+    }, 50);
   };
 
   const canConfirm = Boolean(rectoFile && versoFile);
@@ -187,21 +192,34 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
         automatiquement dans le profil client.
       </p>
 
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-secondary/60 px-3 py-3">
-        <div className="w-9 h-9 rounded-md flex items-center justify-center bg-primary/10 text-primary shrink-0">
-          <IdCard className="w-5 h-5" />
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-secondary/60 px-3 py-3 md:flex-row md:items-center">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-9 h-9 rounded-md flex items-center justify-center bg-primary/10 text-primary shrink-0">
+            <IdCard className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-medium">
+              {status === "ok" ? "Carte d'identité scannée" : "Carte d'identité (recto + verso)"}
+            </div>
+            <div className={`text-[11px] truncate ${detailTextClass(status)}`}>{detail}</div>
+          </div>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-medium">Carte d'identité (recto + verso)</div>
-          <div className={`text-[11px] truncate ${detailTextClass(status)}`}>{detail}</div>
+        <div className="flex w-full items-stretch gap-2 shrink-0 md:w-auto md:items-center">
+          <button
+            type="button"
+            className="min-h-10 flex-1 md:flex-none px-3 py-2 rounded-md text-xs font-medium border border-border text-foreground hover:border-primary transition-colors bg-transparent cursor-pointer whitespace-nowrap"
+            onClick={() => openModal("import")}
+          >
+            📎 Importer
+          </button>
+          <button
+            type="button"
+            className="min-h-10 flex-1 md:flex-none px-3 py-2 rounded-md text-xs font-medium gradient-primary text-primary-foreground border-0 cursor-pointer whitespace-nowrap"
+            onClick={() => openModal("scan")}
+          >
+            📷 Scanner
+          </button>
         </div>
-        <button
-          type="button"
-          className="min-h-10 px-3 py-2 rounded-md text-xs font-medium gradient-primary text-primary-foreground border-0 cursor-pointer whitespace-nowrap"
-          onClick={openModal}
-        >
-          {status === "ok" ? "Re-scanner" : "Scanner CNI"}
-        </button>
       </div>
 
       {modalOpen && (
