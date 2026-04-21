@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import TopBar from "@/components/layout/TopBar";
 import ProfilClient from "@/components/nouveau-bon/ProfilClient";
+import ScanCni from "@/components/nouveau-bon/ScanCni";
 import VehiculeVente from "@/components/nouveau-bon/VehiculeVente";
 import TemplateSelector from "@/components/nouveau-bon/TemplateSelector";
 import GenerateBar, { countMissingMandatoryFields } from "@/components/nouveau-bon/GenerateBar";
@@ -35,12 +36,6 @@ const defaultFormState: DraftFormState = {
   clientDateNaissance: "12/03/1985",
   clientNumeroCni: "123456789012",
   clientAdresse: "14 rue des Lilas, 69003 Lyon",
-  ribTitulaire: "",
-  ribIban: "",
-  ribBic: "",
-  ribBanque: "",
-  clientEmail: "",
-  clientTelephone: "",
   vehiculeModele: "",
   vehiculeVin: "",
   vehiculePremiereCirculation: "",
@@ -102,6 +97,10 @@ const NouveauBon = () => {
   const [pdfTemplatesLoading, setPdfTemplatesLoading] = useState(true);
   /** La page Templates affiche des fiches, mais aucune ligne `pdf_templates` (ex. modèles seed, Word, ou RLS). */
   const [libraryEntriesButNoAnalyzedPdf, setLibraryEntriesButNoAnalyzedPdf] = useState(false);
+  /** Champs du profil client pré-remplis par le scan CNI (highlight visuel). */
+  const [autoFilledClientFields, setAutoFilledClientFields] = useState<
+    Array<"clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse">
+  >([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +190,33 @@ const NouveauBon = () => {
 
   const updateForm = (patch: Partial<DraftFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));
+  };
+
+  const handleCniExtracted = (
+    patch: Partial<BonDraftData>,
+    highlightedFields: Array<keyof BonDraftData>,
+  ) => {
+    setFormState((prev) => ({ ...prev, ...patch }));
+    const clientFieldNames = [
+      "clientNom",
+      "clientPrenom",
+      "clientDateNaissance",
+      "clientNumeroCni",
+      "clientAdresse",
+    ] as const;
+    const clientOnly = highlightedFields.filter((k): k is (typeof clientFieldNames)[number] =>
+      (clientFieldNames as readonly string[]).includes(k as string),
+    );
+    setAutoFilledClientFields(clientOnly);
+  };
+
+  const handleCniScannedChange = (state: BonDraftData["documentsScanned"][string] | null) => {
+    setFormState((prev) => {
+      const next = { ...(prev.documentsScanned ?? {}) };
+      if (state) next.cni = state;
+      else delete next.cni;
+      return { ...prev, documentsScanned: next };
+    });
   };
 
   const handleToggleStandardField = async (key: string) => {
@@ -336,10 +362,15 @@ const NouveauBon = () => {
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
             <div className="space-y-5">
+              <ScanCni
+                initialScan={formState.documentsScanned?.cni}
+                onScannedChange={handleCniScannedChange}
+                onExtracted={handleCniExtracted}
+              />
               <ProfilClient
                 form={formState}
                 onChange={updateForm}
-                autoFilledFields={[]}
+                autoFilledFields={autoFilledClientFields}
               />
               <TemplateSelector
                 templates={pdfTemplates}

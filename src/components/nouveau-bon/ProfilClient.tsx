@@ -7,12 +7,6 @@ type ProfilClientProps = {
     clientDateNaissance: BonDraftData["clientDateNaissance"];
     clientNumeroCni: BonDraftData["clientNumeroCni"];
     clientAdresse: BonDraftData["clientAdresse"];
-    ribTitulaire: BonDraftData["ribTitulaire"];
-    ribIban: BonDraftData["ribIban"];
-    ribBic: BonDraftData["ribBic"];
-    ribBanque: BonDraftData["ribBanque"];
-    clientEmail: BonDraftData["clientEmail"];
-    clientTelephone: BonDraftData["clientTelephone"];
   };
   onChange: (patch: Partial<ProfilClientProps["form"]>) => void;
   autoFilledFields?: Array<
@@ -21,10 +15,6 @@ type ProfilClientProps = {
     | "clientDateNaissance"
     | "clientNumeroCni"
     | "clientAdresse"
-    | "ribTitulaire"
-    | "ribIban"
-    | "ribBic"
-    | "ribBanque"
   >;
 };
 
@@ -35,11 +25,7 @@ const ProfilClient = ({ form, onChange, autoFilledFields = [] }: ProfilClientPro
       | "clientPrenom"
       | "clientDateNaissance"
       | "clientNumeroCni"
-      | "clientAdresse"
-      | "ribTitulaire"
-      | "ribIban"
-      | "ribBic"
-      | "ribBanque"
+      | "clientAdresse",
   ) => autoFilledFields.includes(field);
   const autoClass = "bg-success/10 border-success/40";
 
@@ -100,69 +86,6 @@ const ProfilClient = ({ form, onChange, autoFilledFields = [] }: ProfilClientPro
             value={form.clientAdresse}
             onChange={(e) => onChange({ clientAdresse: e.target.value })}
             className={`field-input field-input-auto ${isAuto("clientAdresse") ? autoClass : ""}`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5 md:col-span-2 card-soft-divider">
-          <label className="card-title-autodocs" style={{ textTransform: "uppercase" }}>
-            🏦 RIB
-          </label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1.5">
-            <div className="flex flex-col gap-1.5">
-              <label className="field-label">Titulaire</label>
-              <input
-                type="text"
-                value={form.ribTitulaire}
-                onChange={(e) => onChange({ ribTitulaire: e.target.value })}
-                className={`field-input field-input-auto ${isAuto("ribTitulaire") ? autoClass : ""}`}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="field-label">IBAN</label>
-              <input
-                type="text"
-                value={form.ribIban}
-                onChange={(e) => onChange({ ribIban: e.target.value })}
-                className={`field-input field-input-auto ${isAuto("ribIban") ? autoClass : ""}`}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="field-label">BIC</label>
-              <input
-                type="text"
-                value={form.ribBic}
-                onChange={(e) => onChange({ ribBic: e.target.value })}
-                className={`field-input field-input-auto ${isAuto("ribBic") ? autoClass : ""}`}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="field-label">Banque</label>
-              <input
-                type="text"
-                value={form.ribBanque}
-                onChange={(e) => onChange({ ribBanque: e.target.value })}
-                className={`field-input field-input-auto ${isAuto("ribBanque") ? autoClass : ""}`}
-              />
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Email</label>
-          <input
-            type="text"
-            placeholder="À saisir..."
-            value={form.clientEmail}
-            onChange={(e) => onChange({ clientEmail: e.target.value })}
-            className="field-input"
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Téléphone</label>
-          <input
-            type="text"
-            placeholder="À saisir..."
-            value={form.clientTelephone}
-            onChange={(e) => onChange({ clientTelephone: e.target.value })}
-            className="field-input"
           />
         </div>
       </div>
