@@ -101,6 +101,7 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
       repriseModele: "",
       repriseAnnee: "",
       reprisePremiereCirculation: "",
+      repriseCouleur: "",
       repriseValeur: "",
     });
   };
@@ -128,6 +129,7 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
         repriseModele: result.data.modele,
         repriseAnnee: result.data.annee,
         reprisePremiereCirculation: result.data.premiere_circulation,
+        repriseCouleur: result.data.couleur,
       });
     } else {
       setLookupError(result.message);
@@ -460,6 +462,10 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
                     <div>
                       <div className="text-[11px] text-muted-foreground">1ère mise en circulation</div>
                       <div className="font-medium">{form.reprisePremiereCirculation || "—"}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="text-[11px] text-muted-foreground">Couleur</div>
+                      <div className="font-medium">{form.repriseCouleur || "—"}</div>
                     </div>
                   </div>
                 </div>

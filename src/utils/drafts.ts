@@ -42,6 +42,7 @@ export type BonDraftData = {
   repriseModele: string;
   repriseAnnee: string;
   reprisePremiereCirculation: string;
+  repriseCouleur: string;
   repriseValeur: string;
 
   // Section 3 — Règlement
@@ -146,6 +147,7 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     repriseModele: kv.reprise_modele ?? "",
     repriseAnnee: kv.reprise_annee ?? "",
     reprisePremiereCirculation: kv.reprise_premiere_circulation ?? "",
+    repriseCouleur: kv.reprise_couleur ?? "",
     repriseValeur: kv.reprise_valeur ?? "",
     modePaiement: mode,
     acompte: row.acompte ?? "",
@@ -163,6 +165,7 @@ function draftToPayload(d: BonDraftData) {
     reprise_modele: d.repriseModele,
     reprise_annee: d.repriseAnnee,
     reprise_premiere_circulation: d.reprisePremiereCirculation,
+    reprise_couleur: d.repriseCouleur,
     reprise_valeur: d.repriseValeur,
   };
   return {

@@ -302,6 +302,7 @@ function buildHtml(formData: Record<string, string>): string {
     reprise_modele: get("reprise_modele"),
     reprise_annee: get("reprise_annee"),
     reprise_premiere_circulation: get("reprise_premiere_circulation"),
+    reprise_couleur: get("reprise_couleur"),
     reprise_valeur: formatMoney(repriseValeur),
 
     vehiculeRemise: formatMoney(remise),
