@@ -214,6 +214,7 @@
     @apply inline-flex items-center justify-center gap-2 rounded-lg border-0 px-4 py-2.5 font-display text-sm font-bold text-white transition-all duration-200;
     background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
     box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+    min-height: 44px;
   }
   .btn-primary:hover:not(:disabled) {
     background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%);
@@ -225,10 +226,27 @@
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-transparent px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:border-muted-foreground hover:text-foreground;
+    min-height: 44px;
   }
 
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-destructive/50 bg-transparent px-4 py-2.5 text-sm font-medium text-destructive transition-all duration-200 hover:bg-destructive/10;
+    min-height: 44px;
+  }
+
+  /* Sur écrans tactiles : neutralise les hover effects (transform/shadow) */
+  @media (hover: none) {
+    .interactive-lift:hover {
+      transform: none;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+    }
+    .row-hover:hover {
+      background: transparent;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+    }
   }
 
   @keyframes page-enter {

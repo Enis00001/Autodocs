@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { FileText, Loader2 } from "lucide-react";
+import { FileText, Loader2, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
 import { generatePDF } from "@/utils/generatePDF";
 import { countMissingMandatoryFields, isDraftFormComplete } from "@/utils/bonFormCompletion";
+import { consumeBonQuota } from "@/utils/abonnement";
 import { cn } from "@/lib/utils";
 
 export { countMissingMandatoryFields, isDraftFormComplete };
@@ -27,6 +29,10 @@ const GenerateBar = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [quotaBlocked, setQuotaBlocked] = useState<null | {
+    bonsCeMois: number;
+    quota: number;
+  }>(null);
 
   const canGenerate = documentsUploaded > 0 || missingFieldsCount < 5;
 
@@ -36,7 +42,26 @@ const GenerateBar = ({
     setIsGenerating(true);
     setIsSuccess(false);
     setGenerationError(null);
+    setQuotaBlocked(null);
     try {
+      // 1. On vérifie / incrémente le quota côté serveur avant de générer.
+      try {
+        await consumeBonQuota();
+      } catch (err) {
+        const e = err as Error & { code?: string; info?: { bonsCeMois?: number; quota?: number } };
+        if (e.code === "quota_reached") {
+          setIsGenerating(false);
+          setQuotaBlocked({
+            bonsCeMois: e.info?.bonsCeMois ?? 0,
+            quota: e.info?.quota ?? 10,
+          });
+          return;
+        }
+        // Si l'API de quota n'est pas configurée (erreur réseau/500), on
+        // tolère et on laisse passer pour ne pas bloquer l'utilisateur en dev.
+        console.warn("[quota] check ignoré:", e);
+      }
+
       await generatePDF(formData);
       setIsGenerating(false);
       setIsSuccess(true);
@@ -139,17 +164,52 @@ const GenerateBar = ({
               id="modal-generate-title"
               className="mb-6 text-center font-display text-lg font-bold"
             >
-              {isGenerating ? "Génération en cours..." : "Bon de commande"}
+              {quotaBlocked
+                ? "Limite atteinte"
+                : isGenerating
+                  ? "Génération en cours..."
+                  : "Bon de commande"}
             </h2>
 
-            {isGenerating && (
+            {quotaBlocked && (
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+                  <Zap className="h-6 w-6" aria-hidden />
+                </div>
+                <p className="text-center text-sm text-foreground">
+                  Vous avez utilisé {quotaBlocked.bonsCeMois} / {quotaBlocked.quota} bons ce
+                  mois sur le plan Gratuit.
+                </p>
+                <p className="text-center text-xs text-muted-foreground">
+                  Passez au plan Pro pour générer des bons de commande illimités.
+                </p>
+                <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+                  <Link
+                    to="/abonnement"
+                    className="btn-primary w-full cursor-pointer sm:w-auto"
+                    onClick={() => setModalOpen(false)}
+                  >
+                    Passer au Pro
+                  </Link>
+                  <button
+                    type="button"
+                    className="btn-secondary w-full cursor-pointer sm:w-auto"
+                    onClick={() => setModalOpen(false)}
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!quotaBlocked && isGenerating && (
               <div className="flex flex-col items-center gap-4 py-4">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" aria-hidden />
                 <p className="text-sm text-muted-foreground">Génération en cours…</p>
               </div>
             )}
 
-            {isSuccess && (
+            {!quotaBlocked && isSuccess && (
               <div className="flex flex-col items-center gap-5">
                 <p className="text-center text-sm text-foreground">Bon de commande généré avec succès</p>
                 <div className="flex w-full justify-center gap-3">
@@ -171,7 +231,7 @@ const GenerateBar = ({
               </div>
             )}
 
-            {!isGenerating && generationError && (
+            {!quotaBlocked && !isGenerating && generationError && (
               <div className="flex flex-col items-center gap-4">
                 <p className="text-center text-sm text-destructive">{generationError}</p>
                 <button

@@ -42,8 +42,9 @@ export function BonFormStepper({ current, className }: BonFormStepperProps) {
         const Icon = s.icon;
         const isActive = current === s.id;
         const isDone = current > s.id;
+        const isLast = i === STEPS.length - 1;
         return (
-          <div key={s.id} className="flex min-w-0 flex-1 items-center">
+          <div key={s.id} className="relative flex min-w-0 flex-1 items-center">
             <div
               className={cn(
                 "flex w-full min-w-0 items-center gap-2 rounded-input px-2 py-2.5 transition-all duration-200 sm:px-3",
@@ -74,12 +75,19 @@ export function BonFormStepper({ current, className }: BonFormStepperProps) {
                 </div>
               </div>
             </div>
-            {i < STEPS.length - 1 && (
-              <div
-                className="mx-0 hidden w-3 shrink-0 self-center sm:mx-1 sm:block sm:h-px sm:w-2 md:mx-2 md:w-3 lg:w-6"
-                style={{ minHeight: 1, background: "hsl(var(--border))" }}
-                aria-hidden
-              />
+
+            {/* Séparateur : vertical sur mobile, horizontal en ligne dès sm. */}
+            {!isLast && (
+              <>
+                <span
+                  className="absolute left-[22px] top-full block h-2 w-px bg-border sm:hidden"
+                  aria-hidden
+                />
+                <span
+                  className="mx-1 hidden h-px w-2 shrink-0 self-center bg-border sm:block md:mx-2 md:w-3 lg:w-6"
+                  aria-hidden
+                />
+              </>
             )}
           </div>
         );
