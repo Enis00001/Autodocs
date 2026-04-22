@@ -11,7 +11,6 @@ const navItems = [
   { title: "Dashboard", path: "/", icon: LayoutDashboard },
   { title: "Nouveau bon", path: "/nouveau-bon", icon: Plus },
   { title: "Historique", path: "/historique", icon: ClipboardList },
-  { title: "Infos véhicule", path: "/infos-vehicule", icon: Car },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
   { title: "Paramètres", path: "/parametres", icon: Settings },
 ];
