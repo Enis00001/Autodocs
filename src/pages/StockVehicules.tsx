@@ -7,7 +7,6 @@ import {
   RefreshCw,
   FileSpreadsheet,
   ArrowLeft,
-  ArrowRight,
   ToggleLeft,
   ToggleRight,
   Eye,
@@ -19,45 +18,32 @@ import { getCurrentUserId } from "@/lib/auth";
 import {
   clearStock,
   deleteVehicule,
-  detectColumnMapping,
   importVehicules,
   loadStockVehicules,
-  mapRowToVehicule,
   markAsSold,
   stringifyCell,
-  STOCK_FIELDS,
-  STOCK_FIELD_LABELS,
-  type StockField,
+  vehiculeDisplayLabel,
   type StockVehicule,
   type StockVehiculeInput,
 } from "@/utils/stockVehicules";
 
 /* -------------------------------------------------------------------------- */
-/*                          Types locaux du wizard                            */
-/* -------------------------------------------------------------------------- */
 
-type WizardStep = "upload" | "mapping" | "preview";
-
-/** Configuration d'une colonne du fichier importé. */
 type ColumnConfig = {
-  /** En-tête tel qu'il figure dans le fichier (ex: "Marque véhicule"). */
+  /** Nom exact de la colonne dans le fichier (conservé tel quel). */
   header: string;
-  /** Champ standard mappé (ex: "marque") ou "ignore". */
-  target: StockField | "ignore";
-  /** Apparaît dans le PDF ? Seules les colonnes ON avec `target ≠ ignore` comptent. */
+  /** Apparaît dans le PDF / dans NouveauBon ? */
   active: boolean;
-  /** Première valeur non vide (pour l'aperçu en italique). */
+  /** Première valeur non vide de la colonne, pour l'aperçu. */
   preview: string;
 };
 
 type ParsedFile = {
   fileName: string;
   headers: string[];
-  rows: Record<string, unknown>[];
+  rows: Record<string, string>[];
 };
 
-/* -------------------------------------------------------------------------- */
-/*                                   Page                                     */
 /* -------------------------------------------------------------------------- */
 
 const StockVehicules = () => {
@@ -66,14 +52,14 @@ const StockVehicules = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"tous" | "disponibles" | "vendus">("tous");
 
-  // Wizard d'import
-  const [step, setStep] = useState<WizardStep>("upload");
   const [parsed, setParsed] = useState<ParsedFile | null>(null);
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
   const [importing, setImporting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const inImportFlow = parsed !== null;
 
   /* ------------------------------ data loading ------------------------------ */
 
@@ -111,10 +97,9 @@ const StockVehicules = () => {
     [vehicules],
   );
 
-  /* --------------------------- Étape 1 : upload ----------------------------- */
+  /* ------------------------------ upload ------------------------------ */
 
   const resetWizard = () => {
-    setStep("upload");
     setParsed(null);
     setColumns([]);
   };
@@ -128,11 +113,11 @@ const StockVehicules = () => {
       const firstSheetName = wb.SheetNames[0];
       if (!firstSheetName) throw new Error("Fichier vide");
       const sheet = wb.Sheets[firstSheetName];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
         defval: "",
         raw: false,
       });
-      if (rows.length === 0) {
+      if (rawRows.length === 0) {
         toast({
           title: "Fichier vide",
           description: "Aucune ligne détectée dans le fichier.",
@@ -140,38 +125,28 @@ const StockVehicules = () => {
         });
         return;
       }
-      const headers = Object.keys(rows[0]);
-      const mapping = detectColumnMapping(headers);
-      // inversion mapping : { header: StockField }
-      const headerToField: Record<string, StockField> = {};
-      for (const field of Object.keys(mapping) as StockField[]) {
-        const h = mapping[field];
-        if (h) headerToField[h] = field;
-      }
+      // On normalise dès maintenant toutes les valeurs en string (simplifie tout
+      // le pipeline en aval : affichage, import Supabase, PDF).
+      const headers = Object.keys(rawRows[0]).filter((h) => h && h.trim());
+      const rows: Record<string, string>[] = rawRows.map((r) => {
+        const out: Record<string, string> = {};
+        for (const h of headers) out[h] = stringifyCell(r[h]);
+        return out;
+      });
 
       const initial: ColumnConfig[] = headers.map((header) => {
-        const target = headerToField[header] ?? "ignore";
-        // Préviewr la première valeur non vide.
         let preview = "";
         for (const row of rows) {
-          const v = stringifyCell(row[header]);
-          if (v) {
-            preview = v;
+          if (row[header]) {
+            preview = row[header];
             break;
           }
         }
-        return {
-          header,
-          target,
-          // ON si on a détecté un champ standard, OFF si c'est ignoré.
-          active: target !== "ignore",
-          preview,
-        };
+        return { header, active: true, preview };
       });
 
       setParsed({ fileName: file.name, headers, rows });
       setColumns(initial);
-      setStep("mapping");
       toast({
         title: "Fichier chargé",
         description: `${rows.length} ligne(s), ${headers.length} colonne(s) détectée(s).`,
@@ -201,99 +176,61 @@ const StockVehicules = () => {
     await processFile(file);
   };
 
-  /* ------------------------- Étape 2 : mapping/toggle ----------------------- */
+  /* ----------------------------- toggles ------------------------------ */
 
   const updateColumn = (index: number, patch: Partial<ColumnConfig>) => {
     setColumns((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], ...patch };
-      // Un champ standard ne doit être mappé qu'une fois. Si on change `target`,
-      // on retire le même target sur les autres lignes pour éviter les doublons.
-      if (patch.target && patch.target !== "ignore") {
-        for (let i = 0; i < next.length; i++) {
-          if (i !== index && next[i].target === patch.target) {
-            next[i] = { ...next[i], target: "ignore", active: false };
-          }
-        }
-      }
-      // Si on passe la cible à "ignore", on désactive.
-      if (patch.target === "ignore") next[index].active = false;
       return next;
     });
   };
 
   const setAllActive = (value: boolean) => {
-    setColumns((prev) =>
-      prev.map((c) =>
-        c.target === "ignore" ? c : { ...c, active: value },
-      ),
-    );
+    setColumns((prev) => prev.map((c) => ({ ...c, active: value })));
   };
 
-  const usedTargets = useMemo(() => {
-    return new Set(
-      columns
-        .filter((c) => c.target !== "ignore")
-        .map((c) => c.target as StockField),
-    );
-  }, [columns]);
-
-  const activeColumns = useMemo(
-    () => columns.filter((c) => c.active && c.target !== "ignore"),
+  const activeHeaders = useMemo(
+    () => columns.filter((c) => c.active).map((c) => c.header),
     [columns],
   );
-
-  const mappedColumnsCount = useMemo(
-    () => columns.filter((c) => c.target !== "ignore").length,
-    [columns],
-  );
-
-  const colonnesPdfList = useMemo<StockField[]>(
-    () => activeColumns.map((c) => c.target as StockField),
-    [activeColumns],
-  );
-
-  /* --------------------- Étape 3 : preview + confirmation -------------------- */
-
-  /** Mapping `{ champCible: entêteSource }` reconstitué depuis les colonnes. */
-  const effectiveMapping = useMemo<Partial<Record<StockField, string>>>(() => {
-    const out: Partial<Record<StockField, string>> = {};
-    for (const c of columns) {
-      if (c.target === "ignore") continue;
-      out[c.target] = c.header;
-    }
-    return out;
-  }, [columns]);
 
   const previewRows = useMemo(() => {
     if (!parsed) return [];
-    return parsed.rows.slice(0, 3).map((r) => mapRowToVehicule(r, effectiveMapping));
-  }, [parsed, effectiveMapping]);
+    return parsed.rows.slice(0, 3);
+  }, [parsed]);
+
+  /* ---------------------------- confirmation --------------------------- */
 
   const handleConfirmImport = async () => {
     if (!parsed || !concessionId) return;
-    if (colonnesPdfList.length === 0) {
+    if (activeHeaders.length === 0) {
       toast({
         title: "Aucune colonne activée",
-        description: "Activez au moins une colonne pour le PDF.",
+        description: "Activez au moins une colonne pour l'import.",
         variant: "destructive",
       });
       return;
     }
 
+    // On garde TOUTES les données du fichier dans `donnees` (utile pour le
+    // stock) mais seules les colonnes activées iront dans le PDF via
+    // `colonnes_pdf`.
     const toInsert: StockVehiculeInput[] = parsed.rows
-      .map((row) => mapRowToVehicule(row, effectiveMapping))
-      .filter(
-        (v) =>
-          (v.marque && v.marque.trim()) ||
-          (v.modele && v.modele.trim()) ||
-          (v.vin && v.vin.trim()),
-      );
+      .filter((row) => {
+        // Ligne considérée valide si au moins une colonne activée a une valeur.
+        return activeHeaders.some((h) => (row[h] ?? "").trim() !== "");
+      })
+      .map((row) => ({
+        donnees: row,
+        colonnes_pdf: activeHeaders,
+        disponible: true,
+      }));
 
     if (toInsert.length === 0) {
       toast({
         title: "Aucune ligne valide",
-        description: "Marque, modèle ou VIN doivent être renseignés.",
+        description: "Les lignes actives sont toutes vides.",
         variant: "destructive",
       });
       return;
@@ -301,10 +238,10 @@ const StockVehicules = () => {
 
     setImporting(true);
     try {
-      await importVehicules(concessionId, toInsert, colonnesPdfList);
+      await importVehicules(concessionId, toInsert);
       toast({
         title: "Import réussi",
-        description: `${toInsert.length} véhicule(s) ajouté(s) au stock. ${colonnesPdfList.length} colonne(s) visible(s) dans le PDF.`,
+        description: `${toInsert.length} véhicule(s) ajouté(s). ${activeHeaders.length} colonne(s) dans le PDF.`,
       });
       resetWizard();
       await refresh(concessionId);
@@ -319,7 +256,7 @@ const StockVehicules = () => {
     }
   };
 
-  /* ------------------------------ Actions cards ----------------------------- */
+  /* ------------------------------ actions ------------------------------ */
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Supprimer ce véhicule du stock ?")) return;
@@ -366,9 +303,7 @@ const StockVehicules = () => {
     }
   };
 
-  /* ---------------------------------- Render -------------------------------- */
-
-  const wizardOpen = step !== "upload" || false; // placeholder si on veut forcer ouverture
+  /* -------------------------------- render ----------------------------- */
 
   return (
     <>
@@ -376,7 +311,7 @@ const StockVehicules = () => {
         title="Stock véhicules"
         actions={
           <>
-            {vehicules.length > 0 && step === "upload" && (
+            {!inImportFlow && vehicules.length > 0 && (
               <button
                 type="button"
                 className="px-4 py-2 rounded-lg text-[13px] font-medium border border-destructive/50 text-destructive hover:bg-destructive/10 transition-all bg-transparent cursor-pointer"
@@ -385,7 +320,7 @@ const StockVehicules = () => {
                 Vider le stock
               </button>
             )}
-            {step === "upload" && (
+            {!inImportFlow && (
               <button
                 type="button"
                 className="px-4 py-2 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2"
@@ -409,8 +344,8 @@ const StockVehicules = () => {
 
       <div className="page-shell">
         <div className="page-content space-y-5">
-          {/* --- Stats : masquées pendant le wizard pour concentrer l'écran --- */}
-          {step === "upload" && (
+          {/* --- Stats --- */}
+          {!inImportFlow && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <StatCard label="Total stock" value={stats.total} accent="primary" />
               <StatCard label="Disponibles" value={stats.disponibles} accent="success" />
@@ -418,35 +353,23 @@ const StockVehicules = () => {
             </div>
           )}
 
-          {/* --- Wizard étape 2 --- */}
-          {step === "mapping" && parsed && (
-            <MappingStep
+          {/* --- Import flow --- */}
+          {inImportFlow && parsed && (
+            <ImportFlow
               parsed={parsed}
               columns={columns}
-              usedTargets={usedTargets}
-              activeCount={activeColumns.length}
-              mappedCount={mappedColumnsCount}
+              previewRows={previewRows}
+              activeCount={activeHeaders.length}
+              importing={importing}
               onUpdate={updateColumn}
               onToggleAll={setAllActive}
               onCancel={resetWizard}
-              onNext={() => setStep("preview")}
-            />
-          )}
-
-          {/* --- Wizard étape 3 --- */}
-          {step === "preview" && parsed && (
-            <PreviewStep
-              parsed={parsed}
-              colonnesPdf={colonnesPdfList}
-              previewRows={previewRows}
-              importing={importing}
-              onBack={() => setStep("mapping")}
               onConfirm={handleConfirmImport}
             />
           )}
 
-          {/* --- Zone vide (pas d'import en cours, pas de véhicules) --- */}
-          {step === "upload" && !loading && vehicules.length === 0 && (
+          {/* --- Empty state --- */}
+          {!inImportFlow && !loading && vehicules.length === 0 && (
             <UploadDropZone
               dragActive={dragActive}
               onDragOver={(e) => {
@@ -459,8 +382,8 @@ const StockVehicules = () => {
             />
           )}
 
-          {/* --- Liste véhicules --- */}
-          {step === "upload" && vehicules.length > 0 && (
+          {/* --- Liste --- */}
+          {!inImportFlow && vehicules.length > 0 && (
             <>
               <div className="flex items-center gap-2 flex-wrap">
                 {(["tous", "disponibles", "vendus"] as const).map((f) => (
@@ -506,7 +429,7 @@ const StockVehicules = () => {
             </>
           )}
 
-          {loading && !wizardOpen && vehicules.length === 0 && (
+          {loading && !inImportFlow && vehicules.length === 0 && (
             <div className="text-sm text-muted-foreground text-center py-6">
               Chargement du stock…
             </div>
@@ -518,7 +441,7 @@ const StockVehicules = () => {
 };
 
 /* -------------------------------------------------------------------------- */
-/*                        Étape 1 — Drop zone stylisée                        */
+/*                             Upload drop zone                               */
 /* -------------------------------------------------------------------------- */
 
 const UploadDropZone = ({
@@ -553,7 +476,8 @@ const UploadDropZone = ({
     <p className="text-sm text-muted-foreground max-w-md mb-4">
       Formats acceptés : <span className="text-foreground">.csv, .xlsx, .xls</span>
       <br />
-      Vous pourrez ensuite choisir les colonnes à afficher dans le bon de commande.
+      Les noms de colonnes de votre fichier seront utilisés tels quels dans le
+      bon de commande.
     </p>
     <button
       type="button"
@@ -567,125 +491,169 @@ const UploadDropZone = ({
 );
 
 /* -------------------------------------------------------------------------- */
-/*                  Étape 2 — Configuration des colonnes                      */
+/*                           Import flow (1 écran)                            */
 /* -------------------------------------------------------------------------- */
 
-const MappingStep = ({
+const ImportFlow = ({
   parsed,
   columns,
-  usedTargets,
+  previewRows,
   activeCount,
-  mappedCount,
+  importing,
   onUpdate,
   onToggleAll,
   onCancel,
-  onNext,
+  onConfirm,
 }: {
   parsed: ParsedFile;
   columns: ColumnConfig[];
-  usedTargets: Set<StockField>;
+  previewRows: Record<string, string>[];
   activeCount: number;
-  mappedCount: number;
+  importing: boolean;
   onUpdate: (i: number, patch: Partial<ColumnConfig>) => void;
   onToggleAll: (v: boolean) => void;
   onCancel: () => void;
-  onNext: () => void;
+  onConfirm: () => void;
 }) => {
+  const activeHeaders = columns.filter((c) => c.active).map((c) => c.header);
+
   return (
-    <div className="card-autodocs space-y-5">
-      {/* Entête */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold">
-              2
+    <div className="space-y-5">
+      {/* Bloc 1 : toggles */}
+      <div className="card-autodocs space-y-4">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="font-display text-lg font-bold">Colonnes à inclure</h2>
+            <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
+              Activez les colonnes que vous voulez voir apparaître dans le{" "}
+              <span className="text-foreground font-medium">bon de commande</span>.
+              Le nom exact de la colonne sera utilisé dans le PDF.
+            </p>
+            <div className="text-[11px] text-muted-foreground mt-1.5">
+              Fichier : <span className="text-foreground">{parsed.fileName}</span>
+              {" • "}
+              {parsed.rows.length} ligne(s) • {parsed.headers.length} colonne(s)
             </div>
-            <h2 className="font-display text-lg font-bold">Configurez vos colonnes</h2>
           </div>
-          <p className="text-xs text-muted-foreground mt-1.5 max-w-2xl">
-            Activez les colonnes que vous voulez voir apparaître dans le{" "}
-            <span className="text-foreground font-medium">bon de commande</span>. Les
-            colonnes désactivées seront importées dans le stock mais n'apparaîtront
-            pas dans le PDF.
-          </p>
-          <div className="text-[11px] text-muted-foreground mt-1.5">
-            Fichier : <span className="text-foreground">{parsed.fileName}</span> •{" "}
-            {parsed.rows.length} ligne(s) • {parsed.headers.length} colonne(s) détectée(s)
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
           <button
             type="button"
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer inline-flex items-center gap-1.5"
             onClick={onCancel}
           >
+            <ArrowLeft className="w-3.5 h-3.5" />
             Annuler
           </button>
         </div>
+
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background/40 px-3 py-2 flex-wrap">
+          <div className="text-[11px] text-muted-foreground">
+            <span className="text-[hsl(var(--success))] font-medium">{activeCount}</span>
+            {" "}/ {columns.length} colonne(s) dans le PDF
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="px-2.5 py-1.5 rounded-md text-[11px] font-medium border border-[hsl(var(--success))]/50 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors bg-transparent cursor-pointer inline-flex items-center gap-1.5"
+              onClick={() => onToggleAll(true)}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Tout activer
+            </button>
+            <button
+              type="button"
+              className="px-2.5 py-1.5 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer inline-flex items-center gap-1.5"
+              onClick={() => onToggleAll(false)}
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+              Tout désactiver
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {columns.map((col, i) => (
+            <ColumnRow key={col.header + i} col={col} onUpdate={(patch) => onUpdate(i, patch)} />
+          ))}
+        </div>
       </div>
 
-      {/* Barre d'actions groupées */}
-      <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background/40 px-3 py-2 flex-wrap">
-        <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
-          <span>
-            <span className="text-foreground font-medium">{mappedCount}</span> colonne(s) mappée(s)
-          </span>
-          <span>
-            <span className="text-[hsl(var(--success))] font-medium">{activeCount}</span> dans le PDF
-          </span>
+      {/* Bloc 2 : aperçu */}
+      <div className="card-autodocs space-y-4">
+        <div>
+          <h2 className="font-display text-lg font-bold">Aperçu</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Les 3 premières lignes telles qu'elles apparaîtront dans le bon de commande.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <Car className="w-5 h-5 text-primary shrink-0" />
+          <div className="text-[13px]">
+            <span className="font-bold text-foreground">{parsed.rows.length}</span>{" "}
+            véhicule(s) à importer,{" "}
+            <span className="font-bold text-foreground">{activeCount}</span>{" "}
+            colonne(s) dans le PDF
+          </div>
+        </div>
+
+        {activeHeaders.length === 0 ? (
+          <div className="rounded-lg border border-border/60 bg-background/30 px-4 py-6 text-center text-sm text-muted-foreground">
+            Activez au moins une colonne pour voir l'aperçu.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border/60">
+            <table className="w-full text-[12px]">
+              <thead className="bg-secondary/50">
+                <tr className="text-left text-muted-foreground">
+                  {activeHeaders.map((h) => (
+                    <th key={h} className="px-3 py-2 font-medium whitespace-nowrap">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row, i) => (
+                  <tr key={i} className="border-t border-border/40 row-hover">
+                    {activeHeaders.map((h) => (
+                      <td
+                        key={h}
+                        className="px-3 py-2 text-foreground whitespace-nowrap max-w-[200px] truncate"
+                        title={row[h] ?? ""}
+                      >
+                        {row[h] || <span className="text-muted-foreground">—</span>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
           <button
             type="button"
-            className="px-2.5 py-1.5 rounded-md text-[11px] font-medium border border-[hsl(var(--success))]/50 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-colors bg-transparent cursor-pointer inline-flex items-center gap-1.5"
-            onClick={() => onToggleAll(true)}
+            className="px-3 py-2 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+            onClick={onCancel}
+            disabled={importing}
           >
-            <Eye className="w-3.5 h-3.5" />
-            Tout activer
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Annuler
           </button>
           <button
             type="button"
-            className="px-2.5 py-1.5 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer inline-flex items-center gap-1.5"
-            onClick={() => onToggleAll(false)}
+            className="px-4 py-2 rounded-lg text-[13px] font-semibold text-white cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{
+              background: "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
+              boxShadow: "0 0 22px rgba(99, 102, 241, 0.35)",
+            }}
+            onClick={onConfirm}
+            disabled={importing || activeCount === 0}
           >
-            <EyeOff className="w-3.5 h-3.5" />
-            Tout désactiver
+            {importing ? "Import en cours…" : "Importer"}
           </button>
         </div>
-      </div>
-
-      {/* Liste des colonnes */}
-      <div className="space-y-2">
-        {columns.map((col, i) => (
-          <ColumnRow
-            key={col.header + i}
-            col={col}
-            usedTargets={usedTargets}
-            onUpdate={(patch) => onUpdate(i, patch)}
-          />
-        ))}
-      </div>
-
-      {/* Footer actions */}
-      <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
-        <button
-          type="button"
-          className="px-3 py-2 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer inline-flex items-center gap-1.5"
-          onClick={onCancel}
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Retour
-        </button>
-        <button
-          type="button"
-          className="px-4 py-2 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={onNext}
-          disabled={activeCount === 0}
-          title={activeCount === 0 ? "Activez au moins une colonne" : undefined}
-        >
-          Aperçu & import
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
       </div>
     </div>
   );
@@ -693,213 +661,54 @@ const MappingStep = ({
 
 const ColumnRow = ({
   col,
-  usedTargets,
   onUpdate,
 }: {
   col: ColumnConfig;
-  usedTargets: Set<StockField>;
   onUpdate: (patch: Partial<ColumnConfig>) => void;
-}) => {
-  const isIgnored = col.target === "ignore";
-  const canToggle = !isIgnored;
-  return (
-    <div
-      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
-        isIgnored
-          ? "border-border/40 bg-background/20"
-          : col.active
-          ? "border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/5"
-          : "border-border/60 bg-background/30"
-      }`}
+}) => (
+  <div
+    className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+      col.active
+        ? "border-[hsl(var(--success))]/40 bg-[hsl(var(--success))]/5"
+        : "border-border/60 bg-background/30"
+    }`}
+  >
+    <button
+      type="button"
+      onClick={() => onUpdate({ active: !col.active })}
+      aria-pressed={col.active}
+      title={
+        col.active
+          ? "Visible dans le bon de commande"
+          : "Ignorée (ne sera pas importée)"
+      }
+      className="shrink-0 cursor-pointer"
     >
-      {/* Toggle ON/OFF */}
-      <button
-        type="button"
-        onClick={() => canToggle && onUpdate({ active: !col.active })}
-        aria-pressed={col.active}
-        disabled={!canToggle}
-        title={
-          canToggle
-            ? col.active
-              ? "Visible dans le PDF"
-              : "Stockée uniquement (pas dans le PDF)"
-            : "Cette colonne est ignorée"
-        }
-        className={`shrink-0 transition-colors ${
-          canToggle ? "cursor-pointer" : "cursor-not-allowed opacity-40"
-        }`}
-      >
-        {col.active ? (
-          <ToggleRight className="w-7 h-7 text-[hsl(var(--success))]" />
-        ) : (
-          <ToggleLeft className="w-7 h-7 text-muted-foreground" />
-        )}
-      </button>
+      {col.active ? (
+        <ToggleRight className="w-7 h-7 text-[hsl(var(--success))]" />
+      ) : (
+        <ToggleLeft className="w-7 h-7 text-muted-foreground" />
+      )}
+    </button>
 
-      {/* Nom colonne fichier + aperçu valeur */}
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium text-foreground truncate" title={col.header}>
-          {col.header}
-        </div>
-        {col.preview && (
-          <div
-            className="text-[11px] text-muted-foreground italic truncate mt-0.5"
-            title={col.preview}
-          >
-            Exemple : {col.preview}
-          </div>
-        )}
+    <div className="min-w-0 flex-1">
+      <div className="text-[13px] font-medium text-foreground truncate" title={col.header}>
+        {col.header}
       </div>
-
-      {/* Flèche */}
-      <ArrowRight className="w-4 h-4 text-muted-foreground/60 shrink-0" />
-
-      {/* Dropdown cible */}
-      <select
-        className="field-input text-xs w-48 shrink-0"
-        value={col.target}
-        onChange={(e) => {
-          const value = e.target.value as StockField | "ignore";
-          onUpdate({
-            target: value,
-            // Si on sélectionne un vrai champ, on active par défaut.
-            active: value !== "ignore" ? true : false,
-          });
-        }}
-      >
-        <option value="ignore">Ignorer cette colonne</option>
-        {STOCK_FIELDS.map((f) => {
-          const already = usedTargets.has(f) && col.target !== f;
-          return (
-            <option key={f} value={f} disabled={already}>
-              {STOCK_FIELD_LABELS[f]}
-              {already ? " (déjà utilisé)" : ""}
-            </option>
-          );
-        })}
-      </select>
-    </div>
-  );
-};
-
-/* -------------------------------------------------------------------------- */
-/*                    Étape 3 — Aperçu + confirmation                         */
-/* -------------------------------------------------------------------------- */
-
-const PreviewStep = ({
-  parsed,
-  colonnesPdf,
-  previewRows,
-  importing,
-  onBack,
-  onConfirm,
-}: {
-  parsed: ParsedFile;
-  colonnesPdf: StockField[];
-  previewRows: StockVehiculeInput[];
-  importing: boolean;
-  onBack: () => void;
-  onConfirm: () => void;
-}) => {
-  return (
-    <div className="card-autodocs space-y-5">
-      {/* Entête */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold">
-              3
-            </div>
-            <h2 className="font-display text-lg font-bold">Aperçu & confirmation</h2>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1.5">
-            Les 3 premières lignes telles qu'elles apparaîtront dans le bon de commande.
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-muted-foreground">Fichier</div>
-          <div className="text-[13px] font-medium text-foreground truncate max-w-[260px]">
-            {parsed.fileName}
-          </div>
-        </div>
-      </div>
-
-      {/* Résumé */}
-      <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 flex items-center gap-3 flex-wrap">
-        <Car className="w-5 h-5 text-primary shrink-0" />
-        <div className="text-[13px]">
-          <span className="font-bold text-foreground">{parsed.rows.length}</span>{" "}
-          véhicule(s) à importer,{" "}
-          <span className="font-bold text-foreground">{colonnesPdf.length}</span>{" "}
-          colonne(s) dans le PDF
-        </div>
-      </div>
-
-      {/* Tableau aperçu */}
-      <div className="overflow-x-auto rounded-lg border border-border/60">
-        <table className="w-full text-[12px]">
-          <thead className="bg-secondary/50">
-            <tr className="text-left text-muted-foreground">
-              {colonnesPdf.map((f) => (
-                <th key={f} className="px-3 py-2 font-medium whitespace-nowrap">
-                  {STOCK_FIELD_LABELS[f]}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {previewRows.map((row, i) => (
-              <tr
-                key={i}
-                className="border-t border-border/40 row-hover"
-              >
-                {colonnesPdf.map((f) => (
-                  <td
-                    key={f}
-                    className="px-3 py-2 text-foreground whitespace-nowrap max-w-[200px] truncate"
-                    title={String(row[f] ?? "")}
-                  >
-                    {String(row[f] ?? "") || (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Footer actions */}
-      <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
-        <button
-          type="button"
-          className="px-3 py-2 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
-          onClick={onBack}
-          disabled={importing}
+      {col.preview && (
+        <div
+          className="text-[11px] text-muted-foreground italic truncate mt-0.5"
+          title={col.preview}
         >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Retour
-        </button>
-        <button
-          type="button"
-          className="px-4 py-2 rounded-lg text-[13px] font-semibold text-white cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          style={{
-            background: "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
-            boxShadow: "0 0 22px rgba(99, 102, 241, 0.35)",
-          }}
-          onClick={onConfirm}
-          disabled={importing}
-        >
-          {importing ? "Import en cours…" : "Confirmer l'import"}
-        </button>
-      </div>
+          Exemple : {col.preview}
+        </div>
+      )}
     </div>
-  );
-};
+  </div>
+);
 
 /* -------------------------------------------------------------------------- */
-/*                                Sub components                              */
+/*                             Sub components                                 */
 /* -------------------------------------------------------------------------- */
 
 const StatCard = ({
@@ -937,8 +746,14 @@ const VehiculeCard = ({
   onMarkSold: (id: string) => void;
   onDelete: (id: string) => void;
 }) => {
-  const title = [vehicule.marque, vehicule.modele].filter(Boolean).join(" ") || "Véhicule";
-  const colonnesCount = vehicule.colonnes_pdf?.length ?? 0;
+  const title = vehiculeDisplayLabel(vehicule);
+  const visibleEntries = vehicule.colonnes_pdf
+    .map((k) => [k, vehicule.donnees[k] ?? ""] as const)
+    .filter(([, v]) => v && v.trim() !== "");
+  // On limite l'aperçu à 6 champs, sinon on a trop d'info sur chaque card.
+  const preview = visibleEntries.slice(0, 6);
+  const overflow = Math.max(0, visibleEntries.length - preview.length);
+
   return (
     <div
       className={`card-autodocs flex flex-col gap-3 interactive-lift ${
@@ -946,16 +761,13 @@ const VehiculeCard = ({
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-display text-[15px] font-bold truncate">{title}</h3>
-            {vehicule.version && (
-              <span className="text-[11px] text-muted-foreground">{vehicule.version}</span>
-            )}
-          </div>
-          {vehicule.annee && (
-            <div className="text-xs text-muted-foreground mt-0.5">{vehicule.annee}</div>
-          )}
+        <div className="min-w-0 flex-1">
+          <h3
+            className="font-display text-[14px] font-bold truncate leading-tight"
+            title={title}
+          >
+            {title}
+          </h3>
         </div>
         <span
           className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
@@ -968,24 +780,23 @@ const VehiculeCard = ({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12px]">
-        <InfoLine label="Prix" value={vehicule.prix ? `${vehicule.prix} €` : "—"} highlight />
-        <InfoLine label="Km" value={vehicule.kilometrage || "—"} />
-        <InfoLine label="Couleur" value={vehicule.couleur || "—"} />
-        <InfoLine label="Puiss." value={vehicule.puissance || "—"} />
-        {vehicule.vin && (
-          <div className="col-span-2">
-            <InfoLine label="VIN" value={vehicule.vin} mono />
+      <div className="grid grid-cols-1 gap-y-1 text-[12px]">
+        {preview.map(([k, v]) => (
+          <div key={k} className="flex items-baseline gap-1.5 min-w-0">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 max-w-[120px] truncate">
+              {k}
+            </span>
+            <span className="text-foreground truncate min-w-0" title={v}>
+              {v}
+            </span>
+          </div>
+        ))}
+        {overflow > 0 && (
+          <div className="text-[10px] text-muted-foreground italic">
+            + {overflow} autre(s)
           </div>
         )}
       </div>
-
-      {colonnesCount > 0 && (
-        <div className="text-[10px] text-muted-foreground">
-          <span className="text-[hsl(var(--success))]">●</span> {colonnesCount} champ(s) visible(s)
-          dans le PDF
-        </div>
-      )}
 
       <div className="flex gap-2 mt-auto pt-2 border-t border-border/40">
         {vehicule.disponible ? (
@@ -1014,31 +825,5 @@ const VehiculeCard = ({
     </div>
   );
 };
-
-const InfoLine = ({
-  label,
-  value,
-  highlight,
-  mono,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-  mono?: boolean;
-}) => (
-  <div className="flex items-baseline gap-1.5 min-w-0">
-    <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
-      {label}
-    </span>
-    <span
-      className={`truncate ${highlight ? "font-semibold text-foreground" : "text-foreground"} ${
-        mono ? "font-mono text-[11px]" : ""
-      }`}
-      title={value}
-    >
-      {value}
-    </span>
-  </div>
-);
 
 export default StockVehicules;

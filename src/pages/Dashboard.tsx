@@ -104,7 +104,16 @@ const Dashboard = () => {
                         : "Client sans nom"}
                     </td>
                     <td className="py-3 text-muted-foreground">
-                      {d.vehiculeModele || "—"}
+                      {(() => {
+                        const order =
+                          d.stockColonnes?.length > 0
+                            ? d.stockColonnes
+                            : Object.keys(d.stockDonnees ?? {});
+                        const vals = order
+                          .map((k) => (d.stockDonnees?.[k] ?? "").trim())
+                          .filter(Boolean);
+                        return vals.slice(0, 2).join(" · ") || "—";
+                      })()}
                     </td>
                     <td className="py-3 text-muted-foreground">
                       {new Date(d.updatedAt).toLocaleString("fr-FR", {

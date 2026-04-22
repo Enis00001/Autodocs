@@ -84,36 +84,7 @@ function getHtmlTemplate(): string {
   <div class="section">
     <div class="section-title">Véhicule vendu</div>
     <table>
-      <!--VEH_MODELE_ROW_START-->
-      <tr><th>Modèle / Désignation</th><td colspan="3">{{vehiculeModele}}</td></tr>
-      <!--VEH_MODELE_ROW_END-->
-      <!--VEH_VIN_ROW_START-->
-      <tr><th>N° VIN / Châssis</th><td colspan="3">{{vehiculeVin}}</td></tr>
-      <!--VEH_VIN_ROW_END-->
-      <!--VEH_ANNEE_ROW_START-->
-      <tr><th>Année</th><td colspan="3">{{vehiculeAnnee}}</td></tr>
-      <!--VEH_ANNEE_ROW_END-->
-      <!--VEH_PREMIERE_CIRCULATION_ROW_START-->
-      <tr><th>1ère mise en circulation</th><td colspan="3">{{vehiculePremiereCirculation}}</td></tr>
-      <!--VEH_PREMIERE_CIRCULATION_ROW_END-->
-      <!--VEH_KILOMETRAGE_ROW_START-->
-      <tr><th>Kilométrage</th><td colspan="3">{{vehiculeKilometrage}}</td></tr>
-      <!--VEH_KILOMETRAGE_ROW_END-->
-      <!--VEH_COULEUR_ROW_START-->
-      <tr><th>Couleur</th><td colspan="3">{{vehiculeCouleur}}</td></tr>
-      <!--VEH_COULEUR_ROW_END-->
-      <!--VEH_PUISSANCE_ROW_START-->
-      <tr><th>Puissance (CV)</th><td colspan="3">{{vehiculeChevaux}}</td></tr>
-      <!--VEH_PUISSANCE_ROW_END-->
-      <!--VEH_CO2_ROW_START-->
-      <tr><th>CO2 (g/km)</th><td colspan="3">{{vehiculeCo2}}</td></tr>
-      <!--VEH_CO2_ROW_END-->
-      <!--VEH_CARBURANT_ROW_START-->
-      <tr><th>Carburant</th><td colspan="3">{{vehiculeCarburant}}</td></tr>
-      <!--VEH_CARBURANT_ROW_END-->
-      <!--VEH_TRANSMISSION_ROW_START-->
-      <tr><th>Transmission</th><td colspan="3">{{vehiculeTransmission}}</td></tr>
-      <!--VEH_TRANSMISSION_ROW_END-->
+      {{vehiculeRowsHtml}}
     </table>
   </div>
   <!--VEHICULE_SECTION_END-->
@@ -245,69 +216,76 @@ function keepBlock(html: string, startMarker: string, endMarker: string): string
     .replace(new RegExp(endMarker, "g"), "");
 }
 
+/**
+ * Parse une valeur pouvant être un JSON stringifié ou directement la structure.
+ * Accepte object/array et retourne la valeur JS correspondante, ou null.
+ */
+function parseJsonMaybe<T = unknown>(raw: unknown): T | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw === "object") return raw as T;
+  return null;
+}
+
+function parseStringArray(raw: unknown): string[] {
+  const v = parseJsonMaybe<unknown>(raw);
+  const source = Array.isArray(v) ? v : Array.isArray(raw) ? raw : [];
+  return (source as unknown[]).filter(
+    (x): x is string => typeof x === "string" && x.trim() !== "",
+  );
+}
+
+function parseStringDict(raw: unknown): Record<string, string> {
+  const v = parseJsonMaybe<unknown>(raw);
+  const source =
+    v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : null;
+  if (!source) return {};
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(source)) {
+    if (typeof k !== "string" || !k) continue;
+    if (val === null || val === undefined) continue;
+    out[k] = String(val);
+  }
+  return out;
+}
+
 /* ================================================================== */
 /*  Build HTML                                                         */
 /* ================================================================== */
 
 /**
- * Liste des champs véhicule configurables et la paire de markers associée.
- * "modele" regroupe marque/modele/version (ils sont concaténés dans
- * `vehiculeModele`). Le PDF n'a pas de ligne dédiée par composant.
+ * Construit les `<tr>` de la section "Véhicule vendu" à partir du couple
+ * (stock_donnees, stock_colonnes). On respecte l'ordre de `stock_colonnes`
+ * et on skippe les valeurs vides pour éviter les lignes fantômes.
  */
-const VEHICULE_ROW_MARKERS: Record<string, [string, string]> = {
-  modele: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
-  marque: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
-  version: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
-  vin: ["<!--VEH_VIN_ROW_START-->", "<!--VEH_VIN_ROW_END-->"],
-  annee: ["<!--VEH_ANNEE_ROW_START-->", "<!--VEH_ANNEE_ROW_END-->"],
-  premiere_circulation: [
-    "<!--VEH_PREMIERE_CIRCULATION_ROW_START-->",
-    "<!--VEH_PREMIERE_CIRCULATION_ROW_END-->",
-  ],
-  kilometrage: ["<!--VEH_KILOMETRAGE_ROW_START-->", "<!--VEH_KILOMETRAGE_ROW_END-->"],
-  couleur: ["<!--VEH_COULEUR_ROW_START-->", "<!--VEH_COULEUR_ROW_END-->"],
-  puissance: ["<!--VEH_PUISSANCE_ROW_START-->", "<!--VEH_PUISSANCE_ROW_END-->"],
-  co2: ["<!--VEH_CO2_ROW_START-->", "<!--VEH_CO2_ROW_END-->"],
-  carburant: ["<!--VEH_CARBURANT_ROW_START-->", "<!--VEH_CARBURANT_ROW_END-->"],
-  transmission: ["<!--VEH_TRANSMISSION_ROW_START-->", "<!--VEH_TRANSMISSION_ROW_END-->"],
-};
-
-/** Champs véhicule affichés par défaut si `colonnes_pdf` n'est pas fourni. */
-const DEFAULT_VEHICULE_FIELDS = [
-  "modele",
-  "vin",
-  "premiere_circulation",
-  "kilometrage",
-  "couleur",
-  "puissance",
-  "co2",
-];
-
-function parseColonnesPdf(raw: unknown): string[] | null {
-  if (!raw) return null;
-  if (Array.isArray(raw)) {
-    const arr = raw.filter((x): x is string => typeof x === "string" && x.trim() !== "");
-    return arr.length > 0 ? arr : null;
+function buildVehiculeRowsHtml(
+  donnees: Record<string, string>,
+  colonnes: string[],
+): string {
+  const rows: string[] = [];
+  const order = colonnes.length > 0 ? colonnes : Object.keys(donnees);
+  for (const key of order) {
+    const rawValue = donnees[key];
+    if (rawValue === undefined || rawValue === null) continue;
+    const value = String(rawValue).trim();
+    if (!value) continue;
+    rows.push(
+      `<tr><th>${escapeHtml(key)}</th><td colspan="3">${escapeHtml(value)}</td></tr>`,
+    );
   }
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) {
-        const arr = parsed.filter((x): x is string => typeof x === "string" && x.trim() !== "");
-        return arr.length > 0 ? arr : null;
-      }
-    } catch {
-      /* fallthrough */
-    }
-    const arr = trimmed
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    return arr.length > 0 ? arr : null;
-  }
-  return null;
+  return rows.join("\n");
 }
 
 function buildHtml(formData: Record<string, string>): string {
@@ -320,12 +298,8 @@ function buildHtml(formData: Record<string, string>): string {
   });
   const bonNumero = `BC-${Date.now().toString(36).toUpperCase()}`;
 
-  // Montants
   const prix = parseNum(formData.vehiculePrix);
   const remise = parseNum(formData.vehiculeRemise);
-  // La reprise n'est prise en compte que si l'utilisateur a saisi une valeur > 0.
-  // C'est le seul critère d'affichage pour l'utilisateur final : pas besoin de
-  // s'appuyer sur un toggle séparé dans le PDF.
   const repriseValeur = parseNum(formData.reprise_valeur);
   const repriseActive = repriseValeur > 0;
   const netAPayer = Math.max(0, prix - remise - repriseValeur);
@@ -353,23 +327,13 @@ function buildHtml(formData: Record<string, string>): string {
     html = stripBlock(html, "<!--ACOMPTE_BLOCK_START-->", "<!--ACOMPTE_BLOCK_END-->");
   }
 
-  /* ---------- Lignes "Véhicule vendu" conditionnelles selon colonnes_pdf ---------- */
-  const colonnesPdf = parseColonnesPdf(formData.colonnes_pdf);
-  const visibleFields = new Set(colonnesPdf ?? DEFAULT_VEHICULE_FIELDS);
-  let anyVehRow = false;
-  for (const [field, [startM, endM]] of Object.entries(VEHICULE_ROW_MARKERS)) {
-    const isVisible = visibleFields.has(field);
-    // On doit toujours faire une passe (keep ou strip) car keep retire les markers
-    // même quand ils apparaissent en double (plusieurs fields partagent modele).
-    if (isVisible) {
-      html = keepBlock(html, startM, endM);
-      anyVehRow = true;
-    } else {
-      html = stripBlock(html, startM, endM);
-    }
-  }
-  // Si aucune ligne véhicule visible, on cache toute la section.
-  if (anyVehRow) {
+  /* ---------- Tableau véhicule dynamique ---------- */
+  const donnees = parseStringDict(formData.stock_donnees);
+  const colonnes = parseStringArray(formData.stock_colonnes);
+  const vehiculeRowsHtml = buildVehiculeRowsHtml(donnees, colonnes);
+
+  // Si aucune ligne véhicule n'a de valeur, on masque toute la section.
+  if (vehiculeRowsHtml.trim().length > 0) {
     html = keepBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
   } else {
     html = stripBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
@@ -379,7 +343,6 @@ function buildHtml(formData: Record<string, string>): string {
   const modeRaw = (formData.modePaiement ?? "").trim().toLowerCase();
   const modePaiementLabel = modeRaw === "financement" ? "Financement" : "Comptant";
 
-  // Concession : fallback sur env/placeholder
   const concessionNom =
     get("concessionNom") || escapeHtml(process.env.CONCESSION_NOM ?? "") || "Concession";
 
@@ -394,16 +357,6 @@ function buildHtml(formData: Record<string, string>): string {
     clientNumeroCni: get("clientNumeroCni"),
     clientAdresse: get("clientAdresse"),
 
-    vehiculeModele: get("vehiculeModele"),
-    vehiculeVin: get("vehiculeVin"),
-    vehiculePremiereCirculation: get("vehiculePremiereCirculation"),
-    vehiculeKilometrage: get("vehiculeKilometrage"),
-    vehiculeCouleur: get("vehiculeCouleur"),
-    vehiculeChevaux: get("vehiculeChevaux"),
-    vehiculeCo2: get("vehiculeCo2"),
-    vehiculeAnnee: get("vehiculeAnnee"),
-    vehiculeCarburant: get("vehiculeCarburant"),
-    vehiculeTransmission: get("vehiculeTransmission"),
     vehiculePrix: formatMoney(prix),
 
     reprise_plaque: get("reprise_plaque"),
@@ -420,6 +373,11 @@ function buildHtml(formData: Record<string, string>): string {
     modePaiementLabel,
     vehiculeDateLivraison: get("vehiculeDateLivraison"),
   };
+
+  // Cas spécial : `vehiculeRowsHtml` contient du HTML déjà échappé, il ne doit
+  // PAS passer par le remplacement générique qui traite les valeurs comme du
+  // texte brut et ajoute des "—" sur les vides.
+  html = html.replace(/\{\{vehiculeRowsHtml\}\}/g, vehiculeRowsHtml);
 
   for (const [key, value] of Object.entries(replacements)) {
     html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value || "—");

@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, X, Check } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { getCurrentUserId } from "@/lib/auth";
 import {
   searchVehicules,
-  vehiculeLabel,
-  DEFAULT_PDF_FIELDS,
-  type StockField,
+  vehiculeDisplayLabel,
+  guessPrixFromDonnees,
   type StockVehicule,
 } from "@/utils/stockVehicules";
 
@@ -23,7 +22,6 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
   const [stockSuggestions, setStockSuggestions] = useState<StockVehicule[]>([]);
   const [isStockSearching, setIsStockSearching] = useState(false);
   const [isStockDropdownOpen, setIsStockDropdownOpen] = useState(false);
-  const [selectedStock, setSelectedStock] = useState<StockVehicule | null>(null);
   const stockWrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -59,64 +57,48 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
   }, []);
 
   const handleSelectStockVehicule = (v: StockVehicule) => {
-    setSelectedStock(v);
     setStockQuery("");
     setStockSuggestions([]);
     setIsStockDropdownOpen(false);
-    onChange({
-      vehiculeModele: vehiculeLabel(v),
-      vehiculeMarque: v.marque ?? "",
-      vehiculeVersion: v.version ?? "",
-      vehiculeAnnee: v.annee ?? "",
-      vehiculeCarburant: v.carburant ?? "",
-      vehiculeTransmission: v.transmission ?? "",
-      vehiculePrix: v.prix ?? "",
-      vehiculeVin: v.vin ?? "",
-      vehiculeKilometrage: v.kilometrage ?? "",
-      vehiculeCouleur: v.couleur ?? "",
-      vehiculeChevaux: v.puissance ?? "",
-      vehiculeCo2: v.co2 ?? "",
-      vehiculePremiereCirculation: v.premiere_circulation ?? "",
-      // `colonnes_pdf` : config de visibilité PDF/form définie à l'import. Si
-      // vide côté stock, on retombe sur les 8 champs historiques en fallback.
-      vehiculeColonnesPdf:
-        v.colonnes_pdf && v.colonnes_pdf.length > 0 ? [...v.colonnes_pdf] : [],
-    });
+    // On snapshote la donnée du véhicule dans le brouillon : le PDF reste
+    // régénérable plus tard même si le véhicule est vendu / supprimé.
+    const donnees = { ...v.donnees };
+    const colonnes = [...v.colonnes_pdf];
+    const patch: Partial<BonDraftData> = {
+      vehiculeStockId: v.id,
+      stockDonnees: donnees,
+      stockColonnes: colonnes,
+    };
+    // Pré-remplissage du prix de la section Règlement (heuristique).
+    const guessedPrix = guessPrixFromDonnees(donnees);
+    if (guessedPrix && !form.vehiculePrix) {
+      patch.vehiculePrix = guessedPrix;
+    }
+    onChange(patch);
   };
 
   const handleDeselectStockVehicule = () => {
-    setSelectedStock(null);
-    // On libère la contrainte `colonnes_pdf` pour repasser en saisie manuelle complète.
-    onChange({ vehiculeColonnesPdf: [] });
+    onChange({
+      vehiculeStockId: "",
+      stockDonnees: {},
+      stockColonnes: [],
+    });
   };
 
-  // Calcule la liste effective des champs à afficher (form + PDF).
-  // Si vehiculeColonnesPdf est vide => fallback sur DEFAULT_PDF_FIELDS (8 champs).
-  const visibleFields = useMemo<Set<StockField>>(() => {
-    const src =
-      form.vehiculeColonnesPdf && form.vehiculeColonnesPdf.length > 0
-        ? form.vehiculeColonnesPdf
-        : DEFAULT_PDF_FIELDS;
-    return new Set(src.filter((x): x is StockField => typeof x === "string"));
-  }, [form.vehiculeColonnesPdf]);
+  /** Met à jour la valeur d'une clé dans le snapshot (édition ligne par ligne). */
+  const updateStockField = (key: string, value: string) => {
+    onChange({
+      stockDonnees: { ...form.stockDonnees, [key]: value },
+    });
+  };
 
-  // `prix` est TOUJOURS dans le formulaire (il alimente la section Règlement).
-  // On calcule un flag séparé pour savoir si un mode "custom colonnes" est actif :
-  // cela évite d'afficher la section "Modèle" si l'utilisateur l'a explicitement désactivée.
-  const hasCustomColumns =
-    form.vehiculeColonnesPdf && form.vehiculeColonnesPdf.length > 0;
-  const showField = (f: StockField) => visibleFields.has(f);
-  // "modele" pilote l'affichage de la ligne composite (marque + modèle + version).
-  const showModeleBlock =
-    showField("modele") || showField("marque") || showField("version");
-
-  // --- Reprise véhicule : formulaire manuel --------------------------------
   const handleToggleReprise = () => {
     const next = !form.repriseActive;
-    onChange({ repriseActive: next });
-    if (!next) {
-      // OFF → on vide tout pour éviter qu'un ancien brouillon pollue le PDF.
+    if (next) {
+      onChange({ repriseActive: true });
+    } else {
       onChange({
+        repriseActive: false,
         reprisePlaque: "",
         repriseMarque: "",
         repriseModele: "",
@@ -126,6 +108,23 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
       });
     }
   };
+
+  const hasStockVehicule =
+    form.vehiculeStockId ||
+    (form.stockColonnes && form.stockColonnes.length > 0);
+
+  // Titre du véhicule sélectionné : on reconstruit un pseudo-StockVehicule
+  // minimal pour réutiliser `vehiculeDisplayLabel`.
+  const selectedLabel = hasStockVehicule
+    ? vehiculeDisplayLabel({
+        id: form.vehiculeStockId,
+        concession_id: null,
+        donnees: form.stockDonnees,
+        colonnes_pdf: form.stockColonnes,
+        disponible: true,
+        created_at: "",
+      })
+    : "";
 
   return (
     <div className="card-autodocs">
@@ -141,18 +140,15 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
         ref={stockWrapperRef}
         className="relative mb-5 rounded-lg border border-border/60 bg-background/30 p-3"
       >
-        {selectedStock ? (
+        {hasStockVehicule ? (
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
               <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full font-semibold bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] whitespace-nowrap">
                 ✓ Véhicule sélectionné
               </span>
-              <span className="text-sm font-medium truncate" title={vehiculeLabel(selectedStock)}>
-                {vehiculeLabel(selectedStock) || "—"}
+              <span className="text-sm font-medium truncate" title={selectedLabel}>
+                {selectedLabel || "—"}
               </span>
-              {selectedStock.annee && (
-                <span className="text-xs text-muted-foreground">({selectedStock.annee})</span>
-              )}
             </div>
             <button
               type="button"
@@ -173,7 +169,7 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
               <input
                 type="text"
                 className="field-input w-full"
-                placeholder="ex: Peugeot 308, Clio IV, VIN…"
+                placeholder="ex: 308 GT, VIN, immatriculation…"
                 value={stockQuery}
                 onChange={(e) => {
                   setStockQuery(e.target.value);
@@ -184,199 +180,88 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
               {isStockDropdownOpen && stockQuery.trim() && (
                 <div className="absolute top-full left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg z-30">
                   {isStockSearching && stockSuggestions.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">Recherche…</div>
+                    <div className="px-3 py-2 text-xs text-muted-foreground">
+                      Recherche…
+                    </div>
                   )}
                   {!isStockSearching && stockSuggestions.length === 0 && (
                     <div className="px-3 py-2 text-xs text-muted-foreground">
                       Aucun véhicule trouvé dans le stock
                     </div>
                   )}
-                  {stockSuggestions.map((v) => (
-                    <button
-                      type="button"
-                      key={v.id}
-                      className="w-full text-left px-3 py-2 hover:bg-secondary/80 transition-colors border-b border-border/40 last:border-b-0 cursor-pointer"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSelectStockVehicule(v);
-                      }}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium truncate">
-                          {vehiculeLabel(v) || "—"}
-                        </span>
-                        {v.prix && (
-                          <span className="text-xs font-semibold text-primary whitespace-nowrap">
-                            {v.prix} €
-                          </span>
+                  {stockSuggestions.map((v) => {
+                    const label = vehiculeDisplayLabel(v);
+                    const secondary = v.colonnes_pdf
+                      .slice(3, 6)
+                      .map((k) => v.donnees[k])
+                      .filter(Boolean)
+                      .join(" • ");
+                    return (
+                      <button
+                        type="button"
+                        key={v.id}
+                        className="w-full text-left px-3 py-2 hover:bg-secondary/80 transition-colors border-b border-border/40 last:border-b-0 cursor-pointer"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectStockVehicule(v);
+                        }}
+                      >
+                        <div className="text-sm font-medium truncate">
+                          {label}
+                        </div>
+                        {secondary && (
+                          <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                            {secondary}
+                          </div>
                         )}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
-                        {v.annee && <span>{v.annee}</span>}
-                        {v.kilometrage && <span>• {v.kilometrage} km</span>}
-                        {v.couleur && <span>• {v.couleur}</span>}
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
             <p className="text-[11px] text-muted-foreground mt-1.5">
-              Aucune sélection : les champs ci-dessous restent éditables manuellement.
+              Sélectionnez un véhicule pour récupérer automatiquement ses
+              caractéristiques.
             </p>
           </>
         )}
       </div>
 
-      {/* --- Badge config colonnes --- */}
-      {hasCustomColumns && (
-        <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] text-muted-foreground">
-          <span className="text-[hsl(var(--success))]">●</span>{" "}
-          <span className="text-foreground font-medium">
-            {form.vehiculeColonnesPdf.length} champ(s)
-          </span>{" "}
-          configurés à l'import. Seuls ces champs apparaîtront dans le PDF.
+      {/* --- Champs véhicule (dynamiques) --- */}
+      {hasStockVehicule ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {form.stockColonnes.map((key) => (
+            <div key={key} className="flex flex-col gap-1.5">
+              <label
+                className="field-label truncate"
+                title={key}
+              >
+                {key}
+              </label>
+              <input
+                type="text"
+                className="field-input"
+                value={form.stockDonnees[key] ?? ""}
+                onChange={(e) => updateStockField(key, e.target.value)}
+              />
+            </div>
+          ))}
+          {form.stockColonnes.length === 0 && (
+            <div className="col-span-full text-xs text-muted-foreground italic">
+              Aucune colonne n'a été activée à l'import de ce véhicule.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border/60 bg-background/20 px-4 py-6 text-center text-sm text-muted-foreground">
+          Aucun véhicule sélectionné. Utilisez la recherche ci-dessus pour
+          choisir un véhicule du stock.
         </div>
       )}
 
-      {/* --- Champs véhicule (affichage conditionnel) --- */}
-      <div className="grid grid-cols-2 gap-3">
-        {showModeleBlock && (
-          <div className="flex flex-col gap-1.5 col-span-2">
-            <label className="field-label">Modèle du véhicule</label>
-            <input
-              type="text"
-              placeholder="ex: Peugeot 308 GT Pack"
-              className="field-input"
-              value={form.vehiculeModele}
-              onChange={(e) => onChange({ vehiculeModele: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("vin") && (
-          <div className="flex flex-col gap-1.5 col-span-2">
-            <label className="field-label">VIN / N° de châssis</label>
-            <input
-              type="text"
-              placeholder="ex: VF3LCYHZ..."
-              className="field-input"
-              value={form.vehiculeVin}
-              onChange={(e) => onChange({ vehiculeVin: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("annee") && (
-          <div className="flex flex-col gap-1.5">
-            <label className="field-label">Année</label>
-            <input
-              type="text"
-              placeholder="ex: 2022"
-              className="field-input"
-              value={form.vehiculeAnnee}
-              onChange={(e) => onChange({ vehiculeAnnee: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("premiere_circulation") && (
-          <div className="flex flex-col gap-1.5">
-            <label className="field-label">1ère mise en circulation</label>
-            <input
-              type="text"
-              placeholder="ex: 03/2022"
-              className="field-input"
-              value={form.vehiculePremiereCirculation}
-              onChange={(e) => onChange({ vehiculePremiereCirculation: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("kilometrage") && (
-          <div className="flex flex-col gap-1.5">
-            <label className="field-label">Kilométrage</label>
-            <input
-              type="text"
-              placeholder="ex: 45 000"
-              className="field-input"
-              value={form.vehiculeKilometrage}
-              onChange={(e) => onChange({ vehiculeKilometrage: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("puissance") && (
-          <div className="flex flex-col gap-1.5">
-            <label className="field-label">Puissance (CV)</label>
-            <input
-              type="text"
-              placeholder="ex: 130"
-              className="field-input"
-              value={form.vehiculeChevaux}
-              onChange={(e) => onChange({ vehiculeChevaux: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("co2") && (
-          <div className="flex flex-col gap-1.5">
-            <label className="field-label">Émission CO2 (g/km)</label>
-            <input
-              type="text"
-              placeholder="ex: 112"
-              className="field-input"
-              value={form.vehiculeCo2}
-              onChange={(e) => onChange({ vehiculeCo2: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("couleur") && (
-          <div className="flex flex-col gap-1.5">
-            <label className="field-label">Couleur</label>
-            <input
-              type="text"
-              placeholder="ex: Blanc Nacré"
-              className="field-input"
-              value={form.vehiculeCouleur}
-              onChange={(e) => onChange({ vehiculeCouleur: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("carburant") && (
-          <div className="flex flex-col gap-1.5">
-            <label className="field-label">Carburant</label>
-            <input
-              type="text"
-              placeholder="ex: Essence"
-              className="field-input"
-              value={form.vehiculeCarburant}
-              onChange={(e) => onChange({ vehiculeCarburant: e.target.value })}
-            />
-          </div>
-        )}
-        {showField("transmission") && (
-          <div className="flex flex-col gap-1.5">
-            <label className="field-label">Transmission</label>
-            <input
-              type="text"
-              placeholder="ex: Manuelle 6 rapports"
-              className="field-input"
-              value={form.vehiculeTransmission}
-              onChange={(e) => onChange({ vehiculeTransmission: e.target.value })}
-            />
-          </div>
-        )}
-        {/* Prix toujours présent : il alimente la section Règlement côté PDF. */}
-        <div className="flex flex-col gap-1.5 col-span-2">
-          <label className="field-label">Prix de vente TTC (€)</label>
-          <input
-            type="text"
-            placeholder="ex: 22 990"
-            className="field-input"
-            value={form.vehiculePrix}
-            onChange={(e) => onChange({ vehiculePrix: e.target.value })}
-          />
-        </div>
-      </div>
-
       {/* --- Sous-section Reprise véhicule --- */}
       <div className="mt-6 pt-5 border-t border-border/40">
-        {/* Toggle ON/OFF — rouge (pas de reprise) / vert (reprise active) */}
         <button
           type="button"
           onClick={handleToggleReprise}
@@ -419,7 +304,6 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
             </span>
           </span>
 
-          {/* switch pill */}
           <span
             className={`relative w-12 h-6 rounded-full transition-colors shrink-0 ${
               form.repriseActive

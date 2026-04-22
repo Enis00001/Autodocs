@@ -8,10 +8,16 @@ export type DocumentScannedState = {
 };
 
 /**
- * V1 simplifiée — 3 sections : Client / Véhicule (+ reprise optionnelle) / Règlement.
- * Les champs hérités (options, financement complexe, RIB, vendeur, templates…) ne
- * font plus partie du formulaire. Les colonnes DB correspondantes restent en place
- * (DEFAULT '') pour préserver les anciens brouillons.
+ * V2 — schéma libre côté véhicule.
+ *
+ * Sections du formulaire :
+ *   - Client  : infos CNI
+ *   - Véhicule : snapshot du véhicule sélectionné dans le stock (`stockDonnees`
+ *                + `stockColonnes`). Le commercial peut éditer ces valeurs ;
+ *                le PDF affichera un tableau clé/valeur pour chaque colonne
+ *                dans `stockColonnes`.
+ *   - Reprise  : saisie manuelle (non liée au stock).
+ *   - Règlement : prix / remise / acompte / mode / date livraison.
  */
 export type BonDraftData = {
   id: string;
@@ -25,29 +31,15 @@ export type BonDraftData = {
   clientNumeroCni: string;
   clientAdresse: string;
 
-  // Section 2 — Véhicule (auto-rempli depuis stock)
-  vehiculeModele: string;
-  vehiculeVin: string;
-  vehiculePremiereCirculation: string;
-  vehiculeKilometrage: string;
-  vehiculeCo2: string;
-  vehiculeChevaux: string;
-  vehiculeCouleur: string;
-  vehiculePrix: string;
-  /** Champs supplémentaires importés via CSV (affichés conditionnellement). */
-  vehiculeMarque: string;
-  vehiculeVersion: string;
-  vehiculeAnnee: string;
-  vehiculeCarburant: string;
-  vehiculeTransmission: string;
-  /**
-   * Liste des champs standards à afficher dans le form + PDF. Vide = comportement
-   * par défaut (les 8 champs historiques). Alimentée quand on sélectionne un
-   * véhicule du stock dont la ligne `stock_vehicules.colonnes_pdf` est définie.
-   */
-  vehiculeColonnesPdf: string[];
+  // Section 2 — Véhicule (depuis stock)
+  /** UUID du véhicule dans `stock_vehicules` (vide si saisie manuelle libre). */
+  vehiculeStockId: string;
+  /** Paires clé/valeur = toutes les colonnes activées lors de la sélection. */
+  stockDonnees: Record<string, string>;
+  /** Ordre d'affichage des clés dans le form + PDF. */
+  stockColonnes: string[];
 
-  // Section 2b — Reprise véhicule (toggle + formulaire manuel)
+  // Section 2b — Reprise
   repriseActive: boolean;
   reprisePlaque: string;
   repriseMarque: string;
@@ -57,12 +49,14 @@ export type BonDraftData = {
   repriseValeur: string;
 
   // Section 3 — Règlement
+  /** Saisi à la main (section Règlement). Pré-rempli depuis le stock si une
+   *  colonne "Prix"/"Price"/"Tarif" y est détectée (cf. `guessPrixFromDonnees`). */
+  vehiculePrix: string;
   modePaiement: "comptant" | "financement";
   acompte: string;
   vehiculeRemise: string;
   vehiculeDateLivraison: string;
 
-  // Scans de documents (CNI, etc.)
   documentsScanned: Record<string, DocumentScannedState>;
 };
 
@@ -75,13 +69,7 @@ type BrouillonRow = {
   client_date_naissance: string;
   client_numero_cni: string;
   client_adresse: string;
-  vehicule_modele: string;
-  vehicule_vin: string;
-  vehicule_premiere_circulation: string;
-  vehicule_kilometrage: string;
-  vehicule_co2: string;
-  vehicule_chevaux: string;
-  vehicule_couleur: string;
+  // Colonnes véhicule legacy : on les laisse en base, on ne les écrit plus.
   vehicule_prix: string;
   vehicule_remise: string;
   vehicule_date_livraison: string;
@@ -89,9 +77,12 @@ type BrouillonRow = {
   mode_paiement: string;
   documents_scanned: unknown;
   /**
-   * JSONB libre. Utilisé en V1 pour stocker les champs reprise_* (pas de migration
-   * DB nécessaire) : reprise_active, reprise_plaque, reprise_marque, reprise_modele,
-   * reprise_vin, reprise_premiere_circulation, reprise_valeur.
+   * JSONB libre. En V2 on y met :
+   *   - reprise_active / reprise_plaque / reprise_marque / reprise_modele /
+   *     reprise_vin / reprise_premiere_circulation / reprise_valeur
+   *   - vehicule_stock_id (string)
+   *   - stock_donnees (object)
+   *   - stock_colonnes (array of strings)
    */
   vehicle_field_values: unknown;
 };
@@ -111,7 +102,7 @@ function sanitizeScannedDocuments(value: unknown): Record<string, DocumentScanne
             Object.entries(extractedRaw as Record<string, unknown>).map(([k, v]) => [
               k,
               String(v ?? ""),
-            ])
+            ]),
           )
         : undefined;
     out[docId] = {
@@ -123,43 +114,48 @@ function sanitizeScannedDocuments(value: unknown): Record<string, DocumentScanne
   return out;
 }
 
-function readKv(value: unknown): Record<string, string> {
-  if (!value || typeof value !== "object") return {};
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[k] = String(v ?? "");
-  }
-  return out;
-}
-
-/**
- * Extrait une liste de strings depuis une valeur JSON brute (tableau ou chaîne
- * séparée par des virgules). Tolérant : retourne [] si le format est inattendu.
- */
 function parseStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((x): x is string => typeof x === "string" && x.trim() !== "");
   }
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) return parseStringArray(parsed);
+      const p = JSON.parse(value);
+      if (Array.isArray(p)) return parseStringArray(p);
     } catch {
-      /* fallthrough */
+      /* ignore */
     }
-    return value
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
   }
   return [];
 }
 
+function parseStringDict(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    if (typeof value === "string") {
+      try {
+        return parseStringDict(JSON.parse(value));
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof k !== "string" || !k) continue;
+    if (v === null || v === undefined) continue;
+    out[k] = String(v);
+  }
+  return out;
+}
+
 function rowToDraft(row: BrouillonRow): BonDraftData {
-  const kv = readKv(row.vehicle_field_values);
-  // vehicle_field_values peut contenir aussi un tableau (colonnes_pdf) sous la même clé.
-  // On récupère la valeur brute avant `readKv` qui la stringify.
-  const rawKv = (row.vehicle_field_values ?? {}) as Record<string, unknown>;
+  const rawKv =
+    row.vehicle_field_values && typeof row.vehicle_field_values === "object"
+      ? (row.vehicle_field_values as Record<string, unknown>)
+      : {};
+  const kvStr: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawKv)) kvStr[k] = String(v ?? "");
   const mode = row.mode_paiement === "financement" ? "financement" : "comptant";
   return {
     id: row.id,
@@ -170,27 +166,20 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     clientDateNaissance: row.client_date_naissance ?? "",
     clientNumeroCni: row.client_numero_cni ?? "",
     clientAdresse: row.client_adresse ?? "",
-    vehiculeModele: row.vehicule_modele ?? "",
-    vehiculeVin: row.vehicule_vin ?? "",
-    vehiculePremiereCirculation: row.vehicule_premiere_circulation ?? "",
-    vehiculeKilometrage: row.vehicule_kilometrage ?? "",
-    vehiculeCo2: row.vehicule_co2 ?? "",
-    vehiculeChevaux: row.vehicule_chevaux ?? "",
-    vehiculeCouleur: row.vehicule_couleur ?? "",
+
+    vehiculeStockId: kvStr.vehicule_stock_id ?? "",
+    stockDonnees: parseStringDict(rawKv.stock_donnees),
+    stockColonnes: parseStringArray(rawKv.stock_colonnes),
+
+    repriseActive: kvStr.reprise_active === "true",
+    reprisePlaque: kvStr.reprise_plaque ?? "",
+    repriseMarque: kvStr.reprise_marque ?? "",
+    repriseModele: kvStr.reprise_modele ?? "",
+    repriseVin: kvStr.reprise_vin ?? "",
+    reprisePremiereCirculation: kvStr.reprise_premiere_circulation ?? "",
+    repriseValeur: kvStr.reprise_valeur ?? "",
+
     vehiculePrix: row.vehicule_prix ?? "",
-    vehiculeMarque: kv.vehicule_marque ?? "",
-    vehiculeVersion: kv.vehicule_version ?? "",
-    vehiculeAnnee: kv.vehicule_annee ?? "",
-    vehiculeCarburant: kv.vehicule_carburant ?? "",
-    vehiculeTransmission: kv.vehicule_transmission ?? "",
-    vehiculeColonnesPdf: parseStringArray(rawKv.vehicule_colonnes_pdf),
-    repriseActive: kv.reprise_active === "true",
-    reprisePlaque: kv.reprise_plaque ?? "",
-    repriseMarque: kv.reprise_marque ?? "",
-    repriseModele: kv.reprise_modele ?? "",
-    repriseVin: kv.reprise_vin ?? "",
-    reprisePremiereCirculation: kv.reprise_premiere_circulation ?? "",
-    repriseValeur: kv.reprise_valeur ?? "",
     modePaiement: mode,
     acompte: row.acompte ?? "",
     vehiculeRemise: row.vehicule_remise ?? "",
@@ -200,8 +189,6 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
 }
 
 function draftToPayload(d: BonDraftData) {
-  // `vehicle_field_values` est un JSONB libre : on mélange strings simples et un
-  // tableau (vehicule_colonnes_pdf). Postgres accepte ça sans schéma.
   const kv: Record<string, unknown> = {
     reprise_active: d.repriseActive ? "true" : "false",
     reprise_plaque: d.reprisePlaque,
@@ -210,14 +197,9 @@ function draftToPayload(d: BonDraftData) {
     reprise_vin: d.repriseVin,
     reprise_premiere_circulation: d.reprisePremiereCirculation,
     reprise_valeur: d.repriseValeur,
-    vehicule_marque: d.vehiculeMarque ?? "",
-    vehicule_version: d.vehiculeVersion ?? "",
-    vehicule_annee: d.vehiculeAnnee ?? "",
-    vehicule_carburant: d.vehiculeCarburant ?? "",
-    vehicule_transmission: d.vehiculeTransmission ?? "",
-    vehicule_colonnes_pdf: Array.isArray(d.vehiculeColonnesPdf)
-      ? d.vehiculeColonnesPdf
-      : [],
+    vehicule_stock_id: d.vehiculeStockId ?? "",
+    stock_donnees: d.stockDonnees ?? {},
+    stock_colonnes: Array.isArray(d.stockColonnes) ? d.stockColonnes : [],
   };
   return {
     client_nom: d.clientNom,
@@ -225,13 +207,16 @@ function draftToPayload(d: BonDraftData) {
     client_date_naissance: d.clientDateNaissance,
     client_numero_cni: d.clientNumeroCni,
     client_adresse: d.clientAdresse,
-    vehicule_modele: d.vehiculeModele,
-    vehicule_vin: d.vehiculeVin,
-    vehicule_premiere_circulation: d.vehiculePremiereCirculation,
-    vehicule_kilometrage: d.vehiculeKilometrage,
-    vehicule_co2: d.vehiculeCo2,
-    vehicule_chevaux: d.vehiculeChevaux,
-    vehicule_couleur: d.vehiculeCouleur,
+    // Les colonnes `vehicule_modele`, `vehicule_vin`, etc. ne sont plus
+    // alimentées depuis la V2 (le véhicule vit dans `stock_donnees`). On les
+    // laisse vides pour rester compatible avec la structure de table actuelle.
+    vehicule_modele: "",
+    vehicule_vin: "",
+    vehicule_premiere_circulation: "",
+    vehicule_kilometrage: "",
+    vehicule_co2: "",
+    vehicule_chevaux: "",
+    vehicule_couleur: "",
     vehicule_prix: d.vehiculePrix,
     vehicule_remise: d.vehiculeRemise,
     vehicule_date_livraison: d.vehiculeDateLivraison,
@@ -284,7 +269,7 @@ export async function deleteDraft(id: string): Promise<void> {
 }
 
 export async function upsertDraft(
-  partial: Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & { id?: string }
+  partial: Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & { id?: string },
 ): Promise<BonDraftData> {
   const userId = await getCurrentUserId();
   if (!userId) {
@@ -324,6 +309,7 @@ export async function upsertDraft(
 
   const id = crypto.randomUUID?.() ?? String(Date.now());
   const { id: _omit, ...rest } = partial;
+  void _omit;
   const created: BonDraftData = {
     ...rest,
     id,

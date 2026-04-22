@@ -2,16 +2,23 @@ import { useState } from "react";
 import { Zap, Loader2 } from "lucide-react";
 import { generatePDF } from "@/utils/generatePDF";
 
-const MANDATORY_FIELDS = [
+const MANDATORY_STRING_FIELDS = [
   "clientNom",
   "clientPrenom",
   "clientAdresse",
-  "vehiculeModele",
   "vehiculePrix",
 ] as const;
 
 export function countMissingMandatoryFields(form: Record<string, unknown>): number {
-  return MANDATORY_FIELDS.filter((key) => !String(form[key] ?? "").trim()).length;
+  let missing = MANDATORY_STRING_FIELDS.filter(
+    (key) => !String(form[key] ?? "").trim(),
+  ).length;
+  // Véhicule : on considère qu'au moins une colonne du stock doit être
+  // sélectionnée.
+  const stockColonnes = form.stockColonnes;
+  const hasVehicule = Array.isArray(stockColonnes) && stockColonnes.length > 0;
+  if (!hasVehicule) missing += 1;
+  return missing;
 }
 
 type GenerateBarProps = {

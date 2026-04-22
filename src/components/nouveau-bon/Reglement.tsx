@@ -76,6 +76,26 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
 
       {/* Montants */}
       <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="flex flex-col gap-1.5 col-span-2">
+          <label className="field-label flex items-center gap-1.5">
+            <span className="text-primary">●</span>
+            Prix du véhicule (€)
+            <span className="text-[10px] font-normal text-muted-foreground ml-auto">
+              Requis
+            </span>
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="ex: 12 500"
+            className="field-input text-base font-semibold"
+            value={form.vehiculePrix}
+            onChange={(e) => onChange({ vehiculePrix: e.target.value })}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Pré-rempli depuis le stock si une colonne « Prix » est détectée.
+          </p>
+        </div>
         <div className="flex flex-col gap-1.5">
           <label className="field-label">Remise accordée (€)</label>
           <input

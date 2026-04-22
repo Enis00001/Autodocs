@@ -98,7 +98,18 @@ const Historique = () => {
                 filteredDrafts.map((d) => (
                   <tr key={d.id} className="border-b border-border/50 last:border-0 row-hover">
                     <td className="py-3 font-medium">{clientLabel(d)}</td>
-                    <td className="py-3 text-muted-foreground">{d.vehiculeModele || "—"}</td>
+                    <td className="py-3 text-muted-foreground">
+                      {(() => {
+                        const order =
+                          d.stockColonnes?.length > 0
+                            ? d.stockColonnes
+                            : Object.keys(d.stockDonnees ?? {});
+                        const vals = order
+                          .map((k) => (d.stockDonnees?.[k] ?? "").trim())
+                          .filter(Boolean);
+                        return vals.slice(0, 2).join(" · ") || "—";
+                      })()}
+                    </td>
                     <td className="py-3 text-muted-foreground">{formatDate(d.createdAt)}</td>
                     <td className="py-3">
                       <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-warning/15 text-warning">

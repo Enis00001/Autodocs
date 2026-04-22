@@ -1,66 +1,135 @@
 import { supabase } from "@/lib/supabase";
 
+/**
+ * V2 — schéma libre. Un véhicule en stock est juste un sac de clé/valeur issu
+ * directement du fichier CSV/Excel, sans mapping vers des champs standards.
+ *
+ * - `donnees` : paires clé/valeur (clé = nom de colonne du fichier source)
+ * - `colonnes_pdf` : liste ordonnée des clés à afficher dans le PDF / le form
+ *
+ * L'ancienne liste typée (marque, modele, prix…) est abandonnée pour simplifier
+ * le flux d'import et laisser le commercial utiliser le vocabulaire de son
+ * propre ERP / fichier.
+ */
 export type StockVehicule = {
   id: string;
   concession_id: string | null;
-  marque: string;
-  modele: string;
-  version: string;
-  annee: string;
-  couleur: string;
-  kilometrage: string;
-  prix: string;
-  vin: string;
-  puissance: string;
-  co2: string;
-  carburant: string;
-  transmission: string;
-  premiere_circulation: string;
-  disponible: boolean;
-  /**
-   * Liste des champs standards à afficher dans le PDF bon de commande.
-   * Valeurs autorisées = clés de type `StockField`. Vide ou null => on affiche
-   * les champs par défaut (backward-compat pour les véhicules importés avant
-   * l'introduction du toggle).
-   */
+  donnees: Record<string, string>;
   colonnes_pdf: string[];
+  disponible: boolean;
   created_at: string;
 };
 
-/** Un véhicule à importer : mêmes clés que StockVehicule, sauf id/concession_id/created_at. */
-export type StockVehiculeInput = Partial<
-  Omit<StockVehicule, "id" | "concession_id" | "created_at" | "disponible">
-> & { disponible?: boolean };
+export type StockVehiculeInput = {
+  donnees: Record<string, string>;
+  colonnes_pdf: string[];
+  disponible?: boolean;
+};
 
 const STOCK_COLUMNS =
-  "id, concession_id, marque, modele, version, annee, couleur, kilometrage, prix, vin, puissance, co2, carburant, transmission, premiere_circulation, disponible, colonnes_pdf, created_at";
+  "id, concession_id, donnees, colonnes_pdf, disponible, created_at, marque, modele, version, annee, couleur, kilometrage, prix, vin, puissance, co2, carburant, transmission, premiere_circulation";
 
-function normalizeRow(row: Partial<StockVehicule> | null | undefined): StockVehicule {
-  const rawColonnes = (row as { colonnes_pdf?: unknown } | null | undefined)?.colonnes_pdf;
-  const colonnes_pdf = Array.isArray(rawColonnes)
-    ? rawColonnes.filter((x): x is string => typeof x === "string")
-    : [];
+/** Convertit une cellule brute en string normalisée (gère Date, number, null). */
+export function stringifyCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) {
+    const dd = String(value.getDate()).padStart(2, "0");
+    const mm = String(value.getMonth() + 1).padStart(2, "0");
+    const yyyy = value.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+  if (typeof value === "number") return String(value);
+  return String(value).trim();
+}
+
+function normalizeDonnees(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof k !== "string" || !k.trim()) continue;
+    out[k] = stringifyCell(v);
+  }
+  return out;
+}
+
+function normalizeColonnes(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((x): x is string => typeof x === "string" && x.trim() !== "");
+}
+
+type LegacyStockRow = {
+  id?: unknown;
+  concession_id?: unknown;
+  donnees?: unknown;
+  colonnes_pdf?: unknown;
+  disponible?: unknown;
+  created_at?: unknown;
+  // Anciennes colonnes typées : utilisées uniquement en lecture pour
+  // reconstruire `donnees` sur les lignes importées avant la V2.
+  marque?: unknown;
+  modele?: unknown;
+  version?: unknown;
+  annee?: unknown;
+  couleur?: unknown;
+  kilometrage?: unknown;
+  prix?: unknown;
+  vin?: unknown;
+  puissance?: unknown;
+  co2?: unknown;
+  carburant?: unknown;
+  transmission?: unknown;
+  premiere_circulation?: unknown;
+};
+
+/**
+ * Backward-compat : pour les anciennes lignes (donnees vide), on reconstruit
+ * un dictionnaire depuis les colonnes typées encore en base.
+ */
+function buildLegacyDonnees(row: LegacyStockRow): Record<string, string> {
+  const legacyMap: Record<string, unknown> = {
+    Marque: row.marque,
+    Modèle: row.modele,
+    Version: row.version,
+    Année: row.annee,
+    Couleur: row.couleur,
+    Kilométrage: row.kilometrage,
+    Prix: row.prix,
+    VIN: row.vin,
+    Puissance: row.puissance,
+    CO2: row.co2,
+    Carburant: row.carburant,
+    Transmission: row.transmission,
+    "Première circulation": row.premiere_circulation,
+  };
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(legacyMap)) {
+    const s = stringifyCell(v);
+    if (s) out[k] = s;
+  }
+  return out;
+}
+
+function normalizeRow(row: LegacyStockRow | null | undefined): StockVehicule {
+  const donneesRaw = normalizeDonnees(row?.donnees);
+  const donnees =
+    Object.keys(donneesRaw).length > 0 ? donneesRaw : buildLegacyDonnees(row ?? {});
+  const colonnesRaw = normalizeColonnes(row?.colonnes_pdf);
+  const colonnes_pdf =
+    colonnesRaw.length > 0 ? colonnesRaw : Object.keys(donnees);
   return {
     id: String(row?.id ?? ""),
-    concession_id: row?.concession_id ?? null,
-    marque: row?.marque ?? "",
-    modele: row?.modele ?? "",
-    version: row?.version ?? "",
-    annee: row?.annee ?? "",
-    couleur: row?.couleur ?? "",
-    kilometrage: row?.kilometrage ?? "",
-    prix: row?.prix ?? "",
-    vin: row?.vin ?? "",
-    puissance: row?.puissance ?? "",
-    co2: row?.co2 ?? "",
-    carburant: row?.carburant ?? "",
-    transmission: row?.transmission ?? "",
-    premiere_circulation: row?.premiere_circulation ?? "",
-    disponible: row?.disponible ?? true,
+    concession_id: (row?.concession_id as string | null | undefined) ?? null,
+    donnees,
     colonnes_pdf,
-    created_at: row?.created_at ?? new Date().toISOString(),
+    disponible: typeof row?.disponible === "boolean" ? row.disponible : true,
+    created_at:
+      typeof row?.created_at === "string" ? row.created_at : new Date().toISOString(),
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                   CRUD                                     */
+/* -------------------------------------------------------------------------- */
 
 export async function loadStockVehicules(concessionId: string): Promise<StockVehicule[]> {
   if (!concessionId) return [];
@@ -75,32 +144,19 @@ export async function loadStockVehicules(concessionId: string): Promise<StockVeh
     console.error("loadStockVehicules:", error);
     return [];
   }
-  return (data ?? []).map((row) => normalizeRow(row as Partial<StockVehicule>));
+  return (data ?? []).map((row) => normalizeRow(row as LegacyStockRow));
 }
 
 export async function importVehicules(
   concessionId: string,
   vehicules: StockVehiculeInput[],
-  colonnesPdf: string[] = [],
 ): Promise<StockVehicule[]> {
   if (!concessionId || vehicules.length === 0) return [];
   const payload = vehicules.map((v) => ({
     concession_id: concessionId,
-    marque: v.marque ?? "",
-    modele: v.modele ?? "",
-    version: v.version ?? "",
-    annee: v.annee ?? "",
-    couleur: v.couleur ?? "",
-    kilometrage: v.kilometrage ?? "",
-    prix: v.prix ?? "",
-    vin: v.vin ?? "",
-    puissance: v.puissance ?? "",
-    co2: v.co2 ?? "",
-    carburant: v.carburant ?? "",
-    transmission: v.transmission ?? "",
-    premiere_circulation: v.premiere_circulation ?? "",
+    donnees: v.donnees ?? {},
+    colonnes_pdf: v.colonnes_pdf ?? [],
     disponible: v.disponible ?? true,
-    colonnes_pdf: colonnesPdf,
   }));
   console.log("Tentative sauvegarde: importVehicules", { count: payload.length });
   const { data, error } = await supabase
@@ -112,7 +168,7 @@ export async function importVehicules(
     console.error("importVehicules:", error);
     throw error;
   }
-  return (data ?? []).map((row) => normalizeRow(row as Partial<StockVehicule>));
+  return (data ?? []).map((row) => normalizeRow(row as LegacyStockRow));
 }
 
 export async function deleteVehicule(id: string): Promise<void> {
@@ -154,187 +210,58 @@ export async function clearStock(concessionId: string): Promise<void> {
   }
 }
 
-/** Recherche insensible à la casse sur marque + modele + version. Ne renvoie que les véhicules disponibles. */
+/**
+ * Recherche full-text client-side : on charge tout le stock disponible de la
+ * concession puis on filtre en JS sur l'ensemble des valeurs du JSONB. Plus
+ * simple à raisonner et largement suffisant jusqu'à ~1000 véhicules.
+ */
 export async function searchVehicules(
   concessionId: string,
   query: string,
 ): Promise<StockVehicule[]> {
   if (!concessionId) return [];
-  const q = query.trim();
+  const q = query.trim().toLowerCase();
   if (!q) return [];
-  // Supabase `.or()` avec ilike — on échappe les virgules pour éviter de casser la syntaxe.
-  const safe = q.replace(/[%,]/g, " ").trim();
-  const pattern = `%${safe}%`;
-  const orExpr = `marque.ilike.${pattern},modele.ilike.${pattern},version.ilike.${pattern}`;
-  console.log("Tentative sauvegarde: searchVehicules", { q: safe });
-  const { data, error } = await supabase
-    .from("stock_vehicules")
-    .select(STOCK_COLUMNS)
-    .eq("concession_id", concessionId)
-    .eq("disponible", true)
-    .or(orExpr)
-    .order("marque", { ascending: true })
-    .limit(20);
-  console.log("Résultat Supabase:", { data, error });
-  if (error) {
-    console.error("searchVehicules:", error);
-    return [];
-  }
-  return (data ?? []).map((row) => normalizeRow(row as Partial<StockVehicule>));
+  const all = await loadStockVehicules(concessionId);
+  const tokens = q.split(/\s+/).filter(Boolean);
+  return all
+    .filter((v) => {
+      if (!v.disponible) return false;
+      const hay = Object.values(v.donnees).join(" ").toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    })
+    .slice(0, 20);
 }
 
 /* -------------------------------------------------------------------------- */
-/*                Détection automatique des colonnes à l'import               */
+/*                              Helpers UI                                    */
 /* -------------------------------------------------------------------------- */
 
-export type StockField = keyof Omit<
-  StockVehicule,
-  "id" | "concession_id" | "created_at" | "disponible" | "colonnes_pdf"
->;
-
-/** Liste ordonnée et typée des champs standards. */
-export const STOCK_FIELDS: StockField[] = [
-  "marque",
-  "modele",
-  "version",
-  "annee",
-  "prix",
-  "kilometrage",
-  "couleur",
-  "vin",
-  "puissance",
-  "co2",
-  "carburant",
-  "transmission",
-  "premiere_circulation",
-];
-
-export const STOCK_FIELD_LABELS: Record<StockField, string> = {
-  marque: "Marque",
-  modele: "Modèle",
-  version: "Version",
-  annee: "Année",
-  couleur: "Couleur",
-  kilometrage: "Kilométrage",
-  prix: "Prix",
-  vin: "VIN",
-  puissance: "Puissance",
-  co2: "CO₂",
-  carburant: "Carburant",
-  transmission: "Transmission",
-  premiere_circulation: "1ère circulation",
-};
-
 /**
- * Champs affichés par défaut dans le form NouveauBon + PDF quand aucun
- * véhicule du stock n'est sélectionné (ou quand `colonnes_pdf` est vide).
- * On garde les 8 champs historiques du formulaire — sans `annee`, `carburant`,
- * `transmission`, `marque` et `version` qui sont "nouveaux" dans ce flow.
+ * Label court pour une ligne de suggestion / une card. On concatène les 3
+ * premières valeurs non vides dans l'ordre de `colonnes_pdf` (ou dans l'ordre
+ * d'insertion si `colonnes_pdf` est vide) — c'est une heuristique raisonnable
+ * quand on ne connaît pas la sémantique des colonnes.
  */
-export const DEFAULT_PDF_FIELDS: StockField[] = [
-  "modele",
-  "prix",
-  "vin",
-  "kilometrage",
-  "couleur",
-  "puissance",
-  "co2",
-  "premiere_circulation",
-];
-
-/** Synonymes / mots-clés (normalisés) à rechercher dans les en-têtes. */
-const COLUMN_SYNONYMS: Record<StockField, string[]> = {
-  marque: ["marque", "make", "brand", "manufacturer", "constructeur"],
-  modele: ["modele", "model"],
-  version: ["version", "finition", "trim", "pack"],
-  annee: ["annee", "year", "annee modele"],
-  couleur: ["couleur", "color", "colour", "teinte"],
-  kilometrage: ["kilometrage", "km", "kilometres", "kilometers", "mileage", "odometre"],
-  prix: ["prix", "price", "tarif", "montant", "cost"],
-  vin: ["vin", "chassis", "numero de chassis", "numserie", "numero de serie"],
-  puissance: ["puissance", "chevaux", "cv", "horsepower", "hp", "kw"],
-  co2: ["co2", "emission co2", "emissions co2"],
-  carburant: ["carburant", "fuel", "energie", "energy", "essence", "diesel"],
-  transmission: ["transmission", "boite", "boite de vitesse", "gearbox", "bv"],
-  premiere_circulation: [
-    "premiere circulation",
-    "1ere circulation",
-    "1re circulation",
-    "mec",
-    "mise en circulation",
-    "date mec",
-    "first registration",
-  ],
-};
-
-function normalizeHeader(h: string): string {
-  return String(h ?? "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[_\-\.]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+export function vehiculeDisplayLabel(v: StockVehicule): string {
+  const order = v.colonnes_pdf.length > 0 ? v.colonnes_pdf : Object.keys(v.donnees);
+  const values = order
+    .map((k) => (v.donnees[k] ?? "").trim())
+    .filter((s) => s.length > 0);
+  return values.slice(0, 3).join(" · ") || "(Véhicule sans titre)";
 }
 
 /**
- * Cherche, pour chaque champ cible, la meilleure colonne source (en comparant
- * les en-têtes normalisés à la liste de synonymes). Renvoie un mapping
- * `{ champCible: entêteSource }`.
+ * Heuristique pour deviner le prix quand on sélectionne un véhicule : on
+ * cherche une clé dont le nom normalisé contient "prix", "price", "tarif" ou
+ * "montant". Retourne `""` si rien n'est trouvé (le commercial saisit à la
+ * main dans la section Règlement).
  */
-export function detectColumnMapping(headers: string[]): Partial<Record<StockField, string>> {
-  const mapping: Partial<Record<StockField, string>> = {};
-  const normalized = headers.map((h) => ({ raw: h, norm: normalizeHeader(h) }));
-  for (const field of Object.keys(COLUMN_SYNONYMS) as StockField[]) {
-    const synonyms = COLUMN_SYNONYMS[field];
-    // 1) Correspondance exacte
-    const exact = normalized.find((h) => synonyms.includes(h.norm));
-    if (exact) {
-      mapping[field] = exact.raw;
-      continue;
-    }
-    // 2) Correspondance partielle (contient)
-    const partial = normalized.find((h) =>
-      synonyms.some((s) => h.norm.includes(s) || s.includes(h.norm)),
-    );
-    if (partial) {
-      mapping[field] = partial.raw;
-    }
+const PRIX_HINT_RE = /prix|price|tarif|montant|cost/i;
+export function guessPrixFromDonnees(donnees: Record<string, string>): string {
+  for (const [k, v] of Object.entries(donnees)) {
+    if (!v) continue;
+    if (PRIX_HINT_RE.test(k)) return v;
   }
-  return mapping;
-}
-
-/** Convertit une cellule brute en string normalisée (gère Date, number, undefined). */
-export function stringifyCell(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (value instanceof Date) {
-    const dd = String(value.getDate()).padStart(2, "0");
-    const mm = String(value.getMonth() + 1).padStart(2, "0");
-    const yyyy = value.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
-  }
-  if (typeof value === "number") return String(value);
-  return String(value).trim();
-}
-
-/**
- * Applique le mapping détecté à une ligne brute (objet {entête: valeur}) et
- * produit un `StockVehiculeInput` prêt à être inséré.
- */
-export function mapRowToVehicule(
-  row: Record<string, unknown>,
-  mapping: Partial<Record<StockField, string>>,
-): StockVehiculeInput {
-  const v: StockVehiculeInput = {};
-  for (const field of Object.keys(mapping) as StockField[]) {
-    const sourceHeader = mapping[field];
-    if (!sourceHeader) continue;
-    v[field] = stringifyCell(row[sourceHeader]);
-  }
-  return v;
-}
-
-/** Libellé court pour afficher un véhicule dans une liste / suggestion. */
-export function vehiculeLabel(v: Pick<StockVehicule, "marque" | "modele" | "version">): string {
-  return [v.marque, v.modele, v.version].map((s) => (s || "").trim()).filter(Boolean).join(" ");
+  return "";
 }

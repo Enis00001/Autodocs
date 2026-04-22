@@ -21,21 +21,10 @@ const defaultFormState: DraftFormState = {
   clientDateNaissance: "",
   clientNumeroCni: "",
   clientAdresse: "",
-  // Section 2 — Véhicule
-  vehiculeModele: "",
-  vehiculeVin: "",
-  vehiculePremiereCirculation: "",
-  vehiculeKilometrage: "",
-  vehiculeCo2: "",
-  vehiculeChevaux: "",
-  vehiculeCouleur: "",
-  vehiculePrix: "",
-  vehiculeMarque: "",
-  vehiculeVersion: "",
-  vehiculeAnnee: "",
-  vehiculeCarburant: "",
-  vehiculeTransmission: "",
-  vehiculeColonnesPdf: [],
+  // Section 2 — Véhicule (snapshot du stock, schéma libre)
+  vehiculeStockId: "",
+  stockDonnees: {},
+  stockColonnes: [],
   // Section 2b — Reprise
   repriseActive: false,
   reprisePlaque: "",
@@ -45,6 +34,7 @@ const defaultFormState: DraftFormState = {
   reprisePremiereCirculation: "",
   repriseValeur: "",
   // Section 3 — Règlement
+  vehiculePrix: "",
   modePaiement: "comptant",
   acompte: "",
   vehiculeRemise: "",
@@ -55,9 +45,10 @@ const defaultFormState: DraftFormState = {
 
 /**
  * Projette le formState en dictionnaire plat pour le template PDF.
- * - Les booléens sont convertis en "oui" / "non".
- * - Les champs reprise_* sont exposés en snake_case (utilisés par le template).
- * - Les champs reprise_* sont mis à vide si le toggle est OFF.
+ *
+ * V2 : côté véhicule, on n'envoie plus de champs typés. On sérialise
+ * `stock_donnees` et `stock_colonnes` — la serverless function génère un
+ * tableau dynamique clé/valeur dans la section véhicule.
  */
 function buildPdfFormData(form: DraftFormState): Record<string, string> {
   const repriseOn = form.repriseActive;
@@ -68,22 +59,10 @@ function buildPdfFormData(form: DraftFormState): Record<string, string> {
     clientNumeroCni: form.clientNumeroCni,
     clientAdresse: form.clientAdresse,
 
-    vehiculeModele: form.vehiculeModele,
-    vehiculeVin: form.vehiculeVin,
-    vehiculePremiereCirculation: form.vehiculePremiereCirculation,
-    vehiculeKilometrage: form.vehiculeKilometrage,
-    vehiculeCo2: form.vehiculeCo2,
-    vehiculeChevaux: form.vehiculeChevaux,
-    vehiculeCouleur: form.vehiculeCouleur,
-    vehiculePrix: form.vehiculePrix,
-    vehiculeMarque: form.vehiculeMarque,
-    vehiculeVersion: form.vehiculeVersion,
-    vehiculeAnnee: form.vehiculeAnnee,
-    vehiculeCarburant: form.vehiculeCarburant,
-    vehiculeTransmission: form.vehiculeTransmission,
-    // JSON stringifié côté backend : la serverless function reparsera pour
-    // décider quelles lignes véhicule inclure dans le PDF.
-    colonnes_pdf: JSON.stringify(form.vehiculeColonnesPdf ?? []),
+    // JSON stringifiés : reparsés côté serverless pour générer les lignes du
+    // tableau véhicule.
+    stock_donnees: JSON.stringify(form.stockDonnees ?? {}),
+    stock_colonnes: JSON.stringify(form.stockColonnes ?? []),
 
     repriseActive: repriseOn ? "oui" : "non",
     reprise_plaque: repriseOn ? form.reprisePlaque : "",
@@ -93,6 +72,7 @@ function buildPdfFormData(form: DraftFormState): Record<string, string> {
     reprise_premiere_circulation: repriseOn ? form.reprisePremiereCirculation : "",
     reprise_valeur: repriseOn ? form.repriseValeur : "",
 
+    vehiculePrix: form.vehiculePrix,
     modePaiement: form.modePaiement,
     acompte: form.acompte,
     vehiculeRemise: form.vehiculeRemise,

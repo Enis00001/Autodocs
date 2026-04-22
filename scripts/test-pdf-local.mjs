@@ -1,10 +1,14 @@
 /**
- * Test local du pipeline PDF V1 — duplique la logique de api/generate-pdf.ts
+ * Test local du pipeline PDF V2 — duplique la logique de api/generate-pdf.ts
  * (sans @sparticuz/chromium, réservé à Vercel). Utilise Chrome local.
  *
+ * V2 : la section "Véhicule vendu" est générée dynamiquement à partir de
+ *      `stock_donnees` + `stock_colonnes` envoyés par le front (JSON
+ *      stringifiés).
+ *
  * Usage :
- *   node scripts/test-pdf-local.mjs            # reprise ON + acompte + remise
- *   node scripts/test-pdf-local.mjs --minimal  # cas minimal (reprise OFF)
+ *   node scripts/test-pdf-local.mjs            # cas complet (reprise + acompte)
+ *   node scripts/test-pdf-local.mjs --minimal  # cas minimal (sans reprise)
  *
  * Sortie : test-output/bon-de-commande-{test,minimal}.pdf
  */
@@ -49,54 +53,54 @@ function keepBlock(html, start, end) {
   return html.replace(new RegExp(start, "g"), "").replace(new RegExp(end, "g"), "");
 }
 
-const VEHICULE_ROW_MARKERS = {
-  modele: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
-  marque: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
-  version: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
-  vin: ["<!--VEH_VIN_ROW_START-->", "<!--VEH_VIN_ROW_END-->"],
-  annee: ["<!--VEH_ANNEE_ROW_START-->", "<!--VEH_ANNEE_ROW_END-->"],
-  premiere_circulation: [
-    "<!--VEH_PREMIERE_CIRCULATION_ROW_START-->",
-    "<!--VEH_PREMIERE_CIRCULATION_ROW_END-->",
-  ],
-  kilometrage: ["<!--VEH_KILOMETRAGE_ROW_START-->", "<!--VEH_KILOMETRAGE_ROW_END-->"],
-  couleur: ["<!--VEH_COULEUR_ROW_START-->", "<!--VEH_COULEUR_ROW_END-->"],
-  puissance: ["<!--VEH_PUISSANCE_ROW_START-->", "<!--VEH_PUISSANCE_ROW_END-->"],
-  co2: ["<!--VEH_CO2_ROW_START-->", "<!--VEH_CO2_ROW_END-->"],
-  carburant: ["<!--VEH_CARBURANT_ROW_START-->", "<!--VEH_CARBURANT_ROW_END-->"],
-  transmission: ["<!--VEH_TRANSMISSION_ROW_START-->", "<!--VEH_TRANSMISSION_ROW_END-->"],
-};
-
-const DEFAULT_VEHICULE_FIELDS = [
-  "modele",
-  "vin",
-  "premiere_circulation",
-  "kilometrage",
-  "couleur",
-  "puissance",
-  "co2",
-];
-
-function parseColonnesPdf(raw) {
-  if (!raw) return null;
-  if (Array.isArray(raw)) {
-    const arr = raw.filter((x) => typeof x === "string" && x.trim());
-    return arr.length ? arr : null;
-  }
+function parseJsonMaybe(raw) {
+  if (raw === null || raw === undefined) return null;
   if (typeof raw === "string") {
     const t = raw.trim();
     if (!t) return null;
-    try {
-      const p = JSON.parse(t);
-      if (Array.isArray(p)) {
-        const arr = p.filter((x) => typeof x === "string" && x.trim());
-        return arr.length ? arr : null;
-      }
-    } catch { /* ignore */ }
-    const arr = t.split(",").map((s) => s.trim()).filter(Boolean);
-    return arr.length ? arr : null;
+    try { return JSON.parse(t); } catch { return null; }
   }
+  if (typeof raw === "object") return raw;
   return null;
+}
+
+function parseStringArray(raw) {
+  const v = parseJsonMaybe(raw);
+  const src = Array.isArray(v) ? v : Array.isArray(raw) ? raw : [];
+  return src.filter((x) => typeof x === "string" && x.trim());
+}
+
+function parseStringDict(raw) {
+  const v = parseJsonMaybe(raw);
+  const src =
+    v && typeof v === "object" && !Array.isArray(v)
+      ? v
+      : raw && typeof raw === "object" && !Array.isArray(raw)
+      ? raw
+      : null;
+  if (!src) return {};
+  const out = {};
+  for (const [k, val] of Object.entries(src)) {
+    if (!k) continue;
+    if (val === null || val === undefined) continue;
+    out[k] = String(val);
+  }
+  return out;
+}
+
+function buildVehiculeRowsHtml(donnees, colonnes) {
+  const rows = [];
+  const order = colonnes.length > 0 ? colonnes : Object.keys(donnees);
+  for (const key of order) {
+    const v = donnees[key];
+    if (v === undefined || v === null) continue;
+    const trimmed = String(v).trim();
+    if (!trimmed) continue;
+    rows.push(
+      `<tr><th>${escapeHtml(key)}</th><td colspan="3">${escapeHtml(trimmed)}</td></tr>`,
+    );
+  }
+  return rows.join("\n");
 }
 
 function buildHtml(formData) {
@@ -138,18 +142,11 @@ function buildHtml(formData) {
     html = stripBlock(html, "<!--ACOMPTE_BLOCK_START-->", "<!--ACOMPTE_BLOCK_END-->");
   }
 
-  const colonnesPdf = parseColonnesPdf(formData.colonnes_pdf);
-  const visibleFields = new Set(colonnesPdf ?? DEFAULT_VEHICULE_FIELDS);
-  let anyVehRow = false;
-  for (const [field, [s, e]] of Object.entries(VEHICULE_ROW_MARKERS)) {
-    if (visibleFields.has(field)) {
-      html = keepBlock(html, s, e);
-      anyVehRow = true;
-    } else {
-      html = stripBlock(html, s, e);
-    }
-  }
-  if (anyVehRow) {
+  const donnees = parseStringDict(formData.stock_donnees);
+  const colonnes = parseStringArray(formData.stock_colonnes);
+  const vehiculeRowsHtml = buildVehiculeRowsHtml(donnees, colonnes);
+
+  if (vehiculeRowsHtml.trim().length > 0) {
     html = keepBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
   } else {
     html = stripBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
@@ -166,16 +163,6 @@ function buildHtml(formData) {
     clientDateNaissance: get("clientDateNaissance"),
     clientNumeroCni: get("clientNumeroCni"),
     clientAdresse: get("clientAdresse"),
-    vehiculeModele: get("vehiculeModele"),
-    vehiculeVin: get("vehiculeVin"),
-    vehiculePremiereCirculation: get("vehiculePremiereCirculation"),
-    vehiculeKilometrage: get("vehiculeKilometrage"),
-    vehiculeCouleur: get("vehiculeCouleur"),
-    vehiculeChevaux: get("vehiculeChevaux"),
-    vehiculeCo2: get("vehiculeCo2"),
-    vehiculeAnnee: get("vehiculeAnnee"),
-    vehiculeCarburant: get("vehiculeCarburant"),
-    vehiculeTransmission: get("vehiculeTransmission"),
     vehiculePrix: formatMoney(prix),
     reprise_plaque: get("reprise_plaque"),
     reprise_marque: get("reprise_marque"),
@@ -191,6 +178,9 @@ function buildHtml(formData) {
     vehiculeDateLivraison: get("vehiculeDateLivraison"),
   };
 
+  // Injection du HTML déjà échappé — bypass le remplacement générique
+  html = html.replace(/\{\{vehiculeRowsHtml\}\}/g, vehiculeRowsHtml);
+
   for (const [k, v] of Object.entries(repl)) {
     html = html.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v || "—");
   }
@@ -198,6 +188,10 @@ function buildHtml(formData) {
   return html;
 }
 
+/* -- Fixtures ------------------------------------------------------------- */
+
+// Cas réaliste : colonnes issues d'un fichier Excel quelconque. Les clés
+// peuvent être exotiques : c'est tout l'intérêt de la V2.
 const FULL = {
   concessionNom: "Auto Prestige Lyon",
   clientNom: "DURAND",
@@ -205,19 +199,28 @@ const FULL = {
   clientDateNaissance: "14/03/1988",
   clientNumeroCni: "123456789012",
   clientAdresse: "12 rue des Lilas, 75015 Paris",
-  vehiculeModele: "Peugeot 3008 Allure BlueHDi 130",
-  vehiculeVin: "VF3LBYHZRKS123456",
-  vehiculePremiereCirculation: "15/06/2021",
-  vehiculeKilometrage: "48 500",
-  vehiculeCo2: "118",
-  vehiculeChevaux: "8",
+  stock_donnees: JSON.stringify({
+    "Marque": "Peugeot",
+    "Modèle": "3008 Allure BlueHDi 130",
+    "VIN": "VF3LBYHZRKS123456",
+    "1ère immat.": "15/06/2021",
+    "Kilométrage": "48 500 km",
+    "Couleur": "Gris platinium",
+    "Puissance fiscale": "8 CV",
+    "Carburant": "Diesel",
+    "Notes internes": "Ne pas afficher au client",
+  }),
+  stock_colonnes: JSON.stringify([
+    "Marque",
+    "Modèle",
+    "VIN",
+    "1ère immat.",
+    "Kilométrage",
+    "Couleur",
+    "Carburant",
+    // "Puissance fiscale" et "Notes internes" sont absents → pas dans le PDF.
+  ]),
   vehiculePrix: "22990",
-  vehiculeCouleur: "Gris platinium",
-  vehiculeAnnee: "2021",
-  vehiculeCarburant: "Diesel",
-  vehiculeTransmission: "BVM 6",
-  // Exemple de filtrage : seuls ces champs apparaîtront dans la section véhicule.
-  colonnes_pdf: '["modele","vin","annee","kilometrage","couleur","carburant"]',
   reprise_plaque: "AB-123-CD",
   reprise_marque: "Renault",
   reprise_modele: "Clio IV Estate",
@@ -237,15 +240,12 @@ const MINIMAL = {
   clientDateNaissance: "02/09/1995",
   clientNumeroCni: "987654321000",
   clientAdresse: "5 impasse du Moulin, 69100 Villeurbanne",
-  vehiculeModele: "Renault Clio V TCe 90",
-  vehiculeVin: "VF1RJA00167890123",
-  vehiculePremiereCirculation: "01/2023",
-  vehiculeKilometrage: "22 000",
-  vehiculeCo2: "114",
-  vehiculeChevaux: "5",
+  stock_donnees: JSON.stringify({
+    "Désignation": "Renault Clio V TCe 90",
+    "Prix": "14 500",
+  }),
+  stock_colonnes: JSON.stringify(["Désignation", "Prix"]),
   vehiculePrix: "14500",
-  vehiculeCouleur: "Rouge flamme",
-  repriseActive: "non",
   modePaiement: "comptant",
   acompte: "",
   vehiculeRemise: "",
