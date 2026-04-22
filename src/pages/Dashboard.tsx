@@ -142,7 +142,7 @@ const Dashboard = () => {
                   {loading ? (
                     <div className="skeleton mt-2 h-8 w-16 rounded" />
                   ) : (
-                    <p className="font-display text-3xl font-extrabold tabular-nums text-foreground">
+                    <p className="stat-number text-3xl">
                       {s.value}
                     </p>
                   )}
