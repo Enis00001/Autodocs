@@ -68,6 +68,7 @@ const Dashboard = () => {
       icon: FileText,
       className: "border-primary/20 bg-primary/5 text-primary",
       iconBox: "bg-primary/20 text-primary",
+      numberClass: "stat-number-indigo",
     },
     {
       label: "Véhicules en stock",
@@ -76,6 +77,7 @@ const Dashboard = () => {
       icon: Car,
       className: "border-success/25 bg-success/5 text-success",
       iconBox: "bg-success/20 text-success",
+      numberClass: "stat-number-success",
     },
     {
       label: "Brouillons en cours",
@@ -84,6 +86,7 @@ const Dashboard = () => {
       icon: FolderOpen,
       className: "border-amber-500/25 bg-amber-500/5 text-amber-400",
       iconBox: "bg-amber-500/20 text-amber-400",
+      numberClass: "stat-number-warning",
     },
   ] as const;
 
@@ -142,7 +145,7 @@ const Dashboard = () => {
                   {loading ? (
                     <div className="skeleton mt-2 h-8 w-16 rounded" />
                   ) : (
-                    <p className="stat-number text-3xl">
+                    <p className={cn("stat-number text-3xl", s.numberClass)}>
                       {s.value}
                     </p>
                   )}

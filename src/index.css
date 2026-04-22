@@ -116,7 +116,22 @@
     font-family: "Inter", "DM Sans", system-ui, sans-serif;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
+  }
+
+  .stat-number-indigo {
     background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .stat-number-success {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .stat-number-warning {
+    background: linear-gradient(135deg, #f59e0b, #f97316);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
