@@ -30,6 +30,12 @@ const defaultFormState: DraftFormState = {
   vehiculeChevaux: "",
   vehiculeCouleur: "",
   vehiculePrix: "",
+  vehiculeMarque: "",
+  vehiculeVersion: "",
+  vehiculeAnnee: "",
+  vehiculeCarburant: "",
+  vehiculeTransmission: "",
+  vehiculeColonnesPdf: [],
   // Section 2b — Reprise
   repriseActive: false,
   reprisePlaque: "",
@@ -70,6 +76,14 @@ function buildPdfFormData(form: DraftFormState): Record<string, string> {
     vehiculeChevaux: form.vehiculeChevaux,
     vehiculeCouleur: form.vehiculeCouleur,
     vehiculePrix: form.vehiculePrix,
+    vehiculeMarque: form.vehiculeMarque,
+    vehiculeVersion: form.vehiculeVersion,
+    vehiculeAnnee: form.vehiculeAnnee,
+    vehiculeCarburant: form.vehiculeCarburant,
+    vehiculeTransmission: form.vehiculeTransmission,
+    // JSON stringifié côté backend : la serverless function reparsera pour
+    // décider quelles lignes véhicule inclure dans le PDF.
+    colonnes_pdf: JSON.stringify(form.vehiculeColonnesPdf ?? []),
 
     repriseActive: repriseOn ? "oui" : "non",
     reprise_plaque: repriseOn ? form.reprisePlaque : "",

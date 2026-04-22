@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X, Check } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { getCurrentUserId } from "@/lib/auth";
 import {
   searchVehicules,
   vehiculeLabel,
+  DEFAULT_PDF_FIELDS,
+  type StockField,
   type StockVehicule,
 } from "@/utils/stockVehicules";
 
@@ -63,6 +65,11 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
     setIsStockDropdownOpen(false);
     onChange({
       vehiculeModele: vehiculeLabel(v),
+      vehiculeMarque: v.marque ?? "",
+      vehiculeVersion: v.version ?? "",
+      vehiculeAnnee: v.annee ?? "",
+      vehiculeCarburant: v.carburant ?? "",
+      vehiculeTransmission: v.transmission ?? "",
       vehiculePrix: v.prix ?? "",
       vehiculeVin: v.vin ?? "",
       vehiculeKilometrage: v.kilometrage ?? "",
@@ -70,10 +77,38 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
       vehiculeChevaux: v.puissance ?? "",
       vehiculeCo2: v.co2 ?? "",
       vehiculePremiereCirculation: v.premiere_circulation ?? "",
+      // `colonnes_pdf` : config de visibilité PDF/form définie à l'import. Si
+      // vide côté stock, on retombe sur les 8 champs historiques en fallback.
+      vehiculeColonnesPdf:
+        v.colonnes_pdf && v.colonnes_pdf.length > 0 ? [...v.colonnes_pdf] : [],
     });
   };
 
-  const handleDeselectStockVehicule = () => setSelectedStock(null);
+  const handleDeselectStockVehicule = () => {
+    setSelectedStock(null);
+    // On libère la contrainte `colonnes_pdf` pour repasser en saisie manuelle complète.
+    onChange({ vehiculeColonnesPdf: [] });
+  };
+
+  // Calcule la liste effective des champs à afficher (form + PDF).
+  // Si vehiculeColonnesPdf est vide => fallback sur DEFAULT_PDF_FIELDS (8 champs).
+  const visibleFields = useMemo<Set<StockField>>(() => {
+    const src =
+      form.vehiculeColonnesPdf && form.vehiculeColonnesPdf.length > 0
+        ? form.vehiculeColonnesPdf
+        : DEFAULT_PDF_FIELDS;
+    return new Set(src.filter((x): x is StockField => typeof x === "string"));
+  }, [form.vehiculeColonnesPdf]);
+
+  // `prix` est TOUJOURS dans le formulaire (il alimente la section Règlement).
+  // On calcule un flag séparé pour savoir si un mode "custom colonnes" est actif :
+  // cela évite d'afficher la section "Modèle" si l'utilisateur l'a explicitement désactivée.
+  const hasCustomColumns =
+    form.vehiculeColonnesPdf && form.vehiculeColonnesPdf.length > 0;
+  const showField = (f: StockField) => visibleFields.has(f);
+  // "modele" pilote l'affichage de la ligne composite (marque + modèle + version).
+  const showModeleBlock =
+    showField("modele") || showField("marque") || showField("version");
 
   // --- Reprise véhicule : formulaire manuel --------------------------------
   const handleToggleReprise = () => {
@@ -193,79 +228,141 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
         )}
       </div>
 
-      {/* --- Champs véhicule --- */}
+      {/* --- Badge config colonnes --- */}
+      {hasCustomColumns && (
+        <div className="mb-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] text-muted-foreground">
+          <span className="text-[hsl(var(--success))]">●</span>{" "}
+          <span className="text-foreground font-medium">
+            {form.vehiculeColonnesPdf.length} champ(s)
+          </span>{" "}
+          configurés à l'import. Seuls ces champs apparaîtront dans le PDF.
+        </div>
+      )}
+
+      {/* --- Champs véhicule (affichage conditionnel) --- */}
       <div className="grid grid-cols-2 gap-3">
+        {showModeleBlock && (
+          <div className="flex flex-col gap-1.5 col-span-2">
+            <label className="field-label">Modèle du véhicule</label>
+            <input
+              type="text"
+              placeholder="ex: Peugeot 308 GT Pack"
+              className="field-input"
+              value={form.vehiculeModele}
+              onChange={(e) => onChange({ vehiculeModele: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("vin") && (
+          <div className="flex flex-col gap-1.5 col-span-2">
+            <label className="field-label">VIN / N° de châssis</label>
+            <input
+              type="text"
+              placeholder="ex: VF3LCYHZ..."
+              className="field-input"
+              value={form.vehiculeVin}
+              onChange={(e) => onChange({ vehiculeVin: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("annee") && (
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label">Année</label>
+            <input
+              type="text"
+              placeholder="ex: 2022"
+              className="field-input"
+              value={form.vehiculeAnnee}
+              onChange={(e) => onChange({ vehiculeAnnee: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("premiere_circulation") && (
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label">1ère mise en circulation</label>
+            <input
+              type="text"
+              placeholder="ex: 03/2022"
+              className="field-input"
+              value={form.vehiculePremiereCirculation}
+              onChange={(e) => onChange({ vehiculePremiereCirculation: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("kilometrage") && (
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label">Kilométrage</label>
+            <input
+              type="text"
+              placeholder="ex: 45 000"
+              className="field-input"
+              value={form.vehiculeKilometrage}
+              onChange={(e) => onChange({ vehiculeKilometrage: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("puissance") && (
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label">Puissance (CV)</label>
+            <input
+              type="text"
+              placeholder="ex: 130"
+              className="field-input"
+              value={form.vehiculeChevaux}
+              onChange={(e) => onChange({ vehiculeChevaux: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("co2") && (
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label">Émission CO2 (g/km)</label>
+            <input
+              type="text"
+              placeholder="ex: 112"
+              className="field-input"
+              value={form.vehiculeCo2}
+              onChange={(e) => onChange({ vehiculeCo2: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("couleur") && (
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label">Couleur</label>
+            <input
+              type="text"
+              placeholder="ex: Blanc Nacré"
+              className="field-input"
+              value={form.vehiculeCouleur}
+              onChange={(e) => onChange({ vehiculeCouleur: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("carburant") && (
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label">Carburant</label>
+            <input
+              type="text"
+              placeholder="ex: Essence"
+              className="field-input"
+              value={form.vehiculeCarburant}
+              onChange={(e) => onChange({ vehiculeCarburant: e.target.value })}
+            />
+          </div>
+        )}
+        {showField("transmission") && (
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label">Transmission</label>
+            <input
+              type="text"
+              placeholder="ex: Manuelle 6 rapports"
+              className="field-input"
+              value={form.vehiculeTransmission}
+              onChange={(e) => onChange({ vehiculeTransmission: e.target.value })}
+            />
+          </div>
+        )}
+        {/* Prix toujours présent : il alimente la section Règlement côté PDF. */}
         <div className="flex flex-col gap-1.5 col-span-2">
-          <label className="field-label">Modèle du véhicule</label>
-          <input
-            type="text"
-            placeholder="ex: Peugeot 308 GT Pack"
-            className="field-input"
-            value={form.vehiculeModele}
-            onChange={(e) => onChange({ vehiculeModele: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5 col-span-2">
-          <label className="field-label">VIN / N° de châssis</label>
-          <input
-            type="text"
-            placeholder="ex: VF3LCYHZ..."
-            className="field-input"
-            value={form.vehiculeVin}
-            onChange={(e) => onChange({ vehiculeVin: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">1ère mise en circulation</label>
-          <input
-            type="text"
-            placeholder="ex: 03/2022"
-            className="field-input"
-            value={form.vehiculePremiereCirculation}
-            onChange={(e) => onChange({ vehiculePremiereCirculation: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Kilométrage</label>
-          <input
-            type="text"
-            placeholder="ex: 45 000"
-            className="field-input"
-            value={form.vehiculeKilometrage}
-            onChange={(e) => onChange({ vehiculeKilometrage: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Puissance (CV)</label>
-          <input
-            type="text"
-            placeholder="ex: 130"
-            className="field-input"
-            value={form.vehiculeChevaux}
-            onChange={(e) => onChange({ vehiculeChevaux: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Émission CO2 (g/km)</label>
-          <input
-            type="text"
-            placeholder="ex: 112"
-            className="field-input"
-            value={form.vehiculeCo2}
-            onChange={(e) => onChange({ vehiculeCo2: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Couleur</label>
-          <input
-            type="text"
-            placeholder="ex: Blanc Nacré"
-            className="field-input"
-            value={form.vehiculeCouleur}
-            onChange={(e) => onChange({ vehiculeCouleur: e.target.value })}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
           <label className="field-label">Prix de vente TTC (€)</label>
           <input
             type="text"

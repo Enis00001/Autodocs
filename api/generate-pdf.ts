@@ -80,24 +80,43 @@ function getHtmlTemplate(): string {
     </table>
   </div>
 
+  <!--VEHICULE_SECTION_START-->
   <div class="section">
     <div class="section-title">Véhicule vendu</div>
     <table>
+      <!--VEH_MODELE_ROW_START-->
       <tr><th>Modèle / Désignation</th><td colspan="3">{{vehiculeModele}}</td></tr>
-      <tr>
-        <th>N° VIN / Châssis</th><td>{{vehiculeVin}}</td>
-        <th>1ère mise en circulation</th><td>{{vehiculePremiereCirculation}}</td>
-      </tr>
-      <tr>
-        <th>Kilométrage</th><td>{{vehiculeKilometrage}}</td>
-        <th>Couleur</th><td>{{vehiculeCouleur}}</td>
-      </tr>
-      <tr>
-        <th>Puissance (CV)</th><td>{{vehiculeChevaux}}</td>
-        <th>CO2 (g/km)</th><td>{{vehiculeCo2}}</td>
-      </tr>
+      <!--VEH_MODELE_ROW_END-->
+      <!--VEH_VIN_ROW_START-->
+      <tr><th>N° VIN / Châssis</th><td colspan="3">{{vehiculeVin}}</td></tr>
+      <!--VEH_VIN_ROW_END-->
+      <!--VEH_ANNEE_ROW_START-->
+      <tr><th>Année</th><td colspan="3">{{vehiculeAnnee}}</td></tr>
+      <!--VEH_ANNEE_ROW_END-->
+      <!--VEH_PREMIERE_CIRCULATION_ROW_START-->
+      <tr><th>1ère mise en circulation</th><td colspan="3">{{vehiculePremiereCirculation}}</td></tr>
+      <!--VEH_PREMIERE_CIRCULATION_ROW_END-->
+      <!--VEH_KILOMETRAGE_ROW_START-->
+      <tr><th>Kilométrage</th><td colspan="3">{{vehiculeKilometrage}}</td></tr>
+      <!--VEH_KILOMETRAGE_ROW_END-->
+      <!--VEH_COULEUR_ROW_START-->
+      <tr><th>Couleur</th><td colspan="3">{{vehiculeCouleur}}</td></tr>
+      <!--VEH_COULEUR_ROW_END-->
+      <!--VEH_PUISSANCE_ROW_START-->
+      <tr><th>Puissance (CV)</th><td colspan="3">{{vehiculeChevaux}}</td></tr>
+      <!--VEH_PUISSANCE_ROW_END-->
+      <!--VEH_CO2_ROW_START-->
+      <tr><th>CO2 (g/km)</th><td colspan="3">{{vehiculeCo2}}</td></tr>
+      <!--VEH_CO2_ROW_END-->
+      <!--VEH_CARBURANT_ROW_START-->
+      <tr><th>Carburant</th><td colspan="3">{{vehiculeCarburant}}</td></tr>
+      <!--VEH_CARBURANT_ROW_END-->
+      <!--VEH_TRANSMISSION_ROW_START-->
+      <tr><th>Transmission</th><td colspan="3">{{vehiculeTransmission}}</td></tr>
+      <!--VEH_TRANSMISSION_ROW_END-->
     </table>
   </div>
+  <!--VEHICULE_SECTION_END-->
 
   <!--REPRISE_SECTION_START-->
   <div class="section">
@@ -230,6 +249,67 @@ function keepBlock(html: string, startMarker: string, endMarker: string): string
 /*  Build HTML                                                         */
 /* ================================================================== */
 
+/**
+ * Liste des champs véhicule configurables et la paire de markers associée.
+ * "modele" regroupe marque/modele/version (ils sont concaténés dans
+ * `vehiculeModele`). Le PDF n'a pas de ligne dédiée par composant.
+ */
+const VEHICULE_ROW_MARKERS: Record<string, [string, string]> = {
+  modele: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
+  marque: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
+  version: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
+  vin: ["<!--VEH_VIN_ROW_START-->", "<!--VEH_VIN_ROW_END-->"],
+  annee: ["<!--VEH_ANNEE_ROW_START-->", "<!--VEH_ANNEE_ROW_END-->"],
+  premiere_circulation: [
+    "<!--VEH_PREMIERE_CIRCULATION_ROW_START-->",
+    "<!--VEH_PREMIERE_CIRCULATION_ROW_END-->",
+  ],
+  kilometrage: ["<!--VEH_KILOMETRAGE_ROW_START-->", "<!--VEH_KILOMETRAGE_ROW_END-->"],
+  couleur: ["<!--VEH_COULEUR_ROW_START-->", "<!--VEH_COULEUR_ROW_END-->"],
+  puissance: ["<!--VEH_PUISSANCE_ROW_START-->", "<!--VEH_PUISSANCE_ROW_END-->"],
+  co2: ["<!--VEH_CO2_ROW_START-->", "<!--VEH_CO2_ROW_END-->"],
+  carburant: ["<!--VEH_CARBURANT_ROW_START-->", "<!--VEH_CARBURANT_ROW_END-->"],
+  transmission: ["<!--VEH_TRANSMISSION_ROW_START-->", "<!--VEH_TRANSMISSION_ROW_END-->"],
+};
+
+/** Champs véhicule affichés par défaut si `colonnes_pdf` n'est pas fourni. */
+const DEFAULT_VEHICULE_FIELDS = [
+  "modele",
+  "vin",
+  "premiere_circulation",
+  "kilometrage",
+  "couleur",
+  "puissance",
+  "co2",
+];
+
+function parseColonnesPdf(raw: unknown): string[] | null {
+  if (!raw) return null;
+  if (Array.isArray(raw)) {
+    const arr = raw.filter((x): x is string => typeof x === "string" && x.trim() !== "");
+    return arr.length > 0 ? arr : null;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const arr = parsed.filter((x): x is string => typeof x === "string" && x.trim() !== "");
+        return arr.length > 0 ? arr : null;
+      }
+    } catch {
+      /* fallthrough */
+    }
+    const arr = trimmed
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return arr.length > 0 ? arr : null;
+  }
+  return null;
+}
+
 function buildHtml(formData: Record<string, string>): string {
   let html = getHtmlTemplate();
 
@@ -273,6 +353,28 @@ function buildHtml(formData: Record<string, string>): string {
     html = stripBlock(html, "<!--ACOMPTE_BLOCK_START-->", "<!--ACOMPTE_BLOCK_END-->");
   }
 
+  /* ---------- Lignes "Véhicule vendu" conditionnelles selon colonnes_pdf ---------- */
+  const colonnesPdf = parseColonnesPdf(formData.colonnes_pdf);
+  const visibleFields = new Set(colonnesPdf ?? DEFAULT_VEHICULE_FIELDS);
+  let anyVehRow = false;
+  for (const [field, [startM, endM]] of Object.entries(VEHICULE_ROW_MARKERS)) {
+    const isVisible = visibleFields.has(field);
+    // On doit toujours faire une passe (keep ou strip) car keep retire les markers
+    // même quand ils apparaissent en double (plusieurs fields partagent modele).
+    if (isVisible) {
+      html = keepBlock(html, startM, endM);
+      anyVehRow = true;
+    } else {
+      html = stripBlock(html, startM, endM);
+    }
+  }
+  // Si aucune ligne véhicule visible, on cache toute la section.
+  if (anyVehRow) {
+    html = keepBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
+  } else {
+    html = stripBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
+  }
+
   // Libellé mode paiement
   const modeRaw = (formData.modePaiement ?? "").trim().toLowerCase();
   const modePaiementLabel = modeRaw === "financement" ? "Financement" : "Comptant";
@@ -299,6 +401,9 @@ function buildHtml(formData: Record<string, string>): string {
     vehiculeCouleur: get("vehiculeCouleur"),
     vehiculeChevaux: get("vehiculeChevaux"),
     vehiculeCo2: get("vehiculeCo2"),
+    vehiculeAnnee: get("vehiculeAnnee"),
+    vehiculeCarburant: get("vehiculeCarburant"),
+    vehiculeTransmission: get("vehiculeTransmission"),
     vehiculePrix: formatMoney(prix),
 
     reprise_plaque: get("reprise_plaque"),

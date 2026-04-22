@@ -49,6 +49,56 @@ function keepBlock(html, start, end) {
   return html.replace(new RegExp(start, "g"), "").replace(new RegExp(end, "g"), "");
 }
 
+const VEHICULE_ROW_MARKERS = {
+  modele: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
+  marque: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
+  version: ["<!--VEH_MODELE_ROW_START-->", "<!--VEH_MODELE_ROW_END-->"],
+  vin: ["<!--VEH_VIN_ROW_START-->", "<!--VEH_VIN_ROW_END-->"],
+  annee: ["<!--VEH_ANNEE_ROW_START-->", "<!--VEH_ANNEE_ROW_END-->"],
+  premiere_circulation: [
+    "<!--VEH_PREMIERE_CIRCULATION_ROW_START-->",
+    "<!--VEH_PREMIERE_CIRCULATION_ROW_END-->",
+  ],
+  kilometrage: ["<!--VEH_KILOMETRAGE_ROW_START-->", "<!--VEH_KILOMETRAGE_ROW_END-->"],
+  couleur: ["<!--VEH_COULEUR_ROW_START-->", "<!--VEH_COULEUR_ROW_END-->"],
+  puissance: ["<!--VEH_PUISSANCE_ROW_START-->", "<!--VEH_PUISSANCE_ROW_END-->"],
+  co2: ["<!--VEH_CO2_ROW_START-->", "<!--VEH_CO2_ROW_END-->"],
+  carburant: ["<!--VEH_CARBURANT_ROW_START-->", "<!--VEH_CARBURANT_ROW_END-->"],
+  transmission: ["<!--VEH_TRANSMISSION_ROW_START-->", "<!--VEH_TRANSMISSION_ROW_END-->"],
+};
+
+const DEFAULT_VEHICULE_FIELDS = [
+  "modele",
+  "vin",
+  "premiere_circulation",
+  "kilometrage",
+  "couleur",
+  "puissance",
+  "co2",
+];
+
+function parseColonnesPdf(raw) {
+  if (!raw) return null;
+  if (Array.isArray(raw)) {
+    const arr = raw.filter((x) => typeof x === "string" && x.trim());
+    return arr.length ? arr : null;
+  }
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) return null;
+    try {
+      const p = JSON.parse(t);
+      if (Array.isArray(p)) {
+        const arr = p.filter((x) => typeof x === "string" && x.trim());
+        return arr.length ? arr : null;
+      }
+    } catch { /* ignore */ }
+    const arr = t.split(",").map((s) => s.trim()).filter(Boolean);
+    return arr.length ? arr : null;
+  }
+  return null;
+}
+
 function buildHtml(formData) {
   const template = fs.readFileSync(
     path.join(process.cwd(), "src/templates/bon-de-commande.html"),
@@ -88,6 +138,23 @@ function buildHtml(formData) {
     html = stripBlock(html, "<!--ACOMPTE_BLOCK_START-->", "<!--ACOMPTE_BLOCK_END-->");
   }
 
+  const colonnesPdf = parseColonnesPdf(formData.colonnes_pdf);
+  const visibleFields = new Set(colonnesPdf ?? DEFAULT_VEHICULE_FIELDS);
+  let anyVehRow = false;
+  for (const [field, [s, e]] of Object.entries(VEHICULE_ROW_MARKERS)) {
+    if (visibleFields.has(field)) {
+      html = keepBlock(html, s, e);
+      anyVehRow = true;
+    } else {
+      html = stripBlock(html, s, e);
+    }
+  }
+  if (anyVehRow) {
+    html = keepBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
+  } else {
+    html = stripBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
+  }
+
   const modeRaw = (formData.modePaiement ?? "").trim().toLowerCase();
   const modePaiementLabel = modeRaw === "financement" ? "Financement" : "Comptant";
 
@@ -106,6 +173,9 @@ function buildHtml(formData) {
     vehiculeCouleur: get("vehiculeCouleur"),
     vehiculeChevaux: get("vehiculeChevaux"),
     vehiculeCo2: get("vehiculeCo2"),
+    vehiculeAnnee: get("vehiculeAnnee"),
+    vehiculeCarburant: get("vehiculeCarburant"),
+    vehiculeTransmission: get("vehiculeTransmission"),
     vehiculePrix: formatMoney(prix),
     reprise_plaque: get("reprise_plaque"),
     reprise_marque: get("reprise_marque"),
@@ -143,6 +213,11 @@ const FULL = {
   vehiculeChevaux: "8",
   vehiculePrix: "22990",
   vehiculeCouleur: "Gris platinium",
+  vehiculeAnnee: "2021",
+  vehiculeCarburant: "Diesel",
+  vehiculeTransmission: "BVM 6",
+  // Exemple de filtrage : seuls ces champs apparaîtront dans la section véhicule.
+  colonnes_pdf: '["modele","vin","annee","kilometrage","couleur","carburant"]',
   reprise_plaque: "AB-123-CD",
   reprise_marque: "Renault",
   reprise_modele: "Clio IV Estate",

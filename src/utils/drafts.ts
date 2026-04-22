@@ -34,6 +34,18 @@ export type BonDraftData = {
   vehiculeChevaux: string;
   vehiculeCouleur: string;
   vehiculePrix: string;
+  /** Champs supplémentaires importés via CSV (affichés conditionnellement). */
+  vehiculeMarque: string;
+  vehiculeVersion: string;
+  vehiculeAnnee: string;
+  vehiculeCarburant: string;
+  vehiculeTransmission: string;
+  /**
+   * Liste des champs standards à afficher dans le form + PDF. Vide = comportement
+   * par défaut (les 8 champs historiques). Alimentée quand on sélectionne un
+   * véhicule du stock dont la ligne `stock_vehicules.colonnes_pdf` est définie.
+   */
+  vehiculeColonnesPdf: string[];
 
   // Section 2b — Reprise véhicule (toggle + formulaire manuel)
   repriseActive: boolean;
@@ -120,8 +132,34 @@ function readKv(value: unknown): Record<string, string> {
   return out;
 }
 
+/**
+ * Extrait une liste de strings depuis une valeur JSON brute (tableau ou chaîne
+ * séparée par des virgules). Tolérant : retourne [] si le format est inattendu.
+ */
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((x): x is string => typeof x === "string" && x.trim() !== "");
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parseStringArray(parsed);
+    } catch {
+      /* fallthrough */
+    }
+    return value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function rowToDraft(row: BrouillonRow): BonDraftData {
   const kv = readKv(row.vehicle_field_values);
+  // vehicle_field_values peut contenir aussi un tableau (colonnes_pdf) sous la même clé.
+  // On récupère la valeur brute avant `readKv` qui la stringify.
+  const rawKv = (row.vehicle_field_values ?? {}) as Record<string, unknown>;
   const mode = row.mode_paiement === "financement" ? "financement" : "comptant";
   return {
     id: row.id,
@@ -140,6 +178,12 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     vehiculeChevaux: row.vehicule_chevaux ?? "",
     vehiculeCouleur: row.vehicule_couleur ?? "",
     vehiculePrix: row.vehicule_prix ?? "",
+    vehiculeMarque: kv.vehicule_marque ?? "",
+    vehiculeVersion: kv.vehicule_version ?? "",
+    vehiculeAnnee: kv.vehicule_annee ?? "",
+    vehiculeCarburant: kv.vehicule_carburant ?? "",
+    vehiculeTransmission: kv.vehicule_transmission ?? "",
+    vehiculeColonnesPdf: parseStringArray(rawKv.vehicule_colonnes_pdf),
     repriseActive: kv.reprise_active === "true",
     reprisePlaque: kv.reprise_plaque ?? "",
     repriseMarque: kv.reprise_marque ?? "",
@@ -156,7 +200,9 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
 }
 
 function draftToPayload(d: BonDraftData) {
-  const kv: Record<string, string> = {
+  // `vehicle_field_values` est un JSONB libre : on mélange strings simples et un
+  // tableau (vehicule_colonnes_pdf). Postgres accepte ça sans schéma.
+  const kv: Record<string, unknown> = {
     reprise_active: d.repriseActive ? "true" : "false",
     reprise_plaque: d.reprisePlaque,
     reprise_marque: d.repriseMarque,
@@ -164,6 +210,14 @@ function draftToPayload(d: BonDraftData) {
     reprise_vin: d.repriseVin,
     reprise_premiere_circulation: d.reprisePremiereCirculation,
     reprise_valeur: d.repriseValeur,
+    vehicule_marque: d.vehiculeMarque ?? "",
+    vehicule_version: d.vehiculeVersion ?? "",
+    vehicule_annee: d.vehiculeAnnee ?? "",
+    vehicule_carburant: d.vehiculeCarburant ?? "",
+    vehicule_transmission: d.vehiculeTransmission ?? "",
+    vehicule_colonnes_pdf: Array.isArray(d.vehiculeColonnesPdf)
+      ? d.vehiculeColonnesPdf
+      : [],
   };
   return {
     client_nom: d.clientNom,

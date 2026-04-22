@@ -17,6 +17,13 @@ export type StockVehicule = {
   transmission: string;
   premiere_circulation: string;
   disponible: boolean;
+  /**
+   * Liste des champs standards à afficher dans le PDF bon de commande.
+   * Valeurs autorisées = clés de type `StockField`. Vide ou null => on affiche
+   * les champs par défaut (backward-compat pour les véhicules importés avant
+   * l'introduction du toggle).
+   */
+  colonnes_pdf: string[];
   created_at: string;
 };
 
@@ -26,9 +33,13 @@ export type StockVehiculeInput = Partial<
 > & { disponible?: boolean };
 
 const STOCK_COLUMNS =
-  "id, concession_id, marque, modele, version, annee, couleur, kilometrage, prix, vin, puissance, co2, carburant, transmission, premiere_circulation, disponible, created_at";
+  "id, concession_id, marque, modele, version, annee, couleur, kilometrage, prix, vin, puissance, co2, carburant, transmission, premiere_circulation, disponible, colonnes_pdf, created_at";
 
 function normalizeRow(row: Partial<StockVehicule> | null | undefined): StockVehicule {
+  const rawColonnes = (row as { colonnes_pdf?: unknown } | null | undefined)?.colonnes_pdf;
+  const colonnes_pdf = Array.isArray(rawColonnes)
+    ? rawColonnes.filter((x): x is string => typeof x === "string")
+    : [];
   return {
     id: String(row?.id ?? ""),
     concession_id: row?.concession_id ?? null,
@@ -46,6 +57,7 @@ function normalizeRow(row: Partial<StockVehicule> | null | undefined): StockVehi
     transmission: row?.transmission ?? "",
     premiere_circulation: row?.premiere_circulation ?? "",
     disponible: row?.disponible ?? true,
+    colonnes_pdf,
     created_at: row?.created_at ?? new Date().toISOString(),
   };
 }
@@ -69,6 +81,7 @@ export async function loadStockVehicules(concessionId: string): Promise<StockVeh
 export async function importVehicules(
   concessionId: string,
   vehicules: StockVehiculeInput[],
+  colonnesPdf: string[] = [],
 ): Promise<StockVehicule[]> {
   if (!concessionId || vehicules.length === 0) return [];
   const payload = vehicules.map((v) => ({
@@ -87,6 +100,7 @@ export async function importVehicules(
     transmission: v.transmission ?? "",
     premiere_circulation: v.premiere_circulation ?? "",
     disponible: v.disponible ?? true,
+    colonnes_pdf: colonnesPdf,
   }));
   console.log("Tentative sauvegarde: importVehicules", { count: payload.length });
   const { data, error } = await supabase
@@ -175,8 +189,58 @@ export async function searchVehicules(
 
 export type StockField = keyof Omit<
   StockVehicule,
-  "id" | "concession_id" | "created_at" | "disponible"
+  "id" | "concession_id" | "created_at" | "disponible" | "colonnes_pdf"
 >;
+
+/** Liste ordonnée et typée des champs standards. */
+export const STOCK_FIELDS: StockField[] = [
+  "marque",
+  "modele",
+  "version",
+  "annee",
+  "prix",
+  "kilometrage",
+  "couleur",
+  "vin",
+  "puissance",
+  "co2",
+  "carburant",
+  "transmission",
+  "premiere_circulation",
+];
+
+export const STOCK_FIELD_LABELS: Record<StockField, string> = {
+  marque: "Marque",
+  modele: "Modèle",
+  version: "Version",
+  annee: "Année",
+  couleur: "Couleur",
+  kilometrage: "Kilométrage",
+  prix: "Prix",
+  vin: "VIN",
+  puissance: "Puissance",
+  co2: "CO₂",
+  carburant: "Carburant",
+  transmission: "Transmission",
+  premiere_circulation: "1ère circulation",
+};
+
+/**
+ * Champs affichés par défaut dans le form NouveauBon + PDF quand aucun
+ * véhicule du stock n'est sélectionné (ou quand `colonnes_pdf` est vide).
+ * On garde les 8 champs historiques du formulaire — sans `annee`, `carburant`,
+ * `transmission`, `marque` et `version` qui sont "nouveaux" dans ce flow.
+ */
+export const DEFAULT_PDF_FIELDS: StockField[] = [
+  "modele",
+  "prix",
+  "vin",
+  "kilometrage",
+  "couleur",
+  "puissance",
+  "co2",
+  "premiere_circulation",
+];
 
 /** Synonymes / mots-clés (normalisés) à rechercher dans les en-têtes. */
 const COLUMN_SYNONYMS: Record<StockField, string[]> = {

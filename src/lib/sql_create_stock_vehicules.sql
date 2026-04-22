@@ -16,10 +16,18 @@ CREATE TABLE IF NOT EXISTS stock_vehicules (
   transmission text,
   premiere_circulation text,
   disponible boolean DEFAULT true,
+  -- Liste des champs à inclure dans le PDF "bon de commande".
+  -- Exemple : ["marque", "modele", "prix", "couleur"].
+  -- Si NULL ou [] → on retombe sur le comportement "afficher tous les champs par défaut".
+  colonnes_pdf jsonb DEFAULT '[]'::jsonb,
   created_at timestamp DEFAULT now()
 );
 
 ALTER TABLE stock_vehicules DISABLE ROW LEVEL SECURITY;
+
+-- Migration : ajoute la colonne sur une table déjà existante.
+ALTER TABLE stock_vehicules
+  ADD COLUMN IF NOT EXISTS colonnes_pdf jsonb DEFAULT '[]'::jsonb;
 
 -- Index pour accélérer la recherche par concession + disponibilité
 CREATE INDEX IF NOT EXISTS stock_vehicules_concession_idx

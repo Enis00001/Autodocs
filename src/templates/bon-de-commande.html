@@ -89,25 +89,44 @@
     </table>
   </div>
 
-  <!-- SECTION 2 — VÉHICULE -->
+  <!-- SECTION 2 — VÉHICULE (lignes filtrées selon colonnes_pdf côté backend) -->
+  <!--VEHICULE_SECTION_START-->
   <div class="section">
     <div class="section-title">Véhicule vendu</div>
     <table>
+      <!--VEH_MODELE_ROW_START-->
       <tr><th>Modèle / Désignation</th><td colspan="3">{{vehiculeModele}}</td></tr>
-      <tr>
-        <th>N° VIN / Châssis</th><td>{{vehiculeVin}}</td>
-        <th>1ère mise en circulation</th><td>{{vehiculePremiereCirculation}}</td>
-      </tr>
-      <tr>
-        <th>Kilométrage</th><td>{{vehiculeKilometrage}}</td>
-        <th>Couleur</th><td>{{vehiculeCouleur}}</td>
-      </tr>
-      <tr>
-        <th>Puissance (CV)</th><td>{{vehiculeChevaux}}</td>
-        <th>CO2 (g/km)</th><td>{{vehiculeCo2}}</td>
-      </tr>
+      <!--VEH_MODELE_ROW_END-->
+      <!--VEH_VIN_ROW_START-->
+      <tr><th>N° VIN / Châssis</th><td colspan="3">{{vehiculeVin}}</td></tr>
+      <!--VEH_VIN_ROW_END-->
+      <!--VEH_ANNEE_ROW_START-->
+      <tr><th>Année</th><td colspan="3">{{vehiculeAnnee}}</td></tr>
+      <!--VEH_ANNEE_ROW_END-->
+      <!--VEH_PREMIERE_CIRCULATION_ROW_START-->
+      <tr><th>1ère mise en circulation</th><td colspan="3">{{vehiculePremiereCirculation}}</td></tr>
+      <!--VEH_PREMIERE_CIRCULATION_ROW_END-->
+      <!--VEH_KILOMETRAGE_ROW_START-->
+      <tr><th>Kilométrage</th><td colspan="3">{{vehiculeKilometrage}}</td></tr>
+      <!--VEH_KILOMETRAGE_ROW_END-->
+      <!--VEH_COULEUR_ROW_START-->
+      <tr><th>Couleur</th><td colspan="3">{{vehiculeCouleur}}</td></tr>
+      <!--VEH_COULEUR_ROW_END-->
+      <!--VEH_PUISSANCE_ROW_START-->
+      <tr><th>Puissance (CV)</th><td colspan="3">{{vehiculeChevaux}}</td></tr>
+      <!--VEH_PUISSANCE_ROW_END-->
+      <!--VEH_CO2_ROW_START-->
+      <tr><th>CO2 (g/km)</th><td colspan="3">{{vehiculeCo2}}</td></tr>
+      <!--VEH_CO2_ROW_END-->
+      <!--VEH_CARBURANT_ROW_START-->
+      <tr><th>Carburant</th><td colspan="3">{{vehiculeCarburant}}</td></tr>
+      <!--VEH_CARBURANT_ROW_END-->
+      <!--VEH_TRANSMISSION_ROW_START-->
+      <tr><th>Transmission</th><td colspan="3">{{vehiculeTransmission}}</td></tr>
+      <!--VEH_TRANSMISSION_ROW_END-->
     </table>
   </div>
+  <!--VEHICULE_SECTION_END-->
 
   <!-- SECTION 2B — REPRISE (affichée uniquement si reprise_valeur renseignée) -->
   <!--REPRISE_SECTION_START-->
