@@ -1,38 +1,28 @@
 import { useState } from "react";
-import { Zap, Loader2 } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 import { generatePDF } from "@/utils/generatePDF";
+import { countMissingMandatoryFields, isDraftFormComplete } from "@/utils/bonFormCompletion";
+import { cn } from "@/lib/utils";
 
-const MANDATORY_STRING_FIELDS = [
-  "clientNom",
-  "clientPrenom",
-  "clientAdresse",
-  "vehiculePrix",
-] as const;
-
-export function countMissingMandatoryFields(form: Record<string, unknown>): number {
-  let missing = MANDATORY_STRING_FIELDS.filter(
-    (key) => !String(form[key] ?? "").trim(),
-  ).length;
-  // Véhicule : on considère qu'au moins une colonne du stock doit être
-  // sélectionnée.
-  const stockColonnes = form.stockColonnes;
-  const hasVehicule = Array.isArray(stockColonnes) && stockColonnes.length > 0;
-  if (!hasVehicule) missing += 1;
-  return missing;
-}
+export { countMissingMandatoryFields, isDraftFormComplete };
 
 type GenerateBarProps = {
   documentsUploaded: number;
   missingFieldsCount: number;
-  /** Données complètes du formulaire à injecter dans le PDF. */
   formData: Record<string, string>;
-  /** ID du template PDF (pdf_templates.id). */
+  /** Conservé pour compat API ; inutilisé. */
   templateId: string;
 };
 
 const MAX_DOTS = 6;
 
-const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, templateId }: GenerateBarProps) => {
+const GenerateBar = ({
+  documentsUploaded,
+  missingFieldsCount,
+  formData,
+  templateId: _templateId,
+}: GenerateBarProps) => {
+  void _templateId;
   const [modalOpen, setModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -53,7 +43,9 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
     } catch (err) {
       setIsGenerating(false);
       setIsSuccess(false);
-      setGenerationError(err instanceof Error ? err.message : "Erreur lors de la génération PDF");
+      setGenerationError(
+        err instanceof Error ? err.message : "Erreur lors de la génération PDF",
+      );
     }
   };
 
@@ -61,66 +53,67 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
 
   return (
     <>
-      <div className="card-autodocs col-span-1 xl:col-span-2 flex flex-col gap-4 md:flex-row md:items-center md:justify-between relative overflow-hidden backdrop-blur-sm">
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "linear-gradient(90deg, hsla(228,91%,64%,0.05) 0%, transparent 50%)",
-          }}
-        />
+      <div
+        className={cn(
+          "z-40 border-t border-border/60 bg-card/95 shadow-[0_-8px_32px_rgba(0,0,0,0.28)] backdrop-blur-md md:rounded-card md:border md:shadow-card",
+          "fixed bottom-0 left-0 right-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:z-auto md:border-0 md:bg-card md:p-0 md:pb-0 md:shadow-card",
+        )}
+      >
+        <div className="card-autodocs relative mx-auto flex max-w-[1500px] flex-col gap-4 overflow-hidden md:flex-row md:items-center md:justify-between">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background: "linear-gradient(90deg, rgba(99, 102, 241, 0.06) 0%, transparent 50%)",
+            }}
+          />
+          <div className="relative z-10 flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              {Array.from({ length: MAX_DOTS }, (_, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full transition-colors duration-200",
+                    i < filledDots ? "bg-success" : "bg-border",
+                  )}
+                />
+              ))}
+            </div>
+            <div>
+              <div className="text-[13px] text-foreground">
+                <span className="font-semibold">
+                  {documentsUploaded} document{documentsUploaded !== 1 ? "s" : ""} importé
+                  {documentsUploaded !== 1 ? "s" : ""}
+                </span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {missingFieldsCount} champ{missingFieldsCount !== 1 ? "s" : ""} manquant
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Complétez les champs ou générez le PDF
+              </p>
+            </div>
+          </div>
 
-        <div className="flex items-center gap-3 relative z-10">
-          <div className="flex gap-1 items-center">
-            {Array.from({ length: MAX_DOTS }, (_, i) => (
-              <div
-                key={i}
-                className={`w-1.5 h-1.5 rounded-full ${
-                  i < filledDots ? "bg-success" : "bg-border"
-                }`}
-              />
-            ))}
-          </div>
-          <div>
-            <div className="text-[13px]">
-              <strong className="font-semibold">
-                {documentsUploaded} document{documentsUploaded !== 1 ? "s" : ""} importé
-                {documentsUploaded !== 1 ? "s" : ""}
-              </strong>{" "}
-              · {missingFieldsCount} champ{missingFieldsCount !== 1 ? "s" : ""} manquant
-              {missingFieldsCount !== 1 ? "s" : ""}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Vous pouvez générer le bon ou compléter les champs manquants
-            </div>
-          </div>
+          <button
+            type="button"
+            disabled={!canGenerate}
+            className={cn(
+              "btn-primary relative z-10 w-full min-h-[48px] rounded-lg text-sm disabled:hover:translate-y-0",
+              "md:w-auto",
+            )}
+            onClick={handleGenerate}
+          >
+            <FileText className="h-4 w-4" />
+            Générer le bon de commande
+          </button>
         </div>
-
-        <button
-          type="button"
-          disabled={!canGenerate}
-          className="relative z-10 w-full md:w-auto gradient-primary px-6 py-3 rounded-[9px] font-display text-sm font-bold text-primary-foreground transition-all duration-200 flex items-center justify-center gap-2 border-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer hover:-translate-y-0.5"
-          style={{ boxShadow: "0 4px 20px hsla(228,91%,64%,0.3)" }}
-          onMouseEnter={(e) => {
-            if (canGenerate)
-              (e.currentTarget as HTMLElement).style.boxShadow =
-                "0 8px 28px hsla(228,91%,64%,0.45)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.boxShadow =
-              "0 4px 20px hsla(228,91%,64%,0.3)";
-          }}
-          onClick={handleGenerate}
-        >
-          <Zap className="w-4 h-4" />
-          Générer le bon de commande
-        </button>
       </div>
 
       {modalOpen && (
         <>
           <div
-            className="fixed top-0 left-0 w-[100vw] h-[100vh] z-[9998] animate-in fade-in-0 duration-200"
+            className="fixed left-0 top-0 z-[9998] h-[100vh] w-[100vw] animate-in fade-in-0 duration-200"
             style={{ background: "rgba(0,0,0,0.5)" }}
             onClick={() => {
               if (!isGenerating) setModalOpen(false);
@@ -133,8 +126,8 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
               left: "50%",
               transform: "translateX(-50%)",
               borderRadius: 16,
-              background: "#111118",
-              border: "1px solid #2a2a35",
+              background: "#1A1D27",
+              border: "1px solid hsl(var(--border))",
               padding: 28,
             }}
             onClick={(e) => e.stopPropagation()}
@@ -144,40 +137,32 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
           >
             <h2
               id="modal-generate-title"
-              className="font-display font-bold text-center mb-6"
-              style={{ fontSize: 18 }}
+              className="mb-6 text-center font-display text-lg font-bold"
             >
               {isGenerating ? "Génération en cours..." : "Bon de commande"}
             </h2>
 
             {isGenerating && (
               <div className="flex flex-col items-center gap-4 py-4">
-                <Loader2
-                  className="w-12 h-12 text-primary animate-spin"
-                  aria-hidden
-                />
-                <p className="text-sm text-muted-foreground">
-                  Génération en cours...
-                </p>
+                <Loader2 className="h-12 w-12 animate-spin text-primary" aria-hidden />
+                <p className="text-sm text-muted-foreground">Génération en cours…</p>
               </div>
             )}
 
             {isSuccess && (
               <div className="flex flex-col items-center gap-5">
-                <p className="text-sm text-foreground text-center">
-                  ✓ Bon de commande généré avec succès !
-                </p>
-                <div className="flex gap-3 w-full justify-center">
+                <p className="text-center text-sm text-foreground">Bon de commande généré avec succès</p>
+                <div className="flex w-full justify-center gap-3">
                   <button
                     type="button"
-                    className="px-4 py-2.5 rounded-lg text-sm font-medium gradient-primary text-primary-foreground cursor-pointer border-0"
+                    className="btn-primary cursor-pointer border-0 px-4 py-2.5 text-sm"
                     onClick={() => setModalOpen(false)}
                   >
                     Terminé
                   </button>
                   <button
                     type="button"
-                    className="px-4 py-2.5 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors cursor-pointer bg-transparent"
+                    className="btn-secondary cursor-pointer px-4 py-2.5 text-sm"
                     onClick={() => setModalOpen(false)}
                   >
                     Fermer
@@ -188,12 +173,10 @@ const GenerateBar = ({ documentsUploaded, missingFieldsCount, formData, template
 
             {!isGenerating && generationError && (
               <div className="flex flex-col items-center gap-4">
-                <p className="text-sm text-destructive text-center">
-                  ❌ {generationError}
-                </p>
+                <p className="text-center text-sm text-destructive">{generationError}</p>
                 <button
                   type="button"
-                  className="px-4 py-2.5 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors cursor-pointer bg-transparent"
+                  className="btn-secondary cursor-pointer px-4 py-2.5 text-sm"
                   onClick={() => setModalOpen(false)}
                 >
                   Fermer

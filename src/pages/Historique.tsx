@@ -1,32 +1,47 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import TopBar from "@/components/layout/TopBar";
-import { Search, FileEdit, X } from "lucide-react";
+import { Search, FileEdit, X, Trash2 } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
-import { loadDrafts } from "@/utils/drafts";
+import { loadDrafts, deleteDraft } from "@/utils/drafts";
+import { isDraftFormComplete } from "@/utils/bonFormCompletion";
+import { cn } from "@/lib/utils";
+import TopBar from "@/components/layout/TopBar";
+
+const clientLabel = (d: BonDraftData) =>
+  [d.clientPrenom, d.clientNom].filter(Boolean).join(" ").trim() || "—";
+
+const vehiculeLabel = (d: BonDraftData) => {
+  const order =
+    d.stockColonnes?.length > 0 ? d.stockColonnes : Object.keys(d.stockDonnees ?? {});
+  const vals = order.map((k) => (d.stockDonnees?.[k] ?? "").trim()).filter(Boolean);
+  return vals.slice(0, 2).join(" · ") || "—";
+};
 
 const Historique = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
-  const [filterDate, setFilterDate] = useState<string>("");
+  const [filterDate, setFilterDate] = useState("");
+  const [q, setQ] = useState("");
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadDrafts().then(setDrafts);
+    void loadDrafts().then(setDrafts);
   }, []);
 
   const filteredDrafts = useMemo(() => {
+    const query = q.trim().toLowerCase();
     return drafts.filter((d) => {
       if (filterDate) {
         const created = new Date(d.createdAt);
         const y = created.getFullYear();
         const m = String(created.getMonth() + 1).padStart(2, "0");
         const day = String(created.getDate()).padStart(2, "0");
-        const draftDateStr = `${y}-${m}-${day}`;
-        if (draftDateStr !== filterDate) return false;
+        if (`${y}-${m}-${day}` !== filterDate) return false;
       }
-      return true;
+      if (!query) return true;
+      const hay = `${clientLabel(d)} ${vehiculeLabel(d)}`.toLowerCase();
+      return hay.includes(query);
     });
-  }, [drafts, filterDate]);
+  }, [drafts, filterDate, q]);
 
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString("fr-FR", {
@@ -35,103 +50,126 @@ const Historique = () => {
       year: "numeric",
     });
 
-  const clientLabel = (d: BonDraftData) =>
-    [d.clientPrenom, d.clientNom].filter(Boolean).join(" ").trim() || "—";
-
   return (
     <>
-      <TopBar title="Historique" />
+      <TopBar title="Historique" subtitle="Brouillons et parcours en cours" />
       <div className="page-shell">
         <div className="page-content space-y-5">
-        <div className="flex gap-3 flex-wrap items-center">
-          <div className="flex-1 min-w-[200px] relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <input type="text" placeholder="Rechercher un client, véhicule..." className="field-input w-full pl-9" />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative min-w-[200px] flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                placeholder="Rechercher un client, un véhicule…"
+                className="field-input w-full pl-9"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label className="sr-only" htmlFor="historique-date">
+                Filtrer par date
+              </label>
+              <input
+                id="historique-date"
+                type="date"
+                className="field-input w-full min-w-[150px] cursor-pointer"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+              />
+              {filterDate ? (
+                <button
+                  type="button"
+                  className="btn-secondary cursor-pointer p-2"
+                  onClick={() => setFilterDate("")}
+                  title="Réinitialiser le filtre"
+                  aria-label="Réinitialiser le filtre date"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <label className="sr-only" htmlFor="historique-date">
-              Filtrer par date
-            </label>
-            <input
-              id="historique-date"
-              type="date"
-              className="field-input cursor-pointer w-full min-w-[140px]"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-            />
-            {filterDate ? (
-              <button
-                type="button"
-                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                onClick={() => setFilterDate("")}
-                title="Réinitialiser le filtre date"
-                aria-label="Réinitialiser le filtre date"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            ) : null}
-          </div>
-        </div>
 
-        <div className="card-autodocs">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-border text-muted-foreground text-left">
-                <th className="pb-3 font-medium">Client</th>
-                <th className="pb-3 font-medium">Véhicule</th>
-                <th className="pb-3 font-medium">Date</th>
-                <th className="pb-3 font-medium">Statut</th>
-                <th className="pb-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredDrafts.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-muted-foreground text-sm">
-                    {drafts.length === 0
-                      ? "Aucun bon de commande pour le moment"
-                      : "Aucun bon ne correspond aux filtres"}
-                  </td>
+          <div className="card-autodocs overflow-x-auto">
+            <table className="w-full min-w-[720px] text-[13px]">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="pb-3 font-medium">Client</th>
+                  <th className="pb-3 font-medium">Véhicule</th>
+                  <th className="pb-3 font-medium">Date</th>
+                  <th className="pb-3 font-medium">Statut</th>
+                  <th className="pb-3 text-right font-medium">Actions</th>
                 </tr>
-              ) : (
-                filteredDrafts.map((d) => (
-                  <tr key={d.id} className="border-b border-border/50 last:border-0 row-hover">
-                    <td className="py-3 font-medium">{clientLabel(d)}</td>
-                    <td className="py-3 text-muted-foreground">
-                      {(() => {
-                        const order =
-                          d.stockColonnes?.length > 0
-                            ? d.stockColonnes
-                            : Object.keys(d.stockDonnees ?? {});
-                        const vals = order
-                          .map((k) => (d.stockDonnees?.[k] ?? "").trim())
-                          .filter(Boolean);
-                        return vals.slice(0, 2).join(" · ") || "—";
-                      })()}
-                    </td>
-                    <td className="py-3 text-muted-foreground">{formatDate(d.createdAt)}</td>
-                    <td className="py-3">
-                      <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-warning/15 text-warning">
-                        Brouillon
-                      </span>
-                    </td>
-                    <td className="py-3 text-right">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer"
-                        onClick={() => navigate(`/nouveau-bon/${d.id}`)}
-                      >
-                        <FileEdit className="w-3 h-3" />
-                        Modifier
-                      </button>
+              </thead>
+              <tbody>
+                {filteredDrafts.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                      {drafts.length === 0
+                        ? "Aucun bon enregistré"
+                        : "Aucun résultat pour ces filtres"}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredDrafts.map((d) => {
+                    const complet = isDraftFormComplete(d as unknown as Record<string, unknown>);
+                    return (
+                      <tr key={d.id} className="row-hover border-b border-border/50 last:border-0">
+                        <td className="py-3 font-medium text-foreground">{clientLabel(d)}</td>
+                        <td
+                          className="max-w-[220px] truncate py-3 text-muted-foreground"
+                          title={vehiculeLabel(d)}
+                        >
+                          {vehiculeLabel(d)}
+                        </td>
+                        <td className="whitespace-nowrap py-3 text-muted-foreground">
+                          {formatDate(d.createdAt)}
+                        </td>
+                        <td className="py-3">
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                              complet
+                                ? "bg-success/15 text-success"
+                                : "bg-amber-500/15 text-amber-400",
+                            )}
+                          >
+                            {complet ? "Complet" : "En cours"}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              className="btn-secondary cursor-pointer gap-1.5 px-2.5 py-1.5 text-xs"
+                              onClick={() => navigate(`/nouveau-bon/${d.id}`)}
+                            >
+                              <FileEdit className="h-3.5 w-3.5" />
+                              Ouvrir
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-danger cursor-pointer gap-1.5 px-2.5 py-1.5 text-xs"
+                              onClick={async () => {
+                                if (window.confirm("Supprimer ce brouillon ?")) {
+                                  await deleteDraft(d.id);
+                                  setDrafts((prev) => prev.filter((x) => x.id !== d.id));
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </>

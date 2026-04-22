@@ -1,4 +1,12 @@
 import type { BonDraftData } from "@/utils/drafts";
+import { cn } from "@/lib/utils";
+
+type ProfilField =
+  | "clientNom"
+  | "clientPrenom"
+  | "clientDateNaissance"
+  | "clientNumeroCni"
+  | "clientAdresse";
 
 type ProfilClientProps = {
   form: {
@@ -9,85 +17,58 @@ type ProfilClientProps = {
     clientAdresse: BonDraftData["clientAdresse"];
   };
   onChange: (patch: Partial<ProfilClientProps["form"]>) => void;
-  autoFilledFields?: Array<
-    | "clientNom"
-    | "clientPrenom"
-    | "clientDateNaissance"
-    | "clientNumeroCni"
-    | "clientAdresse"
-  >;
+  autoFilledFields?: ProfilField[];
 };
 
 const ProfilClient = ({ form, onChange, autoFilledFields = [] }: ProfilClientProps) => {
-  const isAuto = (
-    field:
-      | "clientNom"
-      | "clientPrenom"
-      | "clientDateNaissance"
-      | "clientNumeroCni"
-      | "clientAdresse",
-  ) => autoFilledFields.includes(field);
-  const autoClass = "bg-success/10 border-success/40";
+  const isAuto = (field: ProfilField) => autoFilledFields.includes(field);
+  const autoClass = "field-input-auto pr-12";
+
+  const Field = ({
+    field,
+    label,
+    colSpan2,
+  }: {
+    field: ProfilField;
+    label: string;
+    colSpan2?: boolean;
+  }) => (
+    <div className={cn("flex flex-col gap-1.5", colSpan2 && "md:col-span-2")}>
+      <label className="field-label">{label}</label>
+      <div className="relative">
+        <input
+          type="text"
+          value={form[field]}
+          onChange={(e) =>
+            onChange({ [field]: e.target.value } as Partial<ProfilClientProps["form"]>)
+          }
+          className={cn("field-input", isAuto(field) && autoClass)}
+          placeholder="—"
+        />
+        {isAuto(field) && (
+          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none rounded bg-success/20 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none text-success">
+            Auto
+          </span>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="card-autodocs">
-      <div className="flex items-center justify-between mb-4">
-        <span className="card-title-autodocs">👤 Profil client</span>
-        <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-success/15 text-success">
-          Auto-rempli par IA
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="card-title-autodocs">Identité & coordonnées</span>
+        <span className="rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
+          Vérifiez les champs
         </span>
       </div>
-
-      <p className="text-xs text-muted-foreground mb-4">
-        Vérifiez les informations client avant génération du bon.
-      </p>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Nom</label>
-          <input
-            type="text"
-            value={form.clientNom}
-            onChange={(e) => onChange({ clientNom: e.target.value })}
-            className={`field-input field-input-auto ${isAuto("clientNom") ? autoClass : ""}`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Prénom</label>
-          <input
-            type="text"
-            value={form.clientPrenom}
-            onChange={(e) => onChange({ clientPrenom: e.target.value })}
-            className={`field-input field-input-auto ${isAuto("clientPrenom") ? autoClass : ""}`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">Date de naissance</label>
-          <input
-            type="text"
-            value={form.clientDateNaissance}
-            onChange={(e) => onChange({ clientDateNaissance: e.target.value })}
-            className={`field-input field-input-auto ${isAuto("clientDateNaissance") ? autoClass : ""}`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="field-label">N° CNI</label>
-          <input
-            type="text"
-            value={form.clientNumeroCni}
-            onChange={(e) => onChange({ clientNumeroCni: e.target.value })}
-            className={`field-input field-input-auto ${isAuto("clientNumeroCni") ? autoClass : ""}`}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5 md:col-span-2">
-          <label className="field-label">Adresse</label>
-          <input
-            type="text"
-            value={form.clientAdresse}
-            onChange={(e) => onChange({ clientAdresse: e.target.value })}
-            className={`field-input field-input-auto ${isAuto("clientAdresse") ? autoClass : ""}`}
-          />
-        </div>
+      <p className="text-xs text-muted-foreground">Saisie manuelle ou remplissage par scan CNI.</p>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <Field field="clientNom" label="Nom" />
+        <Field field="clientPrenom" label="Prénom" />
+        <Field field="clientDateNaissance" label="Date de naissance" />
+        <Field field="clientNumeroCni" label="N° CNI" />
+        <Field field="clientAdresse" label="Adresse" colSpan2 />
       </div>
     </div>
   );

@@ -40,8 +40,15 @@ const App = () => {
 
   if (loadingSession) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-muted-foreground">
-        Chargement...
+      <div className="flex min-h-screen items-center justify-center bg-[#0F1117] text-muted-foreground">
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="h-12 w-12 animate-pulse rounded-card bg-primary/20"
+            style={{ boxShadow: "0 0 32px rgba(99, 102, 241, 0.3)" }}
+          />
+          <div className="skeleton h-2 w-36 rounded-full" />
+          <p className="text-sm font-medium text-[#94A3B8]">Chargement d&apos;AutoDocs…</p>
+        </div>
       </div>
     );
   }

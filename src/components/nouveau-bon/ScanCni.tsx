@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { IdCard } from "lucide-react";
+import { IdCard, ScanLine } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { analyzeDocument } from "@/utils/analyzeDocument";
 import type { BonDraftData, DocumentScannedState } from "@/utils/drafts";
@@ -181,43 +181,43 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
   const canConfirm = Boolean(rectoFile && versoFile);
 
   return (
-    <div className="card-autodocs">
-      <div className="flex items-center justify-between mb-3">
-        <span className="card-title-autodocs">🪪 Scan pièce d'identité</span>
-        <span className={`w-2.5 h-2.5 rounded-full ${statusDotClass(status)}`} />
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="card-title-autodocs">Scan pièce d'identité</span>
+        <span className={`h-2.5 w-2.5 rounded-full ${statusDotClass(status)}`} />
       </div>
 
-      <p className="text-xs text-muted-foreground mb-4">
-        Scannez la carte d'identité du client (recto + verso) — les informations sont extraites
-        automatiquement dans le profil client.
+      <p className="text-xs text-muted-foreground">
+        Recto + verso — remplissage automatique du profil client.
       </p>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-border bg-secondary/60 px-3 py-3 md:flex-row md:items-center">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-9 h-9 rounded-md flex items-center justify-center bg-primary/10 text-primary shrink-0">
-            <IdCard className="w-5 h-5" />
+      <div className="flex flex-col gap-3 rounded-input border border-border/80 bg-secondary/40 p-3 md:flex-row md:items-center">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-input bg-primary/15 text-primary">
+            <IdCard className="h-5 w-5" />
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-medium">
-              {status === "ok" ? "Carte d'identité scannée" : "Carte d'identité (recto + verso)"}
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium text-foreground">
+              {status === "ok" ? "Carte d'identité scannée" : "CNI (recto + verso)"}
             </div>
-            <div className={`text-[11px] truncate ${detailTextClass(status)}`}>{detail}</div>
+            <div className={`truncate text-[11px] ${detailTextClass(status)}`}>{detail}</div>
           </div>
         </div>
-        <div className="flex w-full items-stretch gap-2 shrink-0 md:w-auto md:items-center">
+        <div className="flex w-full shrink-0 items-stretch gap-2 md:w-auto md:items-center">
           <button
             type="button"
-            className="min-h-10 flex-1 md:flex-none px-3 py-2 rounded-md text-xs font-medium border border-border text-foreground hover:border-primary transition-colors bg-transparent cursor-pointer whitespace-nowrap"
+            className="btn-secondary min-h-10 flex-1 cursor-pointer whitespace-nowrap text-xs font-medium md:flex-none"
             onClick={() => openModal("import")}
           >
-            📎 Importer
+            Importer
           </button>
           <button
             type="button"
-            className="min-h-10 flex-1 md:flex-none px-3 py-2 rounded-md text-xs font-medium gradient-primary text-primary-foreground border-0 cursor-pointer whitespace-nowrap"
+            className="btn-primary min-h-10 flex-1 cursor-pointer border-0 whitespace-nowrap text-xs font-semibold shadow-indigo ring-2 ring-primary/35 ring-offset-2 ring-offset-background md:flex-none"
             onClick={() => openModal("scan")}
           >
-            📷 Scanner
+            <ScanLine className="h-4 w-4 animate-pulse" />
+            Scanner CNI
           </button>
         </div>
       </div>

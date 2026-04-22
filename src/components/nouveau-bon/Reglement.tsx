@@ -41,16 +41,16 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
   ];
 
   return (
-    <div className="card-autodocs">
-      <div className="flex items-center justify-between mb-4">
-        <span className="card-title-autodocs">💳 Règlement</span>
-        <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-primary/15 text-primary">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="card-title-autodocs">Détail du règlement</span>
+        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
           Calcul auto
         </span>
       </div>
 
       {/* Mode de paiement */}
-      <div className="mb-5">
+      <div>
         <label className="field-label mb-2 block">Mode de paiement</label>
         <div className="grid grid-cols-2 gap-2">
           {modes.map(({ id, label, icon: Icon }) => {
@@ -59,9 +59,9 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
               <button
                 key={id}
                 type="button"
-                className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors cursor-pointer ${
+                className={`flex items-center justify-center gap-2 rounded-input px-3 py-2.5 text-sm font-medium border transition-all duration-200 cursor-pointer ${
                   active
-                    ? "border-primary bg-primary/10 text-primary"
+                    ? "border-primary bg-primary/10 text-primary ring-1 ring-primary/20"
                     : "border-border text-muted-foreground hover:border-muted-foreground hover:text-foreground"
                 }`}
                 onClick={() => onChange({ modePaiement: id })}
@@ -75,7 +75,7 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
       </div>
 
       {/* Montants */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5 col-span-2">
           <label className="field-label flex items-center gap-1.5">
             <span className="text-primary">●</span>
@@ -129,7 +129,7 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
       </div>
 
       {/* Récapitulatif */}
-      <div className="rounded-lg border border-border/60 bg-background/30 p-3 text-[13px]">
+      <div className="rounded-input border border-border/60 bg-secondary/30 p-4 text-[13px]">
         <div className="flex items-center justify-between py-1">
           <span className="text-muted-foreground">Prix véhicule</span>
           <span className="font-medium">{formatEur(prix)} €</span>

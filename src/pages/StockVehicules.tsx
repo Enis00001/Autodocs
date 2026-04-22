@@ -11,7 +11,9 @@ import {
   ToggleRight,
   Eye,
   EyeOff,
+  Search,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
 import { getCurrentUserId } from "@/lib/auth";
@@ -51,6 +53,7 @@ const StockVehicules = () => {
   const [vehicules, setVehicules] = useState<StockVehicule[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"tous" | "disponibles" | "vendus">("tous");
+  const [listQuery, setListQuery] = useState("");
 
   const [parsed, setParsed] = useState<ParsedFile | null>(null);
   const [columns, setColumns] = useState<ColumnConfig[]>([]);
@@ -83,10 +86,22 @@ const StockVehicules = () => {
   }, []);
 
   const filteredVehicules = useMemo(() => {
-    if (filter === "disponibles") return vehicules.filter((v) => v.disponible);
-    if (filter === "vendus") return vehicules.filter((v) => !v.disponible);
-    return vehicules;
-  }, [vehicules, filter]);
+    let list =
+      filter === "disponibles"
+        ? vehicules.filter((v) => v.disponible)
+        : filter === "vendus"
+          ? vehicules.filter((v) => !v.disponible)
+          : vehicules;
+    const q = listQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((v) => {
+        const label = vehiculeDisplayLabel(v).toLowerCase();
+        const blob = [label, ...Object.values(v.donnees)].join(" ").toLowerCase();
+        return blob.includes(q);
+      });
+    }
+    return list;
+  }, [vehicules, filter, listQuery]);
 
   const stats = useMemo(
     () => ({
@@ -309,33 +324,28 @@ const StockVehicules = () => {
     <>
       <TopBar
         title="Stock véhicules"
+        subtitle="Import CSV/Excel & gestion du parc"
         actions={
           <>
             {!inImportFlow && vehicules.length > 0 && (
-              <button
-                type="button"
-                className="px-4 py-2 rounded-lg text-[13px] font-medium border border-destructive/50 text-destructive hover:bg-destructive/10 transition-all bg-transparent cursor-pointer"
-                onClick={handleClear}
-              >
+              <button type="button" className="btn-danger cursor-pointer" onClick={handleClear}>
                 Vider le stock
               </button>
             )}
             {!inImportFlow && (
               <button
                 type="button"
-                className="px-4 py-2 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2"
-                style={{ boxShadow: "0 0 20px hsla(228,91%,64%,0.25)" }}
+                className="btn-primary inline-flex cursor-pointer border-0"
                 onClick={handleFilePick}
               >
-                <Upload className="w-4 h-4" />
+                <Upload className="h-4 w-4" />
                 Importer CSV/Excel
               </button>
             )}
             {inImportFlow && (
               <button
                 type="button"
-                className="px-4 py-2 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{ boxShadow: "0 0 20px hsla(228,91%,64%,0.25)" }}
+                className="btn-primary inline-flex cursor-pointer border-0 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => void handleConfirmImport()}
                 disabled={importing || activeHeaders.length === 0 || !concessionId}
               >
@@ -396,35 +406,48 @@ const StockVehicules = () => {
           {/* --- Liste --- */}
           {!inImportFlow && vehicules.length > 0 && (
             <>
-              <div className="flex items-center gap-2 flex-wrap">
-                {(["tous", "disponibles", "vendus"] as const).map((f) => (
-                  <button
-                    key={f}
-                    type="button"
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
-                      filter === f
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:border-muted-foreground"
-                    }`}
-                    onClick={() => setFilter(f)}
-                  >
-                    {f === "tous"
-                      ? `Tous (${stats.total})`
-                      : f === "disponibles"
-                      ? `Disponibles (${stats.disponibles})`
-                      : `Vendus (${stats.vendus})`}
-                  </button>
-                ))}
-                {concessionId && (
-                  <button
-                    type="button"
-                    className="ml-auto px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-all bg-transparent cursor-pointer inline-flex items-center gap-1.5"
-                    onClick={() => void refresh(concessionId)}
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    Rafraîchir
-                  </button>
-                )}
+              <div className="card-autodocs flex flex-col gap-3 md:flex-row md:items-center">
+                <div className="relative min-w-[200px] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="search"
+                    className="field-input w-full pl-9"
+                    placeholder="Rechercher marque, modèle, VIN, plaque…"
+                    value={listQuery}
+                    onChange={(e) => setListQuery(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {(["tous", "disponibles", "vendus"] as const).map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      className={cn(
+                        "cursor-pointer rounded-input border px-3 py-1.5 text-xs font-medium transition-all duration-200",
+                        filter === f
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-muted-foreground",
+                      )}
+                      onClick={() => setFilter(f)}
+                    >
+                      {f === "tous"
+                        ? `Tous (${stats.total})`
+                        : f === "disponibles"
+                          ? `Disponibles (${stats.disponibles})`
+                          : `Vendus (${stats.vendus})`}
+                    </button>
+                  ))}
+                  {concessionId && (
+                    <button
+                      type="button"
+                      className="btn-secondary inline-flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-xs md:ml-auto"
+                      onClick={() => void refresh(concessionId)}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Rafraîchir
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -441,8 +464,15 @@ const StockVehicules = () => {
           )}
 
           {loading && !inImportFlow && vehicules.length === 0 && (
-            <div className="text-sm text-muted-foreground text-center py-6">
-              Chargement du stock…
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="card-autodocs space-y-3">
+                  <div className="skeleton h-32 w-full rounded-input" />
+                  <div className="skeleton h-4 w-3/4 max-w-[200px] rounded" />
+                  <div className="skeleton h-3 w-full rounded" />
+                  <div className="skeleton h-3 w-2/3 rounded" />
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -767,29 +797,33 @@ const VehiculeCard = ({
 
   return (
     <div
-      className={`card-autodocs flex flex-col gap-3 interactive-lift ${
-        vehicule.disponible ? "" : "opacity-70"
-      }`}
+      className={cn(
+        "card-autodocs flex flex-col gap-0 overflow-hidden interactive-lift p-0",
+        !vehicule.disponible && "opacity-75",
+      )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+      <div className="relative flex h-36 items-center justify-center border-b border-border/50 bg-gradient-to-br from-secondary/80 to-background">
+        <Car className="h-16 w-16 text-muted-foreground/25" strokeWidth={1.25} />
+        <span
+          className={cn(
+            "absolute right-3 top-3 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+            vehicule.disponible
+              ? "bg-success/20 text-success"
+              : "bg-destructive/20 text-destructive",
+          )}
+        >
+          {vehicule.disponible ? "Disponible" : "Vendu"}
+        </span>
+      </div>
+      <div className="space-y-3 p-4">
+      <div className="min-w-0">
           <h3
-            className="font-display text-[14px] font-bold truncate leading-tight"
+            className="font-display text-[15px] font-bold leading-tight text-foreground truncate"
             title={title}
           >
             {title}
           </h3>
         </div>
-        <span
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
-            vehicule.disponible
-              ? "bg-[hsl(var(--success))]/15 text-[hsl(var(--success))]"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {vehicule.disponible ? "Disponible" : "Vendu"}
-        </span>
-      </div>
 
       <div className="grid grid-cols-1 gap-y-1 text-[12px]">
         {preview.map(([k, v]) => (
@@ -809,29 +843,29 @@ const VehiculeCard = ({
         )}
       </div>
 
-      <div className="flex gap-2 mt-auto pt-2 border-t border-border/40">
+      <div className="mt-auto flex gap-2 border-t border-border/40 pt-3">
         {vehicule.disponible ? (
           <button
             type="button"
-            className="flex-1 px-3 py-2 rounded-lg text-xs font-medium border border-[hsl(var(--success))]/50 text-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/10 transition-all bg-transparent cursor-pointer"
+            className="btn-secondary flex-1 cursor-pointer border-success/40 py-2 text-xs font-semibold text-success hover:bg-success/10"
             onClick={() => onMarkSold(vehicule.id)}
           >
             Marquer vendu
           </button>
         ) : (
-          <div className="flex-1 px-3 py-2 rounded-lg text-xs font-medium border border-border text-muted-foreground text-center">
-            Véhicule vendu
+          <div className="flex-1 rounded-input border border-border py-2 text-center text-xs text-muted-foreground">
+            Vendu
           </div>
         )}
         <button
           type="button"
-          className="px-3 py-2 rounded-lg text-xs font-medium border border-destructive/50 text-destructive hover:bg-destructive/10 transition-all bg-transparent cursor-pointer inline-flex items-center gap-1.5"
+          className="btn-danger inline-flex cursor-pointer items-center gap-1.5 px-3 py-2 text-xs"
           onClick={() => onDelete(vehicule.id)}
           aria-label="Supprimer"
         >
-          <Trash2 className="w-3.5 h-3.5" />
-          Supprimer
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
+      </div>
       </div>
     </div>
   );

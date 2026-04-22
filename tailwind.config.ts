@@ -17,7 +17,17 @@ export default {
         display: ["Syne", "sans-serif"],
         body: ["DM Sans", "sans-serif"],
       },
+      boxShadow: {
+        card: "0 8px 32px rgba(0, 0, 0, 0.28)",
+        "card-hover": "0 12px 40px rgba(0, 0, 0, 0.35)",
+        "indigo": "0 4px 24px rgba(99, 102, 241, 0.3)",
+        "indigo-lg": "0 8px 32px rgba(99, 102, 241, 0.35)",
+      },
       colors: {
+        surface: {
+          DEFAULT: "#0F1117",
+          card: "#1A1D27",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -74,6 +84,8 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        card: "12px",
+        input: "8px",
       },
       keyframes: {
         "accordion-down": {

@@ -127,136 +127,132 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
     : "";
 
   return (
-    <div className="card-autodocs">
-      <div className="flex items-center justify-between mb-4">
-        <span className="card-title-autodocs">🚗 Véhicule</span>
-        <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-primary/15 text-primary">
-          Depuis stock
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="card-title-autodocs">Recherche & détails</span>
+        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+          Stock
         </span>
       </div>
 
-      {/* --- Recherche stock --- */}
-      <div
-        ref={stockWrapperRef}
-        className="relative mb-5 rounded-lg border border-border/60 bg-background/30 p-3"
-      >
-        {hasStockVehicule ? (
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full font-semibold bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] whitespace-nowrap">
-                ✓ Véhicule sélectionné
+      {!hasStockVehicule && (
+        <div
+          ref={stockWrapperRef}
+          className="relative rounded-input border border-border/70 bg-secondary/30 p-4"
+        >
+          <label className="field-label mb-2 flex items-center gap-2">
+            <Search className="h-3.5 w-3.5 text-primary" />
+            Recherche stock
+          </label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              className="field-input h-12 w-full pl-11 text-sm font-medium"
+              placeholder="Modèle, VIN, immatriculation, marque…"
+              value={stockQuery}
+              onChange={(e) => {
+                setStockQuery(e.target.value);
+                setIsStockDropdownOpen(true);
+              }}
+              onFocus={() => setIsStockDropdownOpen(true)}
+            />
+            {isStockDropdownOpen && stockQuery.trim() && (
+              <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg">
+                {isStockSearching && stockSuggestions.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">Recherche…</div>
+                )}
+                {!isStockSearching && stockSuggestions.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    Aucun véhicule trouvé dans le stock
+                  </div>
+                )}
+                {stockSuggestions.map((v) => {
+                  const label = vehiculeDisplayLabel(v);
+                  const secondary = v.colonnes_pdf
+                    .slice(3, 6)
+                    .map((k) => v.donnees[k])
+                    .filter(Boolean)
+                    .join(" • ");
+                  return (
+                    <button
+                      type="button"
+                      key={v.id}
+                      className="w-full cursor-pointer border-b border-border/40 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-secondary/80"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSelectStockVehicule(v);
+                      }}
+                    >
+                      <div className="truncate text-sm font-medium">{label}</div>
+                      {secondary && (
+                        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {secondary}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Tapez pour filtrer le stock, puis cliquez sur une ligne.
+          </p>
+        </div>
+      )}
+
+      {hasStockVehicule ? (
+        <div className="space-y-4 rounded-card border-2 border-success/40 bg-gradient-to-b from-success/10 to-transparent p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="whitespace-nowrap rounded-full border border-success/40 bg-success/15 px-2 py-1 text-[11px] font-bold text-success">
+                Véhicule sélectionné
               </span>
-              <span className="text-sm font-medium truncate" title={selectedLabel}>
+              <span className="truncate text-sm font-semibold text-foreground" title={selectedLabel}>
                 {selectedLabel || "—"}
               </span>
             </div>
             <button
               type="button"
-              className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer"
+              className="btn-secondary cursor-pointer gap-1.5 px-2.5 py-1.5 text-xs"
               onClick={handleDeselectStockVehicule}
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="h-3.5 w-3.5" />
               Désélectionner
             </button>
           </div>
-        ) : (
-          <>
-            <label className="field-label flex items-center gap-1.5 mb-1.5">
-              <Search className="w-3.5 h-3.5" />
-              Rechercher un véhicule dans le stock
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                className="field-input w-full"
-                placeholder="ex: 308 GT, VIN, immatriculation…"
-                value={stockQuery}
-                onChange={(e) => {
-                  setStockQuery(e.target.value);
-                  setIsStockDropdownOpen(true);
-                }}
-                onFocus={() => setIsStockDropdownOpen(true)}
-              />
-              {isStockDropdownOpen && stockQuery.trim() && (
-                <div className="absolute top-full left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-lg z-30">
-                  {isStockSearching && stockSuggestions.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">
-                      Recherche…
-                    </div>
-                  )}
-                  {!isStockSearching && stockSuggestions.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">
-                      Aucun véhicule trouvé dans le stock
-                    </div>
-                  )}
-                  {stockSuggestions.map((v) => {
-                    const label = vehiculeDisplayLabel(v);
-                    const secondary = v.colonnes_pdf
-                      .slice(3, 6)
-                      .map((k) => v.donnees[k])
-                      .filter(Boolean)
-                      .join(" • ");
-                    return (
-                      <button
-                        type="button"
-                        key={v.id}
-                        className="w-full text-left px-3 py-2 hover:bg-secondary/80 transition-colors border-b border-border/40 last:border-b-0 cursor-pointer"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleSelectStockVehicule(v);
-                        }}
-                      >
-                        <div className="text-sm font-medium truncate">
-                          {label}
-                        </div>
-                        {secondary && (
-                          <div className="text-[11px] text-muted-foreground truncate mt-0.5">
-                            {secondary}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {form.stockColonnes.map((key) => (
+              <div key={key} className="flex flex-col gap-1.5">
+                <label className="field-label truncate" title={key}>
+                  {key}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    className="field-input pr-14"
+                    value={form.stockDonnees[key] ?? ""}
+                    onChange={(e) => updateStockField(key, e.target.value)}
+                    placeholder="—"
+                  />
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded bg-success/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-success">
+                    Stock
+                  </span>
                 </div>
-              )}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1.5">
-              Sélectionnez un véhicule pour récupérer automatiquement ses
-              caractéristiques.
-            </p>
-          </>
-        )}
-      </div>
-
-      {/* --- Champs véhicule (dynamiques) --- */}
-      {hasStockVehicule ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {form.stockColonnes.map((key) => (
-            <div key={key} className="flex flex-col gap-1.5">
-              <label
-                className="field-label truncate"
-                title={key}
-              >
-                {key}
-              </label>
-              <input
-                type="text"
-                className="field-input"
-                value={form.stockDonnees[key] ?? ""}
-                onChange={(e) => updateStockField(key, e.target.value)}
-              />
-            </div>
-          ))}
-          {form.stockColonnes.length === 0 && (
-            <div className="col-span-full text-xs text-muted-foreground italic">
-              Aucune colonne n'a été activée à l'import de ce véhicule.
-            </div>
-          )}
+              </div>
+            ))}
+            {form.stockColonnes.length === 0 && (
+              <div className="col-span-full text-xs italic text-muted-foreground">
+                Aucune colonne activée à l&apos;import.
+              </div>
+            )}
+          </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-dashed border-border/60 bg-background/20 px-4 py-6 text-center text-sm text-muted-foreground">
-          Aucun véhicule sélectionné. Utilisez la recherche ci-dessus pour
-          choisir un véhicule du stock.
+        <div className="rounded-input border border-dashed border-border/60 bg-secondary/20 px-4 py-8 text-center text-sm text-muted-foreground">
+          Aucun véhicule sélectionné. Utilisez la recherche pour choisir un véhicule du
+          stock.
         </div>
       )}
 
