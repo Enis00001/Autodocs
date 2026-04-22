@@ -331,6 +331,17 @@ const StockVehicules = () => {
                 Importer CSV/Excel
               </button>
             )}
+            {inImportFlow && (
+              <button
+                type="button"
+                className="px-4 py-2 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ boxShadow: "0 0 20px hsla(228,91%,64%,0.25)" }}
+                onClick={() => void handleConfirmImport()}
+                disabled={importing || activeHeaders.length === 0 || !concessionId}
+              >
+                {importing ? "Confirmation..." : "Confirmer"}
+              </button>
+            )}
             <input
               ref={fileInputRef}
               type="file"
