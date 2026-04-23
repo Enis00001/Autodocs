@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
-import { getSupabaseAdmin } from "./_supabaseAdmin";
 
 /**
  * POST /api/stripe-webhook
@@ -52,7 +51,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).send(`Webhook error: ${err instanceof Error ? err.message : "unknown"}`);
   }
 
-  const supabaseAdmin = getSupabaseAdmin();
+  // Client Supabase admin inlined (évite un import local qui n'est pas
+  // bundlé dans /var/task/ par Vercel).
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabaseAdmin = createClient(
+    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
 
   try {
     switch (event.type) {

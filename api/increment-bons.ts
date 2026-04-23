@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getSupabaseAdmin } from "./_supabaseAdmin";
 
 /**
  * POST /api/increment-bons
@@ -24,7 +23,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = body.userId;
   if (!userId) return res.status(400).json({ error: "userId requis" });
 
-  const supabaseAdmin = getSupabaseAdmin();
+  // Client Supabase admin inlined (évite un import local qui n'est pas
+  // bundlé dans /var/task/ par Vercel).
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabaseAdmin = createClient(
+    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
 
   // On récupère (ou crée) la ligne d'abonnement.
   const { data: existing } = await supabaseAdmin

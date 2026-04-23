@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
-import { getSupabaseAdmin } from "./_supabaseAdmin";
 
 /**
  * POST /api/create-checkout
@@ -61,7 +60,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       apiVersion: "2023-10-16" as any,
     });
-    const supabaseAdmin = getSupabaseAdmin();
+
+    // Client Supabase admin inlined (évite un import local qui n'est pas
+    // bundlé dans /var/task/ par Vercel).
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
 
     // 1. Récupère l'abonnement existant (customer éventuellement déjà créé).
     const { data: abonnement, error: fetchErr } = await supabaseAdmin
