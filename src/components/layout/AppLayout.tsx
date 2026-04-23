@@ -38,9 +38,9 @@ const AppLayout = () => {
         </button>
 
         <Link
-          to="/"
+          to="/app"
           className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 transition-opacity duration-200 hover:opacity-90"
-          aria-label="Retour à l'accueil"
+          aria-label="Retour au dashboard"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6366F1]/20 text-[#6366F1]">
             <CarFront className="h-4 w-4" />

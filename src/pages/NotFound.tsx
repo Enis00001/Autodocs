@@ -23,7 +23,7 @@ const NotFound = () => {
           La page que vous cherchez n'existe pas ou a été déplacée.
         </p>
         <Link
-          to="/"
+          to="/app"
           className="btn-primary mt-6 inline-flex w-full cursor-pointer sm:w-auto"
         >
           <Home className="h-4 w-4" />

@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>AutoDocs — Le bon de commande automobile en 30 secondes</title>
+    <meta
+      name="description"
+      content="AutoDocs automatise les bons de commande pour les concessions : scan CNI, stock intégré, PDF instantané. Vos commerciaux se concentrent sur la vente."
+    />
+    <meta property="og:title" content="AutoDocs — Bons de commande automobile automatisés" />
+    <meta
+      property="og:description"
+      content="Scannez les documents client, sélectionnez le véhicule, générez le PDF. AutoDocs s'occupe de la paperasse."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@700;800&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap"
+    />
+
+    <style>
+      /* ====================================================================
+         Palette AutoDocs — alignée avec src/index.css
+         ==================================================================== */
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --primary: #6366f1;
+        --primary-hover: #4f46e5;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --border: rgba(255, 255, 255, 0.08);
+        --success: #22c55e;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        font-family: "DM Sans", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4 {
+        font-family: "Syne", system-ui, sans-serif;
+        letter-spacing: -0.01em;
+        margin: 0;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        font-family: inherit;
+        cursor: pointer;
+      }
+
+      /* ====================================================================
+         Halos ambiance
+         ==================================================================== */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(ellipse 80% 50% at 100% 0%, rgba(99, 102, 241, 0.18), transparent 55%),
+          radial-gradient(ellipse 60% 40% at 0% 100%, rgba(99, 102, 241, 0.1), transparent 50%);
+        z-index: 0;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 24px;
+        position: relative;
+        z-index: 1;
+      }
+
+      /* ====================================================================
+         NAV
+         ==================================================================== */
+      .nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        backdrop-filter: blur(12px);
+        background: rgba(15, 17, 23, 0.72);
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 72px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: "Syne", sans-serif;
+        font-weight: 800;
+        font-size: 18px;
+      }
+      .brand-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: rgba(99, 102, 241, 0.18);
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .brand-icon svg {
+        width: 20px;
+        height: 20px;
+      }
+      .brand .accent {
+        color: var(--primary);
+      }
+      .nav-links {
+        display: none;
+        align-items: center;
+        gap: 32px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .nav-links a {
+        transition: color 180ms ease;
+      }
+      .nav-links a:hover {
+        color: var(--text);
+      }
+      @media (min-width: 768px) {
+        .nav-links {
+          display: flex;
+        }
+      }
+      .nav-cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 18px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+        transition: transform 200ms ease, box-shadow 200ms ease;
+        min-height: 44px;
+      }
+      .nav-cta:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 28px rgba(99, 102, 241, 0.45);
+      }
+
+      /* ====================================================================
+         HERO
+         ==================================================================== */
+      .hero {
+        padding: 72px 0 96px;
+        text-align: center;
+      }
+      @media (min-width: 768px) {
+        .hero {
+          padding: 120px 0 140px;
+        }
+      }
+      .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(99, 102, 241, 0.35);
+        background: rgba(99, 102, 241, 0.08);
+        color: var(--primary);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+      }
+      .hero-badge::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        background: var(--success);
+        border-radius: 999px;
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+      }
+      .hero h1 {
+        font-size: clamp(32px, 6vw, 64px);
+        font-weight: 800;
+        line-height: 1.05;
+        max-width: 900px;
+        margin: 0 auto 24px;
+      }
+      .hero h1 .grad {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .hero p {
+        font-size: clamp(15px, 2vw, 18px);
+        color: var(--muted);
+        max-width: 640px;
+        margin: 0 auto 40px;
+        line-height: 1.6;
+      }
+      .hero-ctas {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+        justify-content: center;
+      }
+      @media (min-width: 640px) {
+        .hero-ctas {
+          flex-direction: row;
+        }
+      }
+      .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 28px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+        color: #fff;
+        font-family: "Syne", sans-serif;
+        font-weight: 700;
+        font-size: 15px;
+        border: 0;
+        box-shadow: 0 4px 24px rgba(99, 102, 241, 0.35);
+        transition: transform 200ms ease, box-shadow 200ms ease;
+        min-height: 52px;
+        min-width: 240px;
+      }
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 32px rgba(99, 102, 241, 0.5);
+      }
+      .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 28px;
+        border-radius: 12px;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-family: "Syne", sans-serif;
+        font-weight: 600;
+        font-size: 15px;
+        transition: border-color 200ms ease, background 200ms ease, transform 200ms ease;
+        min-height: 52px;
+        min-width: 240px;
+      }
+      .btn-secondary:hover {
+        border-color: var(--muted);
+        background: rgba(255, 255, 255, 0.03);
+        transform: translateY(-1px);
+      }
+
+      .hero-preview {
+        margin: 72px auto 0;
+        max-width: 880px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(26, 29, 39, 0.9), rgba(15, 17, 23, 0.95));
+        padding: 18px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+      }
+      .hero-preview-bar {
+        display: flex;
+        gap: 6px;
+        padding: 2px 4px 12px;
+      }
+      .hero-preview-bar span {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .hero-preview-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      @media (min-width: 768px) {
+        .hero-preview-grid {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+      .hero-preview-item {
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        text-align: left;
+      }
+      .hero-preview-item-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      .hero-preview-item-value {
+        font-family: "Inter", sans-serif;
+        font-weight: 800;
+        font-size: 28px;
+        margin-top: 6px;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .hero-preview-item.green .hero-preview-item-value {
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .hero-preview-item-sub {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+
+      /* ====================================================================
+         SECTION TITLES
+         ==================================================================== */
+      .section {
+        padding: 80px 0;
+      }
+      .section-head {
+        text-align: center;
+        margin-bottom: 56px;
+      }
+      .section-eyebrow {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--primary);
+        margin-bottom: 14px;
+      }
+      .section-title {
+        font-size: clamp(28px, 4vw, 42px);
+        font-weight: 800;
+        max-width: 700px;
+        margin: 0 auto 16px;
+        line-height: 1.15;
+      }
+      .section-subtitle {
+        color: var(--muted);
+        max-width: 560px;
+        margin: 0 auto;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      /* ====================================================================
+         FEATURES
+         ==================================================================== */
+      .features-grid {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 768px) {
+        .features-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      .feature-card {
+        padding: 32px 28px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(26, 29, 39, 0.7), rgba(26, 29, 39, 0.4));
+        transition: transform 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
+      }
+      .feature-card:hover {
+        transform: translateY(-4px);
+        border-color: rgba(99, 102, 241, 0.4);
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.4);
+      }
+      .feature-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        background: rgba(99, 102, 241, 0.15);
+        color: var(--primary);
+        font-size: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+      }
+      .feature-card h3 {
+        font-size: 19px;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+      .feature-card p {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+        margin: 0;
+      }
+
+      /* ====================================================================
+         PRICING
+         ==================================================================== */
+      .pricing-grid {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: 1fr;
+        max-width: 880px;
+        margin: 0 auto;
+      }
+      @media (min-width: 768px) {
+        .pricing-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      .pricing-card {
+        padding: 36px 32px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(26, 29, 39, 0.75), rgba(26, 29, 39, 0.45));
+        display: flex;
+        flex-direction: column;
+        transition: transform 260ms ease, border-color 260ms ease;
+        position: relative;
+      }
+      .pricing-card.featured {
+        border-color: rgba(99, 102, 241, 0.45);
+        box-shadow: 0 20px 60px rgba(99, 102, 241, 0.2);
+      }
+      .pricing-card.featured::before {
+        content: "Populaire";
+        position: absolute;
+        top: -12px;
+        right: 24px;
+        padding: 4px 12px;
+        background: linear-gradient(135deg, #4f46e5, #6366f1);
+        color: #fff;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+      }
+      .pricing-card:hover {
+        transform: translateY(-3px);
+      }
+      .plan-name {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+      .plan-price {
+        font-family: "Inter", sans-serif;
+        font-size: 46px;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .plan-price .suffix {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--muted);
+        margin-left: 4px;
+      }
+      .plan-tagline {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 12px 0 28px;
+      }
+      .plan-features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 32px;
+        display: grid;
+        gap: 12px;
+      }
+      .plan-features li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        color: var(--text);
+      }
+      .plan-features li::before {
+        content: "";
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: rgba(34, 197, 94, 0.15);
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2322c55e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+        background-repeat: no-repeat;
+        background-position: center;
+        flex-shrink: 0;
+      }
+      .plan-cta {
+        margin-top: auto;
+      }
+
+      /* ====================================================================
+         FOOTER
+         ==================================================================== */
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 40px 0;
+        margin-top: 40px;
+      }
+      .footer-inner {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        align-items: center;
+        justify-content: space-between;
+        text-align: center;
+      }
+      @media (min-width: 768px) {
+        .footer-inner {
+          flex-direction: row;
+          text-align: left;
+        }
+      }
+      .footer-brand {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 24px;
+        font-size: 13px;
+      }
+      .footer-links a {
+        color: var(--muted);
+        transition: color 180ms ease;
+      }
+      .footer-links a:hover {
+        color: var(--text);
+      }
+
+      /* ====================================================================
+         FADE IN ON SCROLL
+         ==================================================================== */
+      .reveal {
+        opacity: 0;
+        transform: translateY(24px);
+        transition: opacity 600ms ease-out, transform 600ms ease-out;
+        transition-delay: var(--reveal-delay, 0ms);
+      }
+      .reveal.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+        .reveal {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      /* iOS : empêche le zoom auto sur inputs (aucun ici mais par prudence) */
+      @media (max-width: 767px) {
+        input,
+        select,
+        textarea {
+          font-size: 16px;
+        }
+      }
+
+      /* Touch targets 44px minimum */
+      @media (hover: none) {
+        .nav-links a,
+        .footer-links a {
+          padding: 8px 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- =================================================================
+         NAV
+         ================================================================= -->
+    <nav class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="/" aria-label="AutoDocs accueil">
+          <span class="brand-icon" aria-hidden="true">
+            <!-- icône voiture -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 16H9m10 0h3v-3.15a1 1 0 0 0-.84-.99L16 11l-2.7-3.6a1 1 0 0 0-.8-.4H5.24a2 2 0 0 0-1.8 1.1l-.8 1.63A6 6 0 0 0 2 12.42V16h2" />
+              <circle cx="6.5" cy="16.5" r="2.5" />
+              <circle cx="16.5" cy="16.5" r="2.5" />
+            </svg>
+          </span>
+          <span>Auto<span class="accent">Docs</span></span>
+        </a>
+
+        <div class="nav-links" role="navigation">
+          <a href="#features">Fonctionnalités</a>
+          <a href="#pricing">Tarifs</a>
+          <a href="/login">Connexion</a>
+        </div>
+
+        <a class="nav-cta" href="/login">Essayer gratuitement</a>
+      </div>
+    </nav>
+
+    <!-- =================================================================
+         HERO
+         ================================================================= -->
+    <header class="hero">
+      <div class="container">
+        <span class="hero-badge reveal">SaaS · Concessions automobiles</span>
+        <h1 class="reveal" style="--reveal-delay: 80ms">
+          Le bon de commande automobile
+          <span class="grad">en 30 secondes</span>.
+        </h1>
+        <p class="reveal" style="--reveal-delay: 160ms">
+          Scannez les documents client, sélectionnez le véhicule, générez le PDF.
+          AutoDocs automatise la paperasse pour que vos commerciaux se
+          concentrent sur la vente.
+        </p>
+        <div class="hero-ctas reveal" style="--reveal-delay: 240ms">
+          <a class="btn-primary" href="/login">
+            Démarrer gratuitement
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </a>
+          <a class="btn-secondary" href="#features">Voir la démo</a>
+        </div>
+
+        <div class="hero-preview reveal" style="--reveal-delay: 320ms" aria-hidden="true">
+          <div class="hero-preview-bar">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="hero-preview-grid">
+            <div class="hero-preview-item">
+              <div class="hero-preview-item-label">Bons ce mois</div>
+              <div class="hero-preview-item-value">247</div>
+              <div class="hero-preview-item-sub">Brouillons créés</div>
+            </div>
+            <div class="hero-preview-item green">
+              <div class="hero-preview-item-label">Véhicules stock</div>
+              <div class="hero-preview-item-value">38</div>
+              <div class="hero-preview-item-sub">Disponibles</div>
+            </div>
+            <div class="hero-preview-item">
+              <div class="hero-preview-item-label">Temps moyen</div>
+              <div class="hero-preview-item-value">28s</div>
+              <div class="hero-preview-item-sub">Par bon</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- =================================================================
+         FEATURES
+         ================================================================= -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-eyebrow reveal">Fonctionnalités</span>
+          <h2 class="section-title reveal" style="--reveal-delay: 80ms">
+            Tout ce dont un concessionnaire a besoin pour vendre vite
+          </h2>
+          <p class="section-subtitle reveal" style="--reveal-delay: 160ms">
+            Conçu avec des commerciaux automobiles pour éliminer chaque friction
+            administrative.
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <article class="feature-card reveal">
+            <div class="feature-icon">📄</div>
+            <h3>Scan CNI automatique</h3>
+            <p>
+              Extrayez nom, prénom, adresse en un scan. Plus de saisie manuelle,
+              plus d'erreurs de retranscription.
+            </p>
+          </article>
+          <article class="feature-card reveal" style="--reveal-delay: 120ms">
+            <div class="feature-icon">🚗</div>
+            <h3>Stock véhicules intégré</h3>
+            <p>
+              Importez votre stock Excel, sélectionnez le véhicule en 2 clics,
+              synchronisez les prix et références.
+            </p>
+          </article>
+          <article class="feature-card reveal" style="--reveal-delay: 240ms">
+            <div class="feature-icon">⚡</div>
+            <h3>PDF instantané</h3>
+            <p>
+              Bon de commande généré et prêt à signer en quelques secondes, au
+              format officiel attendu par le client.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================
+         PRICING
+         ================================================================= -->
+    <section class="section" id="pricing">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-eyebrow reveal">Tarifs</span>
+          <h2 class="section-title reveal" style="--reveal-delay: 80ms">
+            Sans engagement, annulable à tout moment
+          </h2>
+          <p class="section-subtitle reveal" style="--reveal-delay: 160ms">
+            Commencez gratuitement, passez au Pro quand votre volume explose.
+          </p>
+        </div>
+
+        <div class="pricing-grid">
+          <article class="pricing-card reveal">
+            <div class="plan-name">Gratuit</div>
+            <div class="plan-price">0 €<span class="suffix">/ mois</span></div>
+            <p class="plan-tagline">Pour tester AutoDocs sans risque</p>
+            <ul class="plan-features">
+              <li>10 bons de commande / mois</li>
+              <li>Stock véhicules illimité</li>
+              <li>Scan CNI automatique</li>
+              <li>Support par e-mail</li>
+            </ul>
+            <a class="btn-secondary plan-cta" href="/login">Commencer</a>
+          </article>
+
+          <article class="pricing-card featured reveal" style="--reveal-delay: 120ms">
+            <div class="plan-name">Pro</div>
+            <div class="plan-price">49 €<span class="suffix">/ mois</span></div>
+            <p class="plan-tagline">Pour les concessions qui vendent tous les jours</p>
+            <ul class="plan-features">
+              <li>Bons de commande illimités</li>
+              <li>Stock véhicules illimité</li>
+              <li>Scan CNI automatique</li>
+              <li>Support prioritaire</li>
+              <li>Mises à jour & nouvelles fonctionnalités</li>
+            </ul>
+            <a class="btn-primary plan-cta" href="/login">Commencer</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================
+         FOOTER
+         ================================================================= -->
+    <footer>
+      <div class="container footer-inner">
+        <div class="footer-brand">© 2025 AutoDocs — Tous droits réservés.</div>
+        <div class="footer-links">
+          <a href="#">CGU</a>
+          <a href="#">Politique de confidentialité</a>
+          <a href="mailto:contact@autodocs-eight.vercel.app">Contact</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // =================================================================
+      // 1. Si l'utilisateur est déjà connecté (session Supabase en
+      //    localStorage), on le redirige vers le dashboard (/app).
+      // =================================================================
+      (function redirectIfConnected() {
+        try {
+          // La clé Supabase suit le format sb-<project-ref>-auth-token.
+          // On scanne localStorage pour détecter une session valide.
+          for (var i = 0; i < localStorage.length; i++) {
+            var key = localStorage.key(i);
+            if (!key || !key.startsWith("sb-") || !key.endsWith("-auth-token")) continue;
+            var raw = localStorage.getItem(key);
+            if (!raw) continue;
+            try {
+              var payload = JSON.parse(raw);
+              var expiresAt = payload && (payload.expires_at || (payload.currentSession && payload.currentSession.expires_at));
+              var accessToken = payload && (payload.access_token || (payload.currentSession && payload.currentSession.access_token));
+              if (!accessToken) continue;
+              // Pas de date d'expiration ou encore valide → on redirige.
+              var nowSec = Math.floor(Date.now() / 1000);
+              if (!expiresAt || expiresAt > nowSec) {
+                window.location.replace("/app");
+                return;
+              }
+            } catch (_) {
+              /* JSON invalide, on ignore */
+            }
+          }
+        } catch (_) {
+          /* localStorage indispo (SSR/incognito strict) : on laisse afficher. */
+        }
+      })();
+
+      // =================================================================
+      // 2. Fade-in au scroll via IntersectionObserver.
+      // =================================================================
+      (function setupReveal() {
+        var reveals = document.querySelectorAll(".reveal");
+        if (!("IntersectionObserver" in window)) {
+          reveals.forEach(function (el) {
+            el.classList.add("visible");
+          });
+          return;
+        }
+        var io = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("visible");
+                io.unobserve(entry.target);
+              }
+            });
+          },
+          { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
+        );
+        reveals.forEach(function (el) {
+          io.observe(el);
+        });
+      })();
+
+      // =================================================================
+      // 3. Lien "Voir la démo" : scroll smooth vers #features.
+      // =================================================================
+      (function smoothAnchors() {
+        document.querySelectorAll('a[href^="#"]').forEach(function (a) {
+          a.addEventListener("click", function (e) {
+            var target = document.querySelector(a.getAttribute("href"));
+            if (!target) return;
+            e.preventDefault();
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>

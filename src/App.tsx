@@ -23,6 +23,28 @@ import ErrorBoundary from "./components/ErrorBoundary";
 
 const queryClient = new QueryClient();
 
+/**
+ * Route "/" non-connectée : on force un reload complet pour que Vercel
+ * serve le fichier statique `/landing.html`. Sans ça, React Router resterait
+ * sur la route "/" côté SPA et afficherait la page blanche / le 404 du router.
+ */
+const LandingRedirect = () => {
+  useEffect(() => {
+    // En prod : `/` est rewrite par Vercel vers /landing.html.
+    // En dev Vite : pour éviter une boucle infinie, on va direct au /login.
+    if (import.meta.env.DEV) {
+      window.location.replace("/login");
+    } else {
+      window.location.replace("/landing.html");
+    }
+  }, []);
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#0F1117] text-muted-foreground">
+      <p className="text-sm">Redirection…</p>
+    </div>
+  );
+};
+
 const App = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
@@ -63,20 +85,33 @@ const App = () => {
           <Sonner />
           <BrowserRouter>
             <Routes>
+              {/* Route "/" côté React : si un utilisateur connecté atterrit ici
+                  via une navigation client, on l'envoie direct à /app. Sinon
+                  on le renvoie sur la landing statique (rewrite Vercel). */}
+              <Route
+                path="/"
+                element={
+                  session ? <Navigate to="/app" replace /> : <LandingRedirect />
+                }
+              />
+
               <Route
                 path="/login"
-                element={session ? <Navigate to="/" replace /> : <LoginPage />}
+                element={session ? <Navigate to="/app" replace /> : <LoginPage />}
               />
               <Route
                 path="/inscription"
-                element={session ? <Navigate to="/" replace /> : <InscriptionPage />}
+                element={session ? <Navigate to="/app" replace /> : <InscriptionPage />}
               />
               <Route
                 path="/confirmation-email"
-                element={session ? <Navigate to="/" replace /> : <ConfirmationEmailPage />}
+                element={
+                  session ? <Navigate to="/app" replace /> : <ConfirmationEmailPage />
+                }
               />
+
               <Route element={session ? <AppLayout /> : <Navigate to="/login" replace />}>
-                <Route path="/" element={<Dashboard />} />
+                <Route path="/app" element={<Dashboard />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/nouveau-bon" element={<NouveauBon />} />
                 <Route path="/nouveau-bon/:id" element={<NouveauBon />} />
@@ -87,7 +122,10 @@ const App = () => {
                 <Route path="/parametres" element={<Parametres />} />
                 <Route path="/abonnement" element={<Abonnement />} />
               </Route>
-              <Route path="*" element={session ? <NotFound /> : <Navigate to="/login" replace />} />
+              <Route
+                path="*"
+                element={session ? <NotFound /> : <Navigate to="/login" replace />}
+              />
             </Routes>
           </BrowserRouter>
         </TooltipProvider>

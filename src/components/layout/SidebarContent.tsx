@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 export const sidebarNavConfig = [
-  { title: "Dashboard", path: "/", icon: LayoutDashboard },
+  { title: "Dashboard", path: "/app", icon: LayoutDashboard },
   { title: "Nouveau bon", path: "/nouveau-bon", icon: Plus },
   { title: "Historique", path: "/historique", icon: ClipboardList },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
@@ -75,7 +75,7 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
       )}
     >
       <Link
-        to="/"
+        to="/app"
         className="flex items-center gap-2.5 px-2.5 pb-6 shrink-0 transition-opacity duration-200 hover:opacity-90"
         onClick={onNavigate}
       >
@@ -97,7 +97,9 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
           const isActive =
             item.path === "/nouveau-bon"
               ? location.pathname === "/nouveau-bon" || location.pathname.startsWith("/nouveau-bon/")
-              : location.pathname === item.path;
+              : item.path === "/app"
+                ? location.pathname === "/app" || location.pathname === "/dashboard"
+                : location.pathname === item.path;
           return (
             <Link
               key={item.path}

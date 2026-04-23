@@ -127,7 +127,7 @@ const NouveauBon = () => {
     try {
       const saved = await upsertDraft(formState);
       toast({ title: "Brouillon sauvegardé" });
-      navigate("/");
+      navigate("/app");
       setFormState((prev) => ({ ...prev, id: saved.id }));
     } catch (err) {
       const message =
@@ -146,7 +146,7 @@ const NouveauBon = () => {
             <button
               type="button"
               className="btn-secondary hidden cursor-pointer sm:inline-flex"
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/app")}
             >
               Annuler
             </button>

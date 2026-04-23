@@ -28,7 +28,7 @@ const LoginPage = () => {
       toast({ title: "Connexion impossible", description: error.message });
       return;
     }
-    navigate("/", { replace: true });
+    navigate("/app", { replace: true });
   };
 
   const handleResendConfirmation = async () => {
