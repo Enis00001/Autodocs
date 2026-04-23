@@ -92,14 +92,14 @@ const Historique = () => {
             </div>
           </div>
 
-          <div className="card-autodocs overflow-x-auto">
-            <table className="w-full min-w-[720px] text-[13px]">
+          <div className="card-autodocs -mx-4 overflow-x-auto px-4 md:mx-0 md:px-5">
+            <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="pb-3 font-medium">Client</th>
                   <th className="pb-3 font-medium">Véhicule</th>
-                  <th className="pb-3 font-medium">Date</th>
-                  <th className="pb-3 font-medium">Statut</th>
+                  <th className="hidden pb-3 font-medium md:table-cell">Date</th>
+                  <th className="hidden pb-3 font-medium md:table-cell">Statut</th>
                   <th className="pb-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
@@ -119,15 +119,15 @@ const Historique = () => {
                       <tr key={d.id} className="row-hover border-b border-border/50 last:border-0">
                         <td className="py-3 font-medium text-foreground">{clientLabel(d)}</td>
                         <td
-                          className="max-w-[220px] truncate py-3 text-muted-foreground"
+                          className="max-w-[160px] truncate py-3 text-muted-foreground md:max-w-[220px]"
                           title={vehiculeLabel(d)}
                         >
                           {vehiculeLabel(d)}
                         </td>
-                        <td className="whitespace-nowrap py-3 text-muted-foreground">
+                        <td className="hidden whitespace-nowrap py-3 text-muted-foreground md:table-cell">
                           {formatDate(d.createdAt)}
                         </td>
-                        <td className="py-3">
+                        <td className="hidden py-3 md:table-cell">
                           <span
                             className={cn(
                               "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
@@ -140,24 +140,26 @@ const Historique = () => {
                           </span>
                         </td>
                         <td className="py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1.5 md:gap-2">
                             <button
                               type="button"
-                              className="btn-secondary cursor-pointer gap-1.5 px-2.5 py-1.5 text-xs"
+                              className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
                               onClick={() => navigate(`/nouveau-bon/${d.id}`)}
+                              aria-label="Ouvrir le brouillon"
                             >
                               <FileEdit className="h-3.5 w-3.5" />
-                              Ouvrir
+                              <span className="hidden md:inline">Ouvrir</span>
                             </button>
                             <button
                               type="button"
-                              className="btn-danger cursor-pointer gap-1.5 px-2.5 py-1.5 text-xs"
+                              className="btn-danger cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
                               onClick={async () => {
                                 if (window.confirm("Supprimer ce brouillon ?")) {
                                   await deleteDraft(d.id);
                                   setDrafts((prev) => prev.filter((x) => x.id !== d.id));
                                 }
                               }}
+                              aria-label="Supprimer le brouillon"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>

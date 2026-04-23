@@ -84,7 +84,7 @@ const GenerateBar = ({
           "fixed bottom-0 left-0 right-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:z-auto md:border-0 md:bg-card md:p-0 md:pb-0 md:shadow-card",
         )}
       >
-        <div className="card-autodocs relative mx-auto flex max-w-[1500px] flex-col gap-4 overflow-hidden md:flex-row md:items-center md:justify-between">
+        <div className="card-autodocs relative mx-auto flex max-w-[1500px] flex-col gap-3 overflow-hidden p-3 md:flex-row md:items-center md:justify-between md:gap-4 md:p-5">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -92,7 +92,7 @@ const GenerateBar = ({
             }}
           />
           <div className="relative z-10 flex items-center gap-3">
-            <div className="flex items-center gap-1">
+            <div className="hidden items-center gap-1 md:flex">
               {Array.from({ length: MAX_DOTS }, (_, i) => (
                 <div
                   key={i}
@@ -103,18 +103,17 @@ const GenerateBar = ({
                 />
               ))}
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-[13px] text-foreground">
                 <span className="font-semibold">
-                  {documentsUploaded} document{documentsUploaded !== 1 ? "s" : ""} importé
-                  {documentsUploaded !== 1 ? "s" : ""}
+                  {documentsUploaded} doc{documentsUploaded !== 1 ? "s" : ""}
                 </span>
                 <span className="text-muted-foreground">
-                  {" "}
-                  · {missingFieldsCount} champ{missingFieldsCount !== 1 ? "s" : ""} manquant
+                  {" · "}
+                  {missingFieldsCount} manquant{missingFieldsCount !== 1 ? "s" : ""}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="hidden text-xs text-muted-foreground md:block">
                 Complétez les champs ou générez le PDF
               </p>
             </div>
@@ -145,15 +144,9 @@ const GenerateBar = ({
             }}
           />
           <div
-            className="fixed z-[9999] w-[calc(100vw-2rem)] max-w-[400px] animate-in fade-in-0 slide-in-from-top-4 duration-200"
+            className="fixed inset-0 z-[9999] flex animate-in fade-in-0 flex-col overflow-y-auto border border-border bg-[#1A1D27] p-5 duration-200 md:inset-auto md:left-1/2 md:top-10 md:block md:h-auto md:max-h-[calc(100vh-4rem)] md:w-[calc(100vw-2rem)] md:max-w-[400px] md:-translate-x-1/2 md:rounded-2xl md:p-7 md:slide-in-from-top-4"
             style={{
-              top: "2.5rem",
-              left: "50%",
-              transform: "translateX(-50%)",
-              borderRadius: 16,
-              background: "#1A1D27",
-              border: "1px solid hsl(var(--border))",
-              padding: 28,
+              paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))",
             }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"

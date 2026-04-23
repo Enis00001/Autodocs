@@ -450,7 +450,7 @@ const StockVehicules = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
                 {filteredVehicules.map((v) => (
                   <VehiculeCard
                     key={v.id}
@@ -499,7 +499,7 @@ const UploadDropZone = ({
   onPick: () => void;
 }) => (
   <div
-    className={`card-autodocs flex flex-col items-center text-center py-12 transition-colors border-2 border-dashed ${
+    className={`card-autodocs flex flex-col items-center border-2 border-dashed py-8 text-center transition-colors md:py-12 ${
       dragActive
         ? "border-primary bg-primary/5"
         : "border-border/60 hover:border-muted-foreground/60"
@@ -508,24 +508,30 @@ const UploadDropZone = ({
     onDragLeave={onDragLeave}
     onDrop={onDrop}
   >
-    <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center mb-4">
-      <Upload className="w-8 h-8 text-primary-foreground" />
+    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full gradient-primary md:h-16 md:w-16">
+      <Upload className="h-7 w-7 text-primary-foreground md:h-8 md:w-8" />
     </div>
-    <h2 className="font-display text-lg font-bold mb-1">
-      Glissez votre fichier CSV ou Excel ici
+    <h2 className="mb-1 font-display text-base font-bold md:text-lg">
+      <span className="hidden md:inline">Glissez votre fichier CSV ou Excel ici</span>
+      <span className="md:hidden">Importer un fichier</span>
     </h2>
-    <p className="text-sm text-muted-foreground max-w-md mb-4">
-      Formats acceptés : <span className="text-foreground">.csv, .xlsx, .xls</span>
-      <br />
-      Les noms de colonnes de votre fichier seront utilisés tels quels dans le
-      bon de commande.
+    <p className="mb-4 max-w-md px-2 text-sm text-muted-foreground">
+      <span className="hidden md:inline">
+        Formats acceptés : <span className="text-foreground">.csv, .xlsx, .xls</span>
+        <br />
+        Les noms de colonnes de votre fichier seront utilisés tels quels dans le
+        bon de commande.
+      </span>
+      <span className="md:hidden">
+        Formats : <span className="text-foreground">.csv, .xlsx, .xls</span>
+      </span>
     </p>
     <button
       type="button"
-      className="px-4 py-2 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2"
+      className="inline-flex w-full min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border-0 px-4 py-2.5 text-[13px] font-medium text-primary-foreground gradient-primary transition-all hover:-translate-y-0.5 md:w-auto"
       onClick={onPick}
     >
-      <FileSpreadsheet className="w-4 h-4" />
+      <FileSpreadsheet className="h-4 w-4" />
       Parcourir
     </button>
   </div>
@@ -843,27 +849,28 @@ const VehiculeCard = ({
         )}
       </div>
 
-      <div className="mt-auto flex gap-2 border-t border-border/40 pt-3">
+      <div className="mt-auto flex flex-col gap-2 border-t border-border/40 pt-3 md:flex-row">
         {vehicule.disponible ? (
           <button
             type="button"
-            className="btn-secondary flex-1 cursor-pointer border-success/40 py-2 text-xs font-semibold text-success hover:bg-success/10"
+            className="btn-secondary w-full cursor-pointer border-success/40 py-2 text-xs font-semibold text-success hover:bg-success/10 md:flex-1"
             onClick={() => onMarkSold(vehicule.id)}
           >
             Marquer vendu
           </button>
         ) : (
-          <div className="flex-1 rounded-input border border-border py-2 text-center text-xs text-muted-foreground">
+          <div className="w-full rounded-input border border-border py-2 text-center text-xs text-muted-foreground md:flex-1">
             Vendu
           </div>
         )}
         <button
           type="button"
-          className="btn-danger inline-flex cursor-pointer items-center gap-1.5 px-3 py-2 text-xs"
+          className="btn-danger inline-flex w-full cursor-pointer items-center justify-center gap-1.5 py-2 text-xs md:w-auto md:px-3"
           onClick={() => onDelete(vehicule.id)}
           aria-label="Supprimer"
         >
           <Trash2 className="h-3.5 w-3.5" />
+          <span className="md:hidden">Supprimer</span>
         </button>
       </div>
       </div>

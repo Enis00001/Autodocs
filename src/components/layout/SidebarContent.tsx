@@ -104,7 +104,7 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
               to={item.path}
               onClick={onNavigate}
               className={cn(
-                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                "group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
                 isActive
                   ? "bg-[#6366F1]/10 text-[#6366F1] shadow-sm shadow-black/20"
                   : "text-[#94A3B8] hover:bg-white/[0.04] hover:text-[#F1F5F9]",
@@ -146,7 +146,7 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
         </div>
         <button
           type="button"
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-transparent px-3 py-2.5 text-xs font-medium text-[#94A3B8] transition-all duration-200 hover:border-[#EF4444]/40 hover:bg-[#EF4444]/10 hover:text-[#EF4444] cursor-pointer"
+          className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-transparent px-3 py-2.5 text-xs font-medium text-[#94A3B8] transition-all duration-200 hover:border-[#EF4444]/40 hover:bg-[#EF4444]/10 hover:text-[#EF4444] cursor-pointer"
           onClick={() => void handleLogout()}
         >
           <LogOut className="h-3.5 w-3.5" />

@@ -152,8 +152,9 @@
   }
 
   .field-input {
-    @apply w-full rounded-input border border-border bg-secondary/60 px-3 py-2.5 font-body text-[13px] text-foreground outline-none transition-all duration-200;
+    @apply w-full rounded-input border border-border bg-secondary/60 px-3 py-2.5 font-body text-base text-foreground outline-none transition-all duration-200 md:text-[13px];
     @apply placeholder:text-muted-foreground/70;
+    min-height: 44px;
   }
 
   .field-input:focus {
@@ -183,6 +184,87 @@
   .page-content {
     @apply mx-auto w-full max-w-[1500px] px-4 py-5 md:px-7 md:py-7;
   }
+
+  /* ========================================================================
+     Mobile responsiveness helpers (≤ 767px)
+     ======================================================================== */
+
+  /* Empêche le zoom auto iOS sur les inputs : font-size ≥ 16px. */
+  @media (max-width: 767px) {
+    input[type="text"],
+    input[type="search"],
+    input[type="email"],
+    input[type="number"],
+    input[type="password"],
+    input[type="tel"],
+    input[type="url"],
+    input[type="date"],
+    input[type="time"],
+    input[type="datetime-local"],
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+
+    /* Réduit légèrement les titres sur mobile. */
+    h1 { font-size: 1.25rem; line-height: 1.3; }
+    h2 { font-size: 1.05rem; line-height: 1.3; }
+
+    /* Scroll horizontal par défaut sur les tables placées dans ce wrapper. */
+    .table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+
+  /* Supprime les titres hover (tooltips natifs) sur les appareils tactiles :
+     on les fait pointer vers "" via une règle JS dans AppLayout si besoin.
+     Ici on neutralise au moins les -webkit- user-select pour éviter les menus. */
+  @media (hover: none) {
+    [title] {
+      -webkit-touch-callout: none;
+    }
+  }
+
+  /* Modale full-screen sur mobile : à appliquer à tout conteneur de modale via
+     la classe `.modal-mobile-fullscreen`. Sur desktop elle reste centrée. */
+  .modal-mobile-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow-y: auto;
+  }
+
+  @media (min-width: 768px) {
+    .modal-mobile-fullscreen {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: auto;
+      height: auto;
+      max-height: calc(100vh - 4rem);
+      transform: translate(-50%, -50%);
+      border-radius: 1rem;
+    }
+  }
+
+  /* Drawer slide-in 200ms (utilisé par le Sheet mobile). */
+  @keyframes drawer-slide-in {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0); }
+  }
+  @keyframes drawer-slide-out {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+  }
+  .drawer-left[data-state="open"]  { animation: drawer-slide-in  200ms ease-out; }
+  .drawer-left[data-state="closed"] { animation: drawer-slide-out 200ms ease-in; }
 
   .glass-surface {
     background: linear-gradient(

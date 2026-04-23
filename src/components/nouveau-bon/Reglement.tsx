@@ -75,8 +75,8 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
       </div>
 
       {/* Montants */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5 col-span-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="flex flex-col gap-1.5 md:col-span-2">
           <label className="field-label flex items-center gap-1.5">
             <span className="text-primary">●</span>
             Prix du véhicule (€)
@@ -116,7 +116,7 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
             onChange={(e) => onChange({ acompte: e.target.value })}
           />
         </div>
-        <div className="flex flex-col gap-1.5 col-span-2">
+        <div className="flex flex-col gap-1.5 md:col-span-2">
           <label className="field-label">Date de livraison prévue</label>
           <input
             type="text"

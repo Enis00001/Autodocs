@@ -203,21 +203,21 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
             <div className={`truncate text-[11px] ${detailTextClass(status)}`}>{detail}</div>
           </div>
         </div>
-        <div className="flex w-full shrink-0 items-stretch gap-2 md:w-auto md:items-center">
+        <div className="flex w-full shrink-0 flex-col items-stretch gap-2 md:w-auto md:flex-row md:items-center">
           <button
             type="button"
-            className="btn-secondary min-h-10 flex-1 cursor-pointer whitespace-nowrap text-xs font-medium md:flex-none"
-            onClick={() => openModal("import")}
-          >
-            Importer
-          </button>
-          <button
-            type="button"
-            className="btn-primary min-h-10 flex-1 cursor-pointer border-0 whitespace-nowrap text-xs font-semibold shadow-indigo ring-2 ring-primary/35 ring-offset-2 ring-offset-background md:flex-none"
+            className="btn-primary min-h-11 w-full cursor-pointer border-0 whitespace-nowrap text-sm font-semibold shadow-indigo ring-2 ring-primary/35 ring-offset-2 ring-offset-background md:order-2 md:w-auto md:text-xs"
             onClick={() => openModal("scan")}
           >
             <ScanLine className="h-4 w-4 animate-pulse" />
             Scanner CNI
+          </button>
+          <button
+            type="button"
+            className="btn-secondary min-h-11 w-full cursor-pointer whitespace-nowrap text-sm font-medium md:order-1 md:w-auto md:text-xs"
+            onClick={() => openModal("import")}
+          >
+            Importer
           </button>
         </div>
       </div>
@@ -230,11 +230,9 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
             onClick={() => setModalOpen(false)}
           />
           <div
-            className="fixed z-[9999] w-[calc(100vw-2rem)] max-w-[640px] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-2xl border border-border bg-card p-5 md:p-6 animate-in fade-in-0 slide-in-from-top-4 duration-200"
+            className="fixed inset-0 z-[9999] overflow-y-auto bg-card p-4 animate-in fade-in-0 duration-200 md:inset-auto md:left-1/2 md:top-10 md:h-auto md:max-h-[calc(100vh-5rem)] md:w-[calc(100vw-2rem)] md:max-w-[640px] md:-translate-x-1/2 md:rounded-2xl md:border md:border-border md:p-6 md:slide-in-from-top-4"
             style={{
-              top: "2.5rem",
-              left: "50%",
-              transform: "translateX(-50%)",
+              paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
             }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"

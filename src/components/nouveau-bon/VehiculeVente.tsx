@@ -317,7 +317,7 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
         </button>
 
         {form.repriseActive && (
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label className="field-label">Plaque d'immatriculation</label>
               <input
@@ -362,7 +362,7 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
                 spellCheck={false}
               />
             </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
+            <div className="flex flex-col gap-1.5 md:col-span-2">
               <label className="field-label">Première mise en circulation</label>
               <input
                 type="text"
@@ -374,7 +374,7 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
                 }
               />
             </div>
-            <div className="flex flex-col gap-1.5 col-span-2">
+            <div className="flex flex-col gap-1.5 md:col-span-2">
               <label className="field-label flex items-center gap-1.5">
                 <span className="text-[hsl(var(--success))]">●</span>
                 Valeur de reprise (€)
