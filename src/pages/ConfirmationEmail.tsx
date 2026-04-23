@@ -7,6 +7,9 @@ import { toast } from "@/hooks/use-toast";
 const ConfirmationEmailPage = () => {
   const [searchParams] = useSearchParams();
   const email = searchParams.get("email") ?? "";
+  const planRaw = searchParams.get("plan");
+  const plan = planRaw === "monthly" || planRaw === "annual" ? planRaw : null;
+  const loginHref = plan ? `/login?plan=${plan}` : "/login";
   const [loading, setLoading] = useState(false);
 
   const handleResend = async () => {
@@ -49,7 +52,7 @@ const ConfirmationEmailPage = () => {
         </button>
 
         <div className="mt-4 text-sm text-muted-foreground">
-          <Link to="/login" className="text-primary hover:underline">
+          <Link to={loginHref} className="text-primary hover:underline">
             Retour à la connexion
           </Link>
         </div>

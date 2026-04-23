@@ -1,15 +1,21 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 
 const InscriptionPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [concessionName, setConcessionName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const planRaw = searchParams.get("plan");
+  const plan: "monthly" | "annual" | null =
+    planRaw === "monthly" || planRaw === "annual" ? planRaw : null;
+  const loginHref = plan ? `/login?plan=${plan}` : "/login";
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +46,12 @@ const InscriptionPage = () => {
       title: "Compte créé ✓",
       description: "Vérifiez votre email pour confirmer votre compte.",
     });
-    navigate(`/confirmation-email?email=${encodeURIComponent(email.trim())}`, { replace: true });
+    // On propage le plan jusqu'à la page de confirmation pour qu'après la
+    // validation de l'email + connexion, le checkout Stripe soit déclenché
+    // avec le bon intervalle.
+    const qs = new URLSearchParams({ email: email.trim() });
+    if (plan) qs.set("plan", plan);
+    navigate(`/confirmation-email?${qs.toString()}`, { replace: true });
   };
 
   return (
@@ -104,7 +115,7 @@ const InscriptionPage = () => {
 
         <div className="mt-4 text-sm text-muted-foreground text-center">
           Déjà un compte ?{" "}
-          <Link to="/login" className="text-primary hover:underline">
+          <Link to={loginHref} className="text-primary hover:underline">
             Se connecter
           </Link>
         </div>

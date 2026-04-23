@@ -444,12 +444,15 @@
         display: grid;
         gap: 20px;
         grid-template-columns: 1fr;
-        max-width: 880px;
+        max-width: 1120px;
         margin: 0 auto;
+        align-items: stretch;
       }
       @media (min-width: 768px) {
         .pricing-grid {
-          grid-template-columns: 1fr 1fr;
+          /* Colonne annuelle plus large pour la mettre en avant. */
+          grid-template-columns: 1fr 1fr 1.15fr;
+          gap: 24px;
         }
       }
       .pricing-card {
@@ -463,25 +466,91 @@
         position: relative;
       }
       .pricing-card.featured {
-        border-color: rgba(99, 102, 241, 0.45);
-        box-shadow: 0 20px 60px rgba(99, 102, 241, 0.2);
+        border-color: rgba(99, 102, 241, 0.55);
+        background: linear-gradient(
+          180deg,
+          rgba(99, 102, 241, 0.08) 0%,
+          rgba(26, 29, 39, 0.7) 55%
+        );
+        padding: 44px 34px 40px;
+        /* Bord brillant animé (box-shadow pulsé). */
+        animation: pricing-glow 2800ms ease-in-out infinite;
       }
-      .pricing-card.featured::before {
-        content: "Populaire";
+      @media (min-width: 768px) {
+        .pricing-card.featured {
+          transform: scale(1.04);
+        }
+      }
+      @keyframes pricing-glow {
+        0%,
+        100% {
+          box-shadow:
+            0 0 0 1px rgba(99, 102, 241, 0.35),
+            0 30px 70px -25px rgba(99, 102, 241, 0.55);
+        }
+        50% {
+          box-shadow:
+            0 0 0 2px rgba(99, 102, 241, 0.7),
+            0 36px 90px -20px rgba(99, 102, 241, 0.85);
+        }
+      }
+      /* Reflet qui traverse la bordure. */
+      .pricing-card.featured::after {
+        content: "";
         position: absolute;
-        top: -12px;
-        right: 24px;
-        padding: 4px 12px;
+        inset: 0;
+        border-radius: inherit;
+        overflow: hidden;
+        pointer-events: none;
+        background: linear-gradient(
+          100deg,
+          transparent 35%,
+          rgba(255, 255, 255, 0.1) 48%,
+          rgba(255, 255, 255, 0.18) 50%,
+          rgba(255, 255, 255, 0.1) 52%,
+          transparent 65%
+        );
+        background-size: 250% 100%;
+        background-position: -150% 0;
+        animation: pricing-shine 3600ms ease-in-out infinite;
+        animation-delay: 800ms;
+        mix-blend-mode: screen;
+      }
+      @keyframes pricing-shine {
+        0% {
+          background-position: -150% 0;
+        }
+        60% {
+          background-position: 250% 0;
+        }
+        100% {
+          background-position: 250% 0;
+        }
+      }
+      .pricing-badge {
+        position: absolute;
+        top: -14px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 6px 14px;
         background: linear-gradient(135deg, #4f46e5, #6366f1);
         color: #fff;
         border-radius: 999px;
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.05em;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        white-space: nowrap;
+        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.45);
       }
       .pricing-card:hover {
         transform: translateY(-3px);
       }
+      @media (min-width: 768px) {
+        .pricing-card.featured:hover {
+          transform: scale(1.04) translateY(-3px);
+        }
+      }
+
       .plan-name {
         font-size: 13px;
         font-weight: 700;
@@ -489,6 +558,9 @@
         letter-spacing: 0.12em;
         color: var(--muted);
         margin-bottom: 10px;
+      }
+      .pricing-card.featured .plan-name {
+        color: var(--primary);
       }
       .plan-price {
         font-family: "Inter", sans-serif;
@@ -505,12 +577,39 @@
       .plan-tagline {
         color: var(--muted);
         font-size: 14px;
-        margin: 12px 0 28px;
+        margin: 12px 0 20px;
       }
+
+      /* Bloc "argumentaire économique" sous le prix annuel. */
+      .plan-savings {
+        margin: 0 0 24px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: rgba(99, 102, 241, 0.1);
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        display: grid;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .plan-savings-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text);
+      }
+      .plan-savings-line.strong {
+        font-weight: 700;
+        color: #fff;
+      }
+      .plan-savings-line .em {
+        color: var(--primary);
+        font-weight: 700;
+      }
+
       .plan-features {
         list-style: none;
         padding: 0;
-        margin: 0 0 32px;
+        margin: 0 0 28px;
         display: grid;
         gap: 12px;
       }
@@ -534,6 +633,16 @@
       }
       .plan-cta {
         margin-top: auto;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .pricing-card.featured {
+          animation: none;
+        }
+        .pricing-card.featured::after {
+          animation: none;
+          display: none;
+        }
       }
 
       /* ====================================================================
@@ -760,31 +869,62 @@
         </div>
 
         <div class="pricing-grid">
+          <!-- Gratuit -->
           <article class="pricing-card reveal">
             <div class="plan-name">Gratuit</div>
             <div class="plan-price">0 €<span class="suffix">/ mois</span></div>
             <p class="plan-tagline">Pour tester AutoDocs sans risque</p>
             <ul class="plan-features">
               <li>10 bons de commande / mois</li>
-              <li>Stock véhicules illimité</li>
-              <li>Scan CNI automatique</li>
-              <li>Support par e-mail</li>
+              <li>Stock véhicules</li>
+              <li>Scan CNI</li>
             </ul>
-            <a class="btn-secondary plan-cta" href="/login">Commencer</a>
+            <a class="btn-secondary plan-cta" href="/login">Commencer gratuitement</a>
           </article>
 
-          <article class="pricing-card featured reveal" style="--reveal-delay: 120ms">
-            <div class="plan-name">Pro</div>
+          <!-- Pro mensuel -->
+          <article class="pricing-card reveal" style="--reveal-delay: 120ms">
+            <div class="plan-name">Pro mensuel</div>
             <div class="plan-price">49 €<span class="suffix">/ mois</span></div>
-            <p class="plan-tagline">Pour les concessions qui vendent tous les jours</p>
+            <p class="plan-tagline">Flexibilité totale, annulable à tout moment</p>
             <ul class="plan-features">
-              <li>Bons de commande illimités</li>
-              <li>Stock véhicules illimité</li>
-              <li>Scan CNI automatique</li>
+              <li>Bons illimités</li>
+              <li>Support prioritaire</li>
+              <li>Toutes les fonctionnalités</li>
+            </ul>
+            <a class="btn-secondary plan-cta" href="/login?plan=monthly">Choisir Mensuel</a>
+          </article>
+
+          <!-- Pro annuel : card featured -->
+          <article class="pricing-card featured reveal" style="--reveal-delay: 240ms">
+            <span class="pricing-badge">⭐ Meilleure offre</span>
+            <div class="plan-name">Pro annuel</div>
+            <div class="plan-price">399 €<span class="suffix">/ an</span></div>
+            <p class="plan-tagline">L'option la plus rentable pour votre concession</p>
+
+            <div class="plan-savings">
+              <div class="plan-savings-line strong">
+                <span>=</span>
+                <span class="em">33 €/mois seulement</span>
+              </div>
+              <div class="plan-savings-line">
+                <span>🎁</span>
+                <span>2 mois offerts par rapport au mensuel</span>
+              </div>
+              <div class="plan-savings-line">
+                <span>💰</span>
+                <span>Économisez <strong>189 €/an</strong></span>
+              </div>
+            </div>
+
+            <ul class="plan-features">
+              <li>Tout le Pro mensuel</li>
+              <li>Bons illimités</li>
               <li>Support prioritaire</li>
               <li>Mises à jour & nouvelles fonctionnalités</li>
             </ul>
-            <a class="btn-primary plan-cta" href="/login">Commencer</a>
+
+            <a class="btn-primary plan-cta" href="/login?plan=annual">Choisir Annuel</a>
           </article>
         </div>
       </div>

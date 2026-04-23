@@ -1,15 +1,28 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 
+/** Extrait un plan valide depuis les searchParams (sinon null). */
+const readPlanParam = (
+  params: URLSearchParams,
+): "monthly" | "annual" | null => {
+  const raw = params.get("plan");
+  if (raw === "monthly" || raw === "annual") return raw;
+  return null;
+};
+
 const LoginPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
   const [resending, setResending] = useState(false);
+
+  const plan = readPlanParam(searchParams);
+  const inscriptionHref = plan ? `/inscription?plan=${plan}` : "/inscription";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +41,13 @@ const LoginPage = () => {
       toast({ title: "Connexion impossible", description: error.message });
       return;
     }
-    navigate("/app", { replace: true });
+    // Si l'utilisateur vient de la landing avec un plan choisi, on l'envoie
+    // directement sur /abonnement qui déclenchera le checkout Stripe.
+    if (plan) {
+      navigate(`/abonnement?plan=${plan}`, { replace: true });
+    } else {
+      navigate("/app", { replace: true });
+    }
   };
 
   const handleResendConfirmation = async () => {
@@ -106,7 +125,7 @@ const LoginPage = () => {
 
         <div className="mt-4 text-sm text-muted-foreground text-center">
           Première connexion ?{" "}
-          <Link to="/inscription" className="text-primary hover:underline">
+          <Link to={inscriptionHref} className="text-primary hover:underline">
             Créer un compte
           </Link>
         </div>

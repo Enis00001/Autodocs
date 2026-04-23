@@ -48,11 +48,17 @@ export async function loadAbonnement(): Promise<AbonnementInfo | null> {
   };
 }
 
+export type CheckoutInterval = "monthly" | "annual";
+
 /**
  * Appelle la route /api/create-checkout. Redirige vers la page de paiement
  * Stripe en cas de succès.
+ *
+ * @param interval "monthly" (49 €/mois, défaut) ou "annual" (399 €/an).
  */
-export async function startCheckout(): Promise<void> {
+export async function startCheckout(
+  interval: CheckoutInterval = "monthly",
+): Promise<void> {
   const uid = await getCurrentUserId();
   if (!uid) throw new Error("Utilisateur non connecté.");
   const {
@@ -62,7 +68,7 @@ export async function startCheckout(): Promise<void> {
   const res = await fetch("/api/create-checkout", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: uid, email: user?.email }),
+    body: JSON.stringify({ userId: uid, email: user?.email, interval }),
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
