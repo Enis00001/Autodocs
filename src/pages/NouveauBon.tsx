@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { User, Car, Wallet, CreditCard } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
@@ -9,17 +9,9 @@ import Reglement from "@/components/nouveau-bon/Reglement";
 import GenerateBar, { countMissingMandatoryFields } from "@/components/nouveau-bon/GenerateBar";
 import { BonFormStepper, computeBonStep } from "@/components/nouveau-bon/BonFormStepper";
 import { toast } from "@/hooks/use-toast";
+import { usePreferencesFormulaire } from "@/hooks/usePreferencesFormulaire";
 import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
-import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
-import {
-  DEFAULT_FORM_PREFS,
-  isFieldEnabled,
-  isStockColumnVisible,
-  type FieldSection,
-  type FieldType,
-  type FormFieldPrefs,
-} from "@/utils/formPreferences";
+import { isFieldEnabled, isStockColumnVisible, type FormFieldPrefs } from "@/utils/formPreferences";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -106,69 +98,7 @@ const NouveauBon = () => {
   const [autoFilledClientFields, setAutoFilledClientFields] = useState<
     Array<"clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse">
   >([]);
-  const [formPrefs, setFormPrefs] = useState<FormFieldPrefs>(DEFAULT_FORM_PREFS);
-
-  const parseSection = (value: unknown): FieldSection => {
-    if (value === "client" || value === "vehicule" || value === "reprise" || value === "reglement") return value;
-    return "client";
-  };
-  const parseType = (value: unknown): FieldType => {
-    if (value === "number" || value === "date" || value === "text") return value;
-    return "text";
-  };
-  const loadRawPreferences = async (cancelledRef?: { value: boolean }) => {
-    const userId = await getCurrentUserId();
-    if (!userId || cancelledRef?.value) return;
-    const { data, error } = await supabase
-      .from("preferences_formulaire")
-      .select("champs_personnalises, champs_actifs")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (error || !data || cancelledRef?.value) return;
-    const rawCustom = (data as { champs_personnalises?: unknown }).champs_personnalises;
-    const rawToggles = (data as { champs_actifs?: unknown }).champs_actifs;
-    const custom = Array.isArray(rawCustom) ? rawCustom : [];
-    const toggles =
-      rawToggles && typeof rawToggles === "object"
-        ? (rawToggles as Record<string, unknown>)
-        : {};
-    setFormPrefs((prev) => {
-      const standard = prev.fields.filter((f) => !f.isCustom);
-      const parsedCustom = custom
-        .filter((x): x is Record<string, unknown> => Boolean(x && typeof x === "object"))
-        .map((field, idx) => {
-          const key = String(field.key ?? field.field_key ?? `custom_${idx}`);
-          const label = String(field.label ?? field.nom ?? field.name ?? key);
-          const enabledRaw = toggles[key];
-          return {
-            id: String(field.id ?? `custom_raw_${key}`),
-            key,
-            label,
-            section: parseSection(field.section),
-            type: parseType(field.type),
-            enabled: typeof enabledRaw === "boolean" ? enabledRaw : true,
-            isCustom: true,
-          };
-        });
-      return { fields: [...standard, ...parsedCustom] };
-    });
-  };
-
-  useEffect(() => {
-    const cancelled = { value: false };
-    void loadRawPreferences(cancelled);
-    return () => {
-      cancelled.value = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    const refresh = () => void loadRawPreferences();
-    window.addEventListener("autodocs_form_prefs_updated", refresh);
-    return () => {
-      window.removeEventListener("autodocs_form_prefs_updated", refresh);
-    };
-  }, []);
+  const { formPrefs } = usePreferencesFormulaire();
 
   const step = useMemo(
     () => computeBonStep(formState),
@@ -194,49 +124,56 @@ const NouveauBon = () => {
     };
   }, [params.id]);
 
-  const updateForm = (patch: Partial<DraftFormState>) => {
+  const updateForm = useCallback((patch: Partial<DraftFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));
-  };
-  const updateCustomField = (key: string, value: string) => {
+  }, []);
+
+  const updateCustomField = useCallback((key: string, value: string) => {
     setFormState((prev) => ({
       ...prev,
       customFieldsValues: { ...(prev.customFieldsValues ?? {}), [key]: value },
       vehicleFieldValues: { ...(prev.vehicleFieldValues ?? {}), [key]: value },
     }));
-  };
+  }, []);
 
-  const handleCniExtracted = (
-    patch: Partial<BonDraftData>,
-    highlightedFields: Array<keyof BonDraftData>,
-  ) => {
-    setFormState((prev) => ({ ...prev, ...patch }));
-    const clientFieldNames = [
-      "clientNom",
-      "clientPrenom",
-      "clientDateNaissance",
-      "clientNumeroCni",
-      "clientAdresse",
-    ] as const;
-    const clientOnly = highlightedFields.filter((k): k is (typeof clientFieldNames)[number] =>
-      (clientFieldNames as readonly string[]).includes(k as string),
-    );
-    setAutoFilledClientFields(clientOnly);
-  };
+  const handleCniExtracted = useCallback(
+    (patch: Partial<BonDraftData>, highlightedFields: Array<keyof BonDraftData>) => {
+      setFormState((prev) => ({ ...prev, ...patch }));
+      const clientFieldNames = [
+        "clientNom",
+        "clientPrenom",
+        "clientDateNaissance",
+        "clientNumeroCni",
+        "clientAdresse",
+      ] as const;
+      const clientOnly = highlightedFields.filter((k): k is (typeof clientFieldNames)[number] =>
+        (clientFieldNames as readonly string[]).includes(k as string),
+      );
+      setAutoFilledClientFields(clientOnly);
+    },
+    [],
+  );
 
-  const handleCniScannedChange = (state: BonDraftData["documentsScanned"][string] | null) => {
-    setFormState((prev) => {
-      const next = { ...(prev.documentsScanned ?? {}) };
-      if (state) next.cni = state;
-      else delete next.cni;
-      return { ...prev, documentsScanned: next };
-    });
-  };
+  const handleCniScannedChange = useCallback(
+    (state: BonDraftData["documentsScanned"][string] | null) => {
+      setFormState((prev) => {
+        const next = { ...(prev.documentsScanned ?? {}) };
+        if (state) next.cni = state;
+        else delete next.cni;
+        return { ...prev, documentsScanned: next };
+      });
+    },
+    [],
+  );
 
-  const handleManualClientEdit = (
-    field: "clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse",
-  ) => {
-    setAutoFilledClientFields((prev) => prev.filter((f) => f !== field));
-  };
+  const handleManualClientEdit = useCallback(
+    (
+      field: "clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse",
+    ) => {
+      setAutoFilledClientFields((prev) => prev.filter((f) => f !== field));
+    },
+    [],
+  );
 
   const handleSaveDraft = async () => {
     try {
