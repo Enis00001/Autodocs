@@ -34,13 +34,14 @@ const LAST_ACTIVITY_KEY = "autodocs_last_activity";
  * `/landing.html`. La landing est publique et accessible même connecté,
  * donc on ne la court-circuite jamais vers /app.
  */
+/** Affiche /landing.html (fichier statique) au lieu d’oubligatoirement /login. */
 const LandingRedirect = () => {
   useEffect(() => {
     window.location.replace("/landing.html");
   }, []);
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0F1117] text-muted-foreground">
-      <p className="text-sm">Redirection…</p>
+      <p className="text-sm">Chargement…</p>
     </div>
   );
 };
@@ -50,9 +51,9 @@ const App = () => {
   const [loadingSession, setLoadingSession] = useState(true);
   const sessionExpiredHandledRef = useRef(false);
 
-  // Auth bootstrap + listener. Gère aussi :
-  //   - SIGNED_OUT  → redirige vers /login avec toast "Session expirée"
-  //   - inactivité  → après 7 jours sans activité, on force un signOut
+  // Auth bootstrap + onAuthStateChange. Inactivité 7 jours → signOut + toast
+  // « Session expirée ». Les visiteurs non connectés ne sont plus renvoyés
+  // vers /login d’office (zones protégées → landing).
   useEffect(() => {
     const checkInactivityAndBoot = async () => {
       const lastActivity = Number(localStorage.getItem(LAST_ACTIVITY_KEY) ?? "0");
@@ -192,7 +193,7 @@ const App = () => {
                   ) : needsEmailConfirmation ? (
                     <Navigate to="/confirmation-email" replace />
                   ) : (
-                    <Navigate to="/login" replace />
+                    <LandingRedirect />
                   )
                 }
               >
@@ -216,7 +217,7 @@ const App = () => {
                   ) : needsEmailConfirmation ? (
                     <Navigate to="/confirmation-email" replace />
                   ) : (
-                    <Navigate to="/login" replace />
+                    <LandingRedirect />
                   )
                 }
               />
