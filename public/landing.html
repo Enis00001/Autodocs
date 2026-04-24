@@ -950,41 +950,13 @@
     </footer>
 
     <script>
-      // =================================================================
-      // 1. Si l'utilisateur est déjà connecté (session Supabase en
-      //    localStorage), on le redirige vers le dashboard (/app).
-      // =================================================================
-      (function redirectIfConnected() {
-        try {
-          // La clé Supabase suit le format sb-<project-ref>-auth-token.
-          // On scanne localStorage pour détecter une session valide.
-          for (var i = 0; i < localStorage.length; i++) {
-            var key = localStorage.key(i);
-            if (!key || !key.startsWith("sb-") || !key.endsWith("-auth-token")) continue;
-            var raw = localStorage.getItem(key);
-            if (!raw) continue;
-            try {
-              var payload = JSON.parse(raw);
-              var expiresAt = payload && (payload.expires_at || (payload.currentSession && payload.currentSession.expires_at));
-              var accessToken = payload && (payload.access_token || (payload.currentSession && payload.currentSession.access_token));
-              if (!accessToken) continue;
-              // Pas de date d'expiration ou encore valide → on redirige.
-              var nowSec = Math.floor(Date.now() / 1000);
-              if (!expiresAt || expiresAt > nowSec) {
-                window.location.replace("/app");
-                return;
-              }
-            } catch (_) {
-              /* JSON invalide, on ignore */
-            }
-          }
-        } catch (_) {
-          /* localStorage indispo (SSR/incognito strict) : on laisse afficher. */
-        }
-      })();
+      // Pas de redirection auto vers /app : la session est stockée sous la
+      // clé "autodocs-auth" côté SPA, et d’anciennes clés sb-*-auth-token
+      // pouvaient déclencher un faux "connecté" → boucle landing ↔ /app.
+      // L’app est atteignable via le bouton "Connexion" / liens de la nav.
 
       // =================================================================
-      // 2. Fade-in au scroll via IntersectionObserver.
+      // 1. Fade-in au scroll via IntersectionObserver.
       // =================================================================
       (function setupReveal() {
         var reveals = document.querySelectorAll(".reveal");
@@ -1011,7 +983,7 @@
       })();
 
       // =================================================================
-      // 3. Lien "Voir la démo" : scroll smooth vers #features.
+      // 2. Lien "Voir la démo" : scroll smooth vers #features.
       // =================================================================
       (function smoothAnchors() {
         document.querySelectorAll('a[href^="#"]').forEach(function (a) {
