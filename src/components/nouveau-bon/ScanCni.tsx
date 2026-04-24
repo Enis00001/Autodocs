@@ -125,13 +125,31 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
     side: "recto" | "verso",
   ) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    console.log("[ScanCni] fichier sélectionné:", side, {
+      hasFile: Boolean(file),
+      name: file?.name,
+      type: file?.type,
+      size: file?.size,
+    });
+    if (!file) {
+      console.warn("[ScanCni] aucun fichier récupéré depuis l'input", side);
+      return;
+    }
     onSideFileSelected(side, file);
     e.target.value = "";
   };
 
   const handleConfirm = async () => {
-    if (!rectoFile || !versoFile) return;
+    console.log("[ScanCni] handleConfirm appelé", {
+      hasRecto: Boolean(rectoFile),
+      hasVerso: Boolean(versoFile),
+      rectoSize: rectoFile?.size,
+      versoSize: versoFile?.size,
+    });
+    if (!rectoFile || !versoFile) {
+      console.warn("[ScanCni] recto ou verso manquant au moment du confirm");
+      return;
+    }
     setModalOpen(false);
     updateStatus("pending", "⏳ Analyse recto + verso en cours...");
 
@@ -139,6 +157,10 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
       analyzeDocument(rectoFile, "cni"),
       analyzeDocument(versoFile, "cni"),
     ]);
+    console.log("[ScanCni] résultats analyse:", {
+      recto: rectoAnalysis,
+      verso: versoAnalysis,
+    });
 
     const mergedExtracted = mergeExtracted(
       rectoAnalysis.extractedData ?? {},
@@ -287,7 +309,7 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
                       <input
                         ref={isRecto ? rectoImportRef : versoImportRef}
                         type="file"
-                        accept="image/jpeg,image/png,application/pdf"
+                        accept="image/*,application/pdf"
                         className="hidden"
                         onChange={(e) => handleSideInput(e, side)}
                       />

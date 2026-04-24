@@ -109,6 +109,12 @@ function getHtmlTemplate(): string {
         <th>Valeur de reprise déduite</th>
         <td colspan="3"><strong style="color:#b34242;">- {{reprise_valeur}} €</strong></td>
       </tr>
+      <!--REPRISE_DUREE_ROW_START-->
+      <tr>
+        <th>Durée</th>
+        <td colspan="3">{{reprise_duree_mois}} mois</td>
+      </tr>
+      <!--REPRISE_DUREE_ROW_END-->
     </table>
   </div>
   <!--REPRISE_SECTION_END-->
@@ -306,13 +312,22 @@ function buildHtml(formData: Record<string, string>): string {
   const acompte = parseNum(formData.acompte);
   const solde = Math.max(0, netAPayer - acompte);
 
+  const repriseDureeMoisRaw = (formData.reprise_duree_mois ?? "").trim();
+  const hasRepriseDuree = repriseDureeMoisRaw !== "" && parseNum(repriseDureeMoisRaw) > 0;
+
   // Sections conditionnelles
   if (repriseActive) {
     html = keepBlock(html, "<!--REPRISE_SECTION_START-->", "<!--REPRISE_SECTION_END-->");
     html = keepBlock(html, "<!--REPRISE_ROW_START-->", "<!--REPRISE_ROW_END-->");
+    if (hasRepriseDuree) {
+      html = keepBlock(html, "<!--REPRISE_DUREE_ROW_START-->", "<!--REPRISE_DUREE_ROW_END-->");
+    } else {
+      html = stripBlock(html, "<!--REPRISE_DUREE_ROW_START-->", "<!--REPRISE_DUREE_ROW_END-->");
+    }
   } else {
     html = stripBlock(html, "<!--REPRISE_SECTION_START-->", "<!--REPRISE_SECTION_END-->");
     html = stripBlock(html, "<!--REPRISE_ROW_START-->", "<!--REPRISE_ROW_END-->");
+    html = stripBlock(html, "<!--REPRISE_DUREE_ROW_START-->", "<!--REPRISE_DUREE_ROW_END-->");
   }
 
   if (remise > 0) {
@@ -365,6 +380,7 @@ function buildHtml(formData: Record<string, string>): string {
     reprise_vin: get("reprise_vin"),
     reprise_premiere_circulation: get("reprise_premiere_circulation"),
     reprise_valeur: formatMoney(repriseValeur),
+    reprise_duree_mois: get("reprise_duree_mois"),
 
     vehiculeRemise: formatMoney(remise),
     netAPayer: formatMoney(netAPayer),

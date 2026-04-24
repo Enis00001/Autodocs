@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard } from "lucide-react";
+import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard, SlidersHorizontal } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts } from "@/utils/drafts";
 import { loadConcession, getConcessionInitials } from "@/utils/concession";
@@ -14,6 +14,7 @@ export const sidebarNavConfig = [
   { title: "Historique", path: "/historique", icon: ClipboardList },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
   { title: "Abonnement", path: "/abonnement", icon: CreditCard },
+  { title: "Préférences", path: "/preferences", icon: SlidersHorizontal },
   { title: "Paramètres", path: "/parametres", icon: Settings },
 ] as const;
 

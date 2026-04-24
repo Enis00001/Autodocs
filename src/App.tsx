@@ -13,6 +13,7 @@ import TemplatesPage from "./pages/Templates";
 import VehicleFieldsPage from "./pages/VehicleFields";
 import StockVehicules from "./pages/StockVehicules";
 import Parametres from "./pages/Parametres";
+import Preferences from "./pages/Preferences";
 import Abonnement from "./pages/Abonnement";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/Login";
@@ -120,6 +121,7 @@ const App = () => {
                 <Route path="/infos-vehicule" element={<VehicleFieldsPage />} />
                 <Route path="/stock-vehicules" element={<StockVehicules />} />
                 <Route path="/parametres" element={<Parametres />} />
+                <Route path="/preferences" element={<Preferences />} />
                 <Route path="/abonnement" element={<Abonnement />} />
               </Route>
               <Route

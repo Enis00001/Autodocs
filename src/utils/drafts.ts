@@ -47,6 +47,8 @@ export type BonDraftData = {
   repriseVin: string;
   reprisePremiereCirculation: string;
   repriseValeur: string;
+  /** Durée du crédit reprise en mois (saisie libre, vide si non applicable). */
+  repriseDureeMois: string;
 
   // Section 3 — Règlement
   /** Saisi à la main (section Règlement). Pré-rempli depuis le stock si une
@@ -178,6 +180,7 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     repriseVin: kvStr.reprise_vin ?? "",
     reprisePremiereCirculation: kvStr.reprise_premiere_circulation ?? "",
     repriseValeur: kvStr.reprise_valeur ?? "",
+    repriseDureeMois: kvStr.reprise_duree_mois ?? "",
 
     vehiculePrix: row.vehicule_prix ?? "",
     modePaiement: mode,
@@ -197,6 +200,7 @@ function draftToPayload(d: BonDraftData) {
     reprise_vin: d.repriseVin,
     reprise_premiere_circulation: d.reprisePremiereCirculation,
     reprise_valeur: d.repriseValeur,
+    reprise_duree_mois: d.repriseDureeMois ?? "",
     vehicule_stock_id: d.vehiculeStockId ?? "",
     stock_donnees: d.stockDonnees ?? {},
     stock_colonnes: Array.isArray(d.stockColonnes) ? d.stockColonnes : [],

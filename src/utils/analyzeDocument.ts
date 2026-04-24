@@ -18,8 +18,20 @@ export type AnalyzeResult = {
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = reject;
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      console.log(
+        "[analyzeDocument] FileReader loaded, dataUrl length:",
+        result.length,
+        "préfixe:",
+        result.slice(0, 64),
+      );
+      resolve(result);
+    };
+    reader.onerror = (e) => {
+      console.error("[analyzeDocument] FileReader error:", e, reader.error);
+      reject(reader.error ?? new Error("FileReader error"));
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -72,11 +84,41 @@ function normalizeResult(parsed: any): AnalyzeResult {
 }
 
 export async function analyzeDocument(file: File, kind: DocumentKind): Promise<AnalyzeResult> {
-  console.log("analyzeDocument appele:", file.name, file.type, kind);
+  console.log("[analyzeDocument] appelé avec:", {
+    name: file?.name,
+    type: file?.type,
+    size: file?.size,
+    kind,
+  });
 
-  const isImage = file.type.startsWith("image/");
-  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  if (!isImage && !isPdf) {
+  if (!file) {
+    console.error("[analyzeDocument] Erreur: fichier manquant (null/undefined)");
+    return {
+      status: "unreadable",
+      extractedData: {},
+      validation: { isValid: false, reason: "Aucun fichier fourni à analyser" },
+    };
+  }
+  if (!file.size || file.size === 0) {
+    console.error("[analyzeDocument] Erreur: fichier vide (size=0)");
+    return {
+      status: "unreadable",
+      extractedData: {},
+      validation: { isValid: false, reason: "Fichier vide — reprenez la photo" },
+    };
+  }
+
+  const lowerName = (file.name || "").toLowerCase();
+  const hasImageExt = /\.(jpe?g|png|webp|heic|heif|gif|bmp)$/i.test(lowerName);
+  const hasPdfExt = lowerName.endsWith(".pdf");
+  // Mobile Safari / Android Chrome peuvent renvoyer un `file.type` vide pour
+  // les captures caméra. On retombe alors sur l'extension, voire on force
+  // "image" si rien n'est détectable (la conversion essaiera d'encoder comme
+  // image standard, c'est la supposition la plus probable pour un scan CNI).
+  const isImage = (file.type || "").startsWith("image/") || hasImageExt;
+  const isPdf = file.type === "application/pdf" || hasPdfExt;
+  if (!isImage && !isPdf && file.type) {
+    console.error("[analyzeDocument] Format non supporté:", file.type, file.name);
     return {
       status: "unreadable",
       extractedData: {},
@@ -91,7 +133,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
   try {
     dataUrl = await toVisionImageDataUrl(file);
   } catch (err) {
-    console.error("Conversion PDF/image echouee:", err);
+    console.error("[analyzeDocument] Conversion PDF/image échouée:", err);
     return {
       status: "unreadable",
       extractedData: {},
@@ -99,6 +141,24 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
     };
   }
 
+  console.log("[analyzeDocument] Image size (base64 length):", dataUrl.length);
+
+  if (!dataUrl || !dataUrl.startsWith("data:")) {
+    console.error(
+      "[analyzeDocument] dataUrl invalide avant envoi (vide ou mal formée):",
+      dataUrl.slice(0, 32),
+    );
+    return {
+      status: "unreadable",
+      extractedData: {},
+      validation: {
+        isValid: false,
+        reason: "Image illisible — reprenez la photo.",
+      },
+    };
+  }
+
+  console.log("[analyzeDocument] Appel API analyze...");
   let response: Response;
   try {
     response = await fetch("/api/analyze", {
@@ -112,7 +172,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
       }),
     });
   } catch (err) {
-    console.error("Erreur reseau vers /api/analyze:", err);
+    console.error("[analyzeDocument] Erreur analyze (réseau /api/analyze):", err);
     return {
       status: "unreadable",
       extractedData: {},
@@ -123,7 +183,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
     };
   }
 
-  console.log("Reponse proxy /api/analyze status:", response.status);
+  console.log("[analyzeDocument] Réponse proxy /api/analyze status:", response.status);
 
   if (!response.ok) {
     let reason = `Erreur API analyse (${response.status})`;
@@ -135,6 +195,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
     } catch {
       // ignore parsing error
     }
+    console.error("[analyzeDocument] Erreur analyze (réponse non-OK):", reason);
     return {
       status: "unreadable",
       extractedData: {},
@@ -143,7 +204,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
   }
 
   const json = await response.json();
-  console.log("JSON complet recu:", JSON.stringify(json));
+  console.log("[analyzeDocument] JSON complet reçu:", JSON.stringify(json).slice(0, 600));
   const content = json?.choices?.[0]?.message?.content;
   const refusal = json?.choices?.[0]?.message?.refusal;
 

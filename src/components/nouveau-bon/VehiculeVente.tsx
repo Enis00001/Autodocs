@@ -8,15 +8,21 @@ import {
   guessPrixFromDonnees,
   type StockVehicule,
 } from "@/utils/stockVehicules";
+import {
+  DEFAULT_FORM_PREFS,
+  isStockColumnVisible,
+  type FormFieldPrefs,
+} from "@/utils/formPreferences";
 
 type VehiculeForm = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & { id?: string };
 
 type VehiculeVenteProps = {
   form: VehiculeForm;
   onChange: (patch: Partial<BonDraftData>) => void;
+  prefs?: FormFieldPrefs;
 };
 
-const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
+const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeVenteProps) => {
   const [concessionId, setConcessionId] = useState<string | null>(null);
   const [stockQuery, setStockQuery] = useState("");
   const [stockSuggestions, setStockSuggestions] = useState<StockVehicule[]>([]);
@@ -105,6 +111,7 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
         repriseVin: "",
         reprisePremiereCirculation: "",
         repriseValeur: "",
+        repriseDureeMois: "",
       });
     }
   };
@@ -223,25 +230,27 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
             </button>
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {form.stockColonnes.map((key) => (
-              <div key={key} className="flex flex-col gap-1.5">
-                <label className="field-label truncate" title={key}>
-                  {key}
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    className="field-input pr-14"
-                    value={form.stockDonnees[key] ?? ""}
-                    onChange={(e) => updateStockField(key, e.target.value)}
-                    placeholder="—"
-                  />
-                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded bg-success/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-success">
-                    Stock
-                  </span>
+            {form.stockColonnes
+              .filter((key) => isStockColumnVisible(key, prefs))
+              .map((key) => (
+                <div key={key} className="flex flex-col gap-1.5">
+                  <label className="field-label truncate" title={key}>
+                    {key}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      className="field-input pr-14"
+                      value={form.stockDonnees[key] ?? ""}
+                      onChange={(e) => updateStockField(key, e.target.value)}
+                      placeholder="—"
+                    />
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded bg-success/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-success">
+                      Stock
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
             {form.stockColonnes.length === 0 && (
               <div className="col-span-full text-xs italic text-muted-foreground">
                 Aucune colonne activée à l&apos;import.
@@ -318,82 +327,112 @@ const VehiculeVente = ({ form, onChange }: VehiculeVenteProps) => {
 
         {form.repriseActive && (
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <label className="field-label">Plaque d'immatriculation</label>
-              <input
-                type="text"
-                placeholder="ex: AB-123-CD"
-                className="field-input uppercase tracking-wider"
-                value={form.reprisePlaque}
-                onChange={(e) => onChange({ reprisePlaque: e.target.value })}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="field-label">Marque</label>
-              <input
-                type="text"
-                placeholder="ex: Renault"
-                className="field-input"
-                value={form.repriseMarque}
-                onChange={(e) => onChange({ repriseMarque: e.target.value })}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="field-label">Modèle</label>
-              <input
-                type="text"
-                placeholder="ex: Clio IV Estate"
-                className="field-input"
-                value={form.repriseModele}
-                onChange={(e) => onChange({ repriseModele: e.target.value })}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="field-label">VIN / N° de châssis</label>
-              <input
-                type="text"
-                placeholder="ex: VF1RFD00854..."
-                className="field-input"
-                value={form.repriseVin}
-                onChange={(e) => onChange({ repriseVin: e.target.value })}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5 md:col-span-2">
-              <label className="field-label">Première mise en circulation</label>
-              <input
-                type="text"
-                placeholder="ex: 21/07/2016"
-                className="field-input"
-                value={form.reprisePremiereCirculation}
-                onChange={(e) =>
-                  onChange({ reprisePremiereCirculation: e.target.value })
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-1.5 md:col-span-2">
-              <label className="field-label flex items-center gap-1.5">
-                <span className="text-[hsl(var(--success))]">●</span>
-                Valeur de reprise (€)
-                <span className="text-[10px] font-normal text-muted-foreground ml-auto">
-                  Requis
-                </span>
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                placeholder="ex: 3 500"
-                className="field-input text-base font-semibold"
-                value={form.repriseValeur}
-                onChange={(e) => onChange({ repriseValeur: e.target.value })}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Montant déduit du prix de vente sur le bon de commande.
-              </p>
-            </div>
+            {prefs.reprise.plaque && (
+              <div className="flex flex-col gap-1.5">
+                <label className="field-label">Plaque d'immatriculation</label>
+                <input
+                  type="text"
+                  placeholder="ex: AB-123-CD"
+                  className="field-input uppercase tracking-wider"
+                  value={form.reprisePlaque}
+                  onChange={(e) => onChange({ reprisePlaque: e.target.value })}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            )}
+            {prefs.reprise.marque && (
+              <div className="flex flex-col gap-1.5">
+                <label className="field-label">Marque</label>
+                <input
+                  type="text"
+                  placeholder="ex: Renault"
+                  className="field-input"
+                  value={form.repriseMarque}
+                  onChange={(e) => onChange({ repriseMarque: e.target.value })}
+                />
+              </div>
+            )}
+            {prefs.reprise.modele && (
+              <div className="flex flex-col gap-1.5">
+                <label className="field-label">Modèle</label>
+                <input
+                  type="text"
+                  placeholder="ex: Clio IV Estate"
+                  className="field-input"
+                  value={form.repriseModele}
+                  onChange={(e) => onChange({ repriseModele: e.target.value })}
+                />
+              </div>
+            )}
+            {prefs.reprise.vin && (
+              <div className="flex flex-col gap-1.5">
+                <label className="field-label">VIN / N° de châssis</label>
+                <input
+                  type="text"
+                  placeholder="ex: VF1RFD00854..."
+                  className="field-input"
+                  value={form.repriseVin}
+                  onChange={(e) => onChange({ repriseVin: e.target.value })}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            )}
+            {prefs.reprise.premiereCirculation && (
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <label className="field-label">Première mise en circulation</label>
+                <input
+                  type="text"
+                  placeholder="ex: 21/07/2016"
+                  className="field-input"
+                  value={form.reprisePremiereCirculation}
+                  onChange={(e) =>
+                    onChange({ reprisePremiereCirculation: e.target.value })
+                  }
+                />
+              </div>
+            )}
+            {prefs.reprise.valeur && (
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <label className="field-label flex items-center gap-1.5">
+                  <span className="text-[hsl(var(--success))]">●</span>
+                  Valeur de reprise (€)
+                  <span className="text-[10px] font-normal text-muted-foreground ml-auto">
+                    Requis
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="ex: 3 500"
+                  className="field-input text-base font-semibold"
+                  value={form.repriseValeur}
+                  onChange={(e) => onChange({ repriseValeur: e.target.value })}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Montant déduit du prix de vente sur le bon de commande.
+                </p>
+              </div>
+            )}
+            {prefs.reprise.dureeMois && (
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <label className="field-label">Durée du crédit reprise (mois)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  step={1}
+                  placeholder="ex: 36"
+                  className="field-input"
+                  value={form.repriseDureeMois}
+                  onChange={(e) => onChange({ repriseDureeMois: e.target.value })}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Durée restante du crédit sur le véhicule repris, le cas échéant.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

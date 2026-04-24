@@ -120,3 +120,21 @@ CREATE POLICY "user_read_own_subscription" ON abonnements
 
 -- Pas de policy INSERT/UPDATE/DELETE côté client : seul le backend avec le
 -- service role key (qui bypass les policies) peut écrire dans cette table.
+
+-- ----------------------------------------------------------------------------
+-- 7. preferences_formulaire
+--    Préférences de visibilité des champs du formulaire « Nouveau bon ».
+--    Une seule ligne par utilisateur ; RLS désactivé (filtré côté appli par
+--    user_id dans chaque requête).
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS preferences_formulaire (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  champs_actifs  jsonb DEFAULT '{}'::jsonb,
+  created_at     timestamp DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS preferences_formulaire_user_id_unique
+  ON preferences_formulaire (user_id);
+
+ALTER TABLE preferences_formulaire DISABLE ROW LEVEL SECURITY;

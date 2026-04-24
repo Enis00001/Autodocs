@@ -10,6 +10,12 @@ import GenerateBar, { countMissingMandatoryFields } from "@/components/nouveau-b
 import { BonFormStepper, computeBonStep } from "@/components/nouveau-bon/BonFormStepper";
 import { toast } from "@/hooks/use-toast";
 import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
+import {
+  DEFAULT_FORM_PREFS,
+  isStockColumnVisible,
+  loadFormPrefs,
+  type FormFieldPrefs,
+} from "@/utils/formPreferences";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -32,6 +38,7 @@ const defaultFormState: DraftFormState = {
   repriseVin: "",
   reprisePremiereCirculation: "",
   repriseValeur: "",
+  repriseDureeMois: "",
   vehiculePrix: "",
   modePaiement: "comptant",
   acompte: "",
@@ -40,23 +47,43 @@ const defaultFormState: DraftFormState = {
   documentsScanned: {},
 };
 
-function buildPdfFormData(form: DraftFormState): Record<string, string> {
+function buildPdfFormData(
+  form: DraftFormState,
+  prefs: FormFieldPrefs,
+): Record<string, string> {
   const repriseOn = form.repriseActive;
+  const clientPref = prefs.client;
+  const reprisePref = prefs.reprise;
+
+  // Filtre les colonnes stock selon les préférences véhicule : une colonne
+  // désactivée n'est ni affichée ni injectée dans le PDF.
+  const visibleColonnes = (form.stockColonnes ?? []).filter((key) =>
+    isStockColumnVisible(key, prefs),
+  );
+  const visibleDonnees: Record<string, string> = {};
+  for (const key of visibleColonnes) {
+    if (key in (form.stockDonnees ?? {})) {
+      visibleDonnees[key] = form.stockDonnees[key];
+    }
+  }
+
   return {
-    clientNom: form.clientNom,
-    clientPrenom: form.clientPrenom,
-    clientDateNaissance: form.clientDateNaissance,
-    clientNumeroCni: form.clientNumeroCni,
-    clientAdresse: form.clientAdresse,
-    stock_donnees: JSON.stringify(form.stockDonnees ?? {}),
-    stock_colonnes: JSON.stringify(form.stockColonnes ?? []),
+    clientNom: clientPref.nom ? form.clientNom : "",
+    clientPrenom: clientPref.prenom ? form.clientPrenom : "",
+    clientDateNaissance: clientPref.dateNaissance ? form.clientDateNaissance : "",
+    clientNumeroCni: clientPref.numeroCni ? form.clientNumeroCni : "",
+    clientAdresse: clientPref.adresse ? form.clientAdresse : "",
+    stock_donnees: JSON.stringify(visibleDonnees),
+    stock_colonnes: JSON.stringify(visibleColonnes),
     repriseActive: repriseOn ? "oui" : "non",
-    reprise_plaque: repriseOn ? form.reprisePlaque : "",
-    reprise_marque: repriseOn ? form.repriseMarque : "",
-    reprise_modele: repriseOn ? form.repriseModele : "",
-    reprise_vin: repriseOn ? form.repriseVin : "",
-    reprise_premiere_circulation: repriseOn ? form.reprisePremiereCirculation : "",
-    reprise_valeur: repriseOn ? form.repriseValeur : "",
+    reprise_plaque: repriseOn && reprisePref.plaque ? form.reprisePlaque : "",
+    reprise_marque: repriseOn && reprisePref.marque ? form.repriseMarque : "",
+    reprise_modele: repriseOn && reprisePref.modele ? form.repriseModele : "",
+    reprise_vin: repriseOn && reprisePref.vin ? form.repriseVin : "",
+    reprise_premiere_circulation:
+      repriseOn && reprisePref.premiereCirculation ? form.reprisePremiereCirculation : "",
+    reprise_valeur: repriseOn && reprisePref.valeur ? form.repriseValeur : "",
+    reprise_duree_mois: repriseOn && reprisePref.dureeMois ? form.repriseDureeMois : "",
     vehiculePrix: form.vehiculePrix,
     modePaiement: form.modePaiement,
     acompte: form.acompte,
@@ -72,6 +99,22 @@ const NouveauBon = () => {
   const [autoFilledClientFields, setAutoFilledClientFields] = useState<
     Array<"clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse">
   >([]);
+  const [formPrefs, setFormPrefs] = useState<FormFieldPrefs>(DEFAULT_FORM_PREFS);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void loadFormPrefs().then((p) => {
+        if (!cancelled) setFormPrefs(p);
+      });
+    };
+    refresh();
+    window.addEventListener("autodocs_form_prefs_updated", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("autodocs_form_prefs_updated", refresh);
+    };
+  }, []);
 
   const step = useMemo(
     () => computeBonStep(formState),
@@ -186,6 +229,7 @@ const NouveauBon = () => {
                   form={formState}
                   onChange={updateForm}
                   autoFilledFields={autoFilledClientFields}
+                  prefs={formPrefs}
                 />
               </div>
             </div>
@@ -200,7 +244,7 @@ const NouveauBon = () => {
                   <p className="text-xs text-muted-foreground">Stock & reprise</p>
                 </div>
               </div>
-              <VehiculeVente form={formState} onChange={updateForm} />
+              <VehiculeVente form={formState} onChange={updateForm} prefs={formPrefs} />
             </div>
 
             <div className="card-autodocs border-primary/20">
@@ -227,7 +271,7 @@ const NouveauBon = () => {
       <GenerateBar
         documentsUploaded={0}
         missingFieldsCount={countMissingMandatoryFields(formState as Record<string, unknown>)}
-        formData={buildPdfFormData(formState)}
+        formData={buildPdfFormData(formState, formPrefs)}
         templateId=""
       />
     </>
