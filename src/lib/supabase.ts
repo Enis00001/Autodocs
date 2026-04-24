@@ -1,6 +1,24 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = "https://jalnoewdbhbcjhgdaegz.supabase.co";
-const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImphbG5vZXdkYmhiY2poZ2RhZWd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NjY5MjYsImV4cCI6MjA4OTM0MjkyNn0.l5kw9XwM7kTgLQBCe8iauEwV_usdWvGWwCFHDEs_UU0";
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    "Variables d'environnement Supabase manquantes : VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY sont requises.",
+  );
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: "autodocs-auth",
+  },
+});
+
+export async function getAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}

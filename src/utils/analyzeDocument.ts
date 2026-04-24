@@ -161,11 +161,9 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
   console.log("[analyzeDocument] Appel API analyze...");
   let response: Response;
   try {
-    response = await fetch("/api/analyze", {
+    const { apiFetch } = await import("@/lib/apiClient");
+    response = await apiFetch("/api/analyze", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
       body: JSON.stringify({
         imageBase64: dataUrl,
         kind,

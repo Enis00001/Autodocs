@@ -3,7 +3,6 @@ import { FileText, Loader2, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import { generatePDF } from "@/utils/generatePDF";
 import { countMissingMandatoryFields, isDraftFormComplete } from "@/utils/bonFormCompletion";
-import { consumeBonQuota } from "@/utils/abonnement";
 import { cn } from "@/lib/utils";
 
 export { countMissingMandatoryFields, isDraftFormComplete };
@@ -44,30 +43,26 @@ const GenerateBar = ({
     setGenerationError(null);
     setQuotaBlocked(null);
     try {
-      // 1. On vérifie / incrémente le quota côté serveur avant de générer.
-      try {
-        await consumeBonQuota();
-      } catch (err) {
-        const e = err as Error & { code?: string; info?: { bonsCeMois?: number; quota?: number } };
-        if (e.code === "quota_reached") {
-          setIsGenerating(false);
-          setQuotaBlocked({
-            bonsCeMois: e.info?.bonsCeMois ?? 0,
-            quota: e.info?.quota ?? 10,
-          });
-          return;
-        }
-        // Si l'API de quota n'est pas configurée (erreur réseau/500), on
-        // tolère et on laisse passer pour ne pas bloquer l'utilisateur en dev.
-        console.warn("[quota] check ignoré:", e);
-      }
-
+      // Le quota et l'incrément sont gérés côté serveur (api/generate-pdf.ts).
+      // Si le user a atteint la limite, l'API renvoie 429 → on remonte un
+      // `code: "quota_reached"` pour afficher le bandeau d'upgrade.
       await generatePDF(formData);
       setIsGenerating(false);
       setIsSuccess(true);
     } catch (err) {
+      const e = err as Error & {
+        code?: string;
+        info?: { bonsCeMois?: number; quota?: number };
+      };
       setIsGenerating(false);
       setIsSuccess(false);
+      if (e.code === "quota_reached") {
+        setQuotaBlocked({
+          bonsCeMois: e.info?.bonsCeMois ?? 0,
+          quota: e.info?.quota ?? 10,
+        });
+        return;
+      }
       setGenerationError(
         err instanceof Error ? err.message : "Erreur lors de la génération PDF",
       );

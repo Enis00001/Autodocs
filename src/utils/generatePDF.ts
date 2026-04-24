@@ -21,15 +21,34 @@ export async function generatePDF(
   const nonEmpty = Object.entries(formData).filter(([, v]) => v.trim() !== "");
   console.log(`[generatePDF] Envoi de ${nonEmpty.length} champs à /api/generate-pdf`);
 
-  const response = await fetch("/api/generate-pdf", {
+  const { apiFetch } = await import("@/lib/apiClient");
+  const response = await apiFetch("/api/generate-pdf", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ formData }),
   });
 
   if (!response.ok) {
-    const errBody = await response.json().catch(() => ({}));
+    const errBody = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      code?: string;
+      bonsCeMois?: number;
+      quota?: number;
+      plan?: string;
+    };
     console.error("[generatePDF] Erreur:", errBody);
+    if (response.status === 429 || errBody?.code === "quota_reached") {
+      const err = new Error("Quota mensuel atteint.") as Error & {
+        code?: string;
+        info?: { bonsCeMois?: number; quota?: number; plan?: string };
+      };
+      err.code = "quota_reached";
+      err.info = {
+        bonsCeMois: errBody.bonsCeMois,
+        quota: errBody.quota,
+        plan: errBody.plan,
+      };
+      throw err;
+    }
     throw new Error(
       errBody?.error || `Erreur génération PDF (${response.status})`,
     );

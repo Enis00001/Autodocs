@@ -1,5 +1,28 @@
 ﻿import type { VercelRequest, VercelResponse } from "@vercel/node";
 
+/**
+ * Vérifie le JWT Supabase passé dans l'en-tête Authorization.
+ * Renvoie l'user id si valide, null sinon.
+ *
+ * Inliné (et non importé d'un helper local) pour éviter les soucis de bundling
+ * dans `/var/task/` sur Vercel — même approche que les autres routes /api.
+ */
+async function requireAuthUserId(req: VercelRequest): Promise<string | null> {
+  const header = req.headers.authorization;
+  const token = typeof header === "string" ? header.replace(/^Bearer\s+/i, "").trim() : "";
+  if (!token) return null;
+
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return null;
+  return data.user.id;
+}
+
 type DocumentKind =
   | "cni"
   | "permis"
@@ -77,6 +100,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const userId = await requireAuthUserId(req);
+  if (!userId) {
+    return res.status(401).json({ error: "Non autorisé" });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
