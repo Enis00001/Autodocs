@@ -338,7 +338,7 @@ const PlanCard = ({
       <div>
         <h3 className="font-display text-base font-bold text-foreground">{name}</h3>
         <div className="mt-1 flex items-baseline gap-1">
-          <span className="font-display text-3xl font-extrabold text-foreground">{price}</span>
+          <span className="font-display text-3xl font-semibold text-foreground">{price}</span>
           <span className="text-xs text-muted-foreground">{cadence}</span>
         </div>
       </div>
