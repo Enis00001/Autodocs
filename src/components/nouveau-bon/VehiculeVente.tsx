@@ -10,6 +10,8 @@ import {
 } from "@/utils/stockVehicules";
 import {
   DEFAULT_FORM_PREFS,
+  getCustomFieldsBySection,
+  isFieldEnabled,
   isStockColumnVisible,
   type FormFieldPrefs,
 } from "@/utils/formPreferences";
@@ -20,9 +22,17 @@ type VehiculeVenteProps = {
   form: VehiculeForm;
   onChange: (patch: Partial<BonDraftData>) => void;
   prefs?: FormFieldPrefs;
+  customValues?: Record<string, string>;
+  onCustomFieldChange?: (key: string, value: string) => void;
 };
 
-const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeVenteProps) => {
+const VehiculeVente = ({
+  form,
+  onChange,
+  prefs = DEFAULT_FORM_PREFS,
+  customValues = {},
+  onCustomFieldChange,
+}: VehiculeVenteProps) => {
   const [concessionId, setConcessionId] = useState<string | null>(null);
   const [stockQuery, setStockQuery] = useState("");
   const [stockSuggestions, setStockSuggestions] = useState<StockVehicule[]>([]);
@@ -132,6 +142,8 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
         created_at: "",
       })
     : "";
+  const vehiculeCustomFields = getCustomFieldsBySection(prefs, "vehicule");
+  const repriseCustomFields = getCustomFieldsBySection(prefs, "reprise");
 
   return (
     <div className="space-y-5">
@@ -327,7 +339,7 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
 
         {form.repriseActive && (
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-            {prefs.reprise.plaque && (
+            {isFieldEnabled(prefs, "reprisePlaque") && (
               <div className="flex flex-col gap-1.5">
                 <label className="field-label">Plaque d'immatriculation</label>
                 <input
@@ -341,7 +353,7 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
                 />
               </div>
             )}
-            {prefs.reprise.marque && (
+            {isFieldEnabled(prefs, "repriseMarque") && (
               <div className="flex flex-col gap-1.5">
                 <label className="field-label">Marque</label>
                 <input
@@ -353,7 +365,7 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
                 />
               </div>
             )}
-            {prefs.reprise.modele && (
+            {isFieldEnabled(prefs, "repriseModele") && (
               <div className="flex flex-col gap-1.5">
                 <label className="field-label">Modèle</label>
                 <input
@@ -365,7 +377,7 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
                 />
               </div>
             )}
-            {prefs.reprise.vin && (
+            {isFieldEnabled(prefs, "repriseVin") && (
               <div className="flex flex-col gap-1.5">
                 <label className="field-label">VIN / N° de châssis</label>
                 <input
@@ -379,7 +391,7 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
                 />
               </div>
             )}
-            {prefs.reprise.premiereCirculation && (
+            {isFieldEnabled(prefs, "reprisePremiereCirculation") && (
               <div className="flex flex-col gap-1.5 md:col-span-2">
                 <label className="field-label">Première mise en circulation</label>
                 <input
@@ -393,7 +405,7 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
                 />
               </div>
             )}
-            {prefs.reprise.valeur && (
+            {isFieldEnabled(prefs, "repriseValeur") && (
               <div className="flex flex-col gap-1.5 md:col-span-2">
                 <label className="field-label flex items-center gap-1.5">
                   <span className="text-[hsl(var(--success))]">●</span>
@@ -415,7 +427,7 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
                 </p>
               </div>
             )}
-            {prefs.reprise.dureeMois && (
+            {isFieldEnabled(prefs, "repriseDureeMois") && (
               <div className="flex flex-col gap-1.5 md:col-span-2">
                 <label className="field-label">Durée du crédit reprise (mois)</label>
                 <input
@@ -433,9 +445,37 @@ const VehiculeVente = ({ form, onChange, prefs = DEFAULT_FORM_PREFS }: VehiculeV
                 </p>
               </div>
             )}
+            {repriseCustomFields.map((field) => (
+              <div key={field.id} className="flex flex-col gap-1.5 md:col-span-2">
+                <label className="field-label">{field.label}</label>
+                <input
+                  type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                  className="field-input"
+                  value={customValues[field.key] ?? ""}
+                  onChange={(e) => onCustomFieldChange?.(field.key, e.target.value)}
+                  placeholder="—"
+                />
+              </div>
+            ))}
           </div>
         )}
       </div>
+      {vehiculeCustomFields.length > 0 && (
+        <div className="mt-2 grid grid-cols-1 gap-3 border-t border-border/40 pt-4 md:grid-cols-2">
+          {vehiculeCustomFields.map((field) => (
+            <div key={field.id} className="flex flex-col gap-1.5">
+              <label className="field-label">{field.label}</label>
+              <input
+                type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+                className="field-input"
+                value={customValues[field.key] ?? ""}
+                onChange={(e) => onCustomFieldChange?.(field.key, e.target.value)}
+                placeholder="—"
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

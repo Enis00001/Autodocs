@@ -2,7 +2,8 @@ import type { BonDraftData } from "@/utils/drafts";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_FORM_PREFS,
-  type ClientFieldKey,
+  getCustomFieldsBySection,
+  isFieldEnabled,
   type FormFieldPrefs,
 } from "@/utils/formPreferences";
 
@@ -12,14 +13,6 @@ type ProfilField =
   | "clientDateNaissance"
   | "clientNumeroCni"
   | "clientAdresse";
-
-const FIELD_TO_PREF_KEY: Record<ProfilField, ClientFieldKey> = {
-  clientNom: "nom",
-  clientPrenom: "prenom",
-  clientDateNaissance: "dateNaissance",
-  clientNumeroCni: "numeroCni",
-  clientAdresse: "adresse",
-};
 
 type ProfilClientProps = {
   form: {
@@ -32,6 +25,8 @@ type ProfilClientProps = {
   onChange: (patch: Partial<ProfilClientProps["form"]>) => void;
   autoFilledFields?: ProfilField[];
   prefs?: FormFieldPrefs;
+  customValues?: Record<string, string>;
+  onCustomFieldChange?: (key: string, value: string) => void;
 };
 
 const ProfilClient = ({
@@ -39,10 +34,13 @@ const ProfilClient = ({
   onChange,
   autoFilledFields = [],
   prefs = DEFAULT_FORM_PREFS,
+  customValues = {},
+  onCustomFieldChange,
 }: ProfilClientProps) => {
-  const isEnabled = (field: ProfilField) => prefs.client[FIELD_TO_PREF_KEY[field]];
+  const isEnabled = (field: ProfilField) => isFieldEnabled(prefs, field);
   const isAuto = (field: ProfilField) => autoFilledFields.includes(field);
   const autoClass = "field-input-auto pr-12";
+  const customFields = getCustomFieldsBySection(prefs, "client");
 
   const Field = ({
     field,
@@ -92,6 +90,18 @@ const ProfilClient = ({
         <Field field="clientDateNaissance" label="Date de naissance" />
         <Field field="clientNumeroCni" label="N° CNI" />
         <Field field="clientAdresse" label="Adresse" colSpan2 />
+        {customFields.map((field) => (
+          <div key={field.id} className="flex flex-col gap-1.5 md:col-span-2">
+            <label className="field-label">{field.label}</label>
+            <input
+              type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+              className="field-input"
+              value={customValues[field.key] ?? ""}
+              onChange={(e) => onCustomFieldChange?.(field.key, e.target.value)}
+              placeholder="—"
+            />
+          </div>
+        ))}
       </div>
     </div>
   );

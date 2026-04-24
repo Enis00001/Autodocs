@@ -162,6 +162,14 @@ function getHtmlTemplate(): string {
       </div>
     </div>
   </div>
+  <!--CUSTOM_FIELDS_SECTION_START-->
+  <div class="section">
+    <div class="section-title">Champs personnalisés</div>
+    <table>
+      {{customFieldsRowsHtml}}
+    </table>
+  </div>
+  <!--CUSTOM_FIELDS_SECTION_END-->
 
   <div class="signatures">
     <div class="sig-box">
@@ -294,6 +302,33 @@ function buildVehiculeRowsHtml(
   return rows.join("\n");
 }
 
+function buildCustomFieldsRowsHtml(
+  defs: Array<Record<string, unknown>>,
+  values: Record<string, string>,
+): string {
+  const sectionLabel: Record<string, string> = {
+    client: "Client",
+    vehicule: "Véhicule",
+    reprise: "Reprise",
+    reglement: "Règlement",
+  };
+  const rows: string[] = [];
+  for (const def of defs) {
+    const key = String(def.key ?? "");
+    const label = String(def.label ?? "").trim();
+    const section = String(def.section ?? "");
+    const enabled = Boolean(def.enabled);
+    const isCustom = Boolean(def.isCustom);
+    if (!enabled || !isCustom || !key || !label) continue;
+    const v = String(values[key] ?? "").trim();
+    if (!v) continue;
+    rows.push(
+      `<tr><th>${escapeHtml(sectionLabel[section] ?? section)} — ${escapeHtml(label)}</th><td colspan="3">${escapeHtml(v)}</td></tr>`,
+    );
+  }
+  return rows.join("\n");
+}
+
 function buildHtml(formData: Record<string, string>): string {
   let html = getHtmlTemplate();
 
@@ -346,12 +381,21 @@ function buildHtml(formData: Record<string, string>): string {
   const donnees = parseStringDict(formData.stock_donnees);
   const colonnes = parseStringArray(formData.stock_colonnes);
   const vehiculeRowsHtml = buildVehiculeRowsHtml(donnees, colonnes);
+  const customDefs =
+    parseJsonMaybe<Array<Record<string, unknown>>>(formData.custom_fields_defs) ?? [];
+  const customValues = parseStringDict(formData.custom_fields_values);
+  const customFieldsRowsHtml = buildCustomFieldsRowsHtml(customDefs, customValues);
 
   // Si aucune ligne véhicule n'a de valeur, on masque toute la section.
   if (vehiculeRowsHtml.trim().length > 0) {
     html = keepBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
   } else {
     html = stripBlock(html, "<!--VEHICULE_SECTION_START-->", "<!--VEHICULE_SECTION_END-->");
+  }
+  if (customFieldsRowsHtml.trim().length > 0) {
+    html = keepBlock(html, "<!--CUSTOM_FIELDS_SECTION_START-->", "<!--CUSTOM_FIELDS_SECTION_END-->");
+  } else {
+    html = stripBlock(html, "<!--CUSTOM_FIELDS_SECTION_START-->", "<!--CUSTOM_FIELDS_SECTION_END-->");
   }
 
   // Libellé mode paiement
@@ -394,6 +438,7 @@ function buildHtml(formData: Record<string, string>): string {
   // PAS passer par le remplacement générique qui traite les valeurs comme du
   // texte brut et ajoute des "—" sur les vides.
   html = html.replace(/\{\{vehiculeRowsHtml\}\}/g, vehiculeRowsHtml);
+  html = html.replace(/\{\{customFieldsRowsHtml\}\}/g, customFieldsRowsHtml);
 
   for (const [key, value] of Object.entries(replacements)) {
     html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value || "—");

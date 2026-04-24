@@ -58,6 +58,7 @@ export type BonDraftData = {
   acompte: string;
   vehiculeRemise: string;
   vehiculeDateLivraison: string;
+  customFieldsValues: Record<string, string>;
 
   documentsScanned: Record<string, DocumentScannedState>;
 };
@@ -187,6 +188,7 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     acompte: row.acompte ?? "",
     vehiculeRemise: row.vehicule_remise ?? "",
     vehiculeDateLivraison: row.vehicule_date_livraison ?? "",
+    customFieldsValues: parseStringDict(rawKv.custom_fields_values),
     documentsScanned: sanitizeScannedDocuments(row.documents_scanned),
   };
 }
@@ -204,6 +206,7 @@ function draftToPayload(d: BonDraftData) {
     vehicule_stock_id: d.vehiculeStockId ?? "",
     stock_donnees: d.stockDonnees ?? {},
     stock_colonnes: Array.isArray(d.stockColonnes) ? d.stockColonnes : [],
+    custom_fields_values: d.customFieldsValues ?? {},
   };
   return {
     client_nom: d.clientNom,

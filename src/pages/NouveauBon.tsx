@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast";
 import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
 import {
   DEFAULT_FORM_PREFS,
+  isFieldEnabled,
   isStockColumnVisible,
   loadFormPrefs,
   type FormFieldPrefs,
@@ -44,6 +45,7 @@ const defaultFormState: DraftFormState = {
   acompte: "",
   vehiculeRemise: "",
   vehiculeDateLivraison: "",
+  customFieldsValues: {},
   documentsScanned: {},
 };
 
@@ -52,8 +54,6 @@ function buildPdfFormData(
   prefs: FormFieldPrefs,
 ): Record<string, string> {
   const repriseOn = form.repriseActive;
-  const clientPref = prefs.client;
-  const reprisePref = prefs.reprise;
 
   // Filtre les colonnes stock selon les préférences véhicule : une colonne
   // désactivée n'est ni affichée ni injectée dans le PDF.
@@ -68,27 +68,29 @@ function buildPdfFormData(
   }
 
   return {
-    clientNom: clientPref.nom ? form.clientNom : "",
-    clientPrenom: clientPref.prenom ? form.clientPrenom : "",
-    clientDateNaissance: clientPref.dateNaissance ? form.clientDateNaissance : "",
-    clientNumeroCni: clientPref.numeroCni ? form.clientNumeroCni : "",
-    clientAdresse: clientPref.adresse ? form.clientAdresse : "",
+    clientNom: isFieldEnabled(prefs, "clientNom") ? form.clientNom : "",
+    clientPrenom: isFieldEnabled(prefs, "clientPrenom") ? form.clientPrenom : "",
+    clientDateNaissance: isFieldEnabled(prefs, "clientDateNaissance") ? form.clientDateNaissance : "",
+    clientNumeroCni: isFieldEnabled(prefs, "clientNumeroCni") ? form.clientNumeroCni : "",
+    clientAdresse: isFieldEnabled(prefs, "clientAdresse") ? form.clientAdresse : "",
     stock_donnees: JSON.stringify(visibleDonnees),
     stock_colonnes: JSON.stringify(visibleColonnes),
     repriseActive: repriseOn ? "oui" : "non",
-    reprise_plaque: repriseOn && reprisePref.plaque ? form.reprisePlaque : "",
-    reprise_marque: repriseOn && reprisePref.marque ? form.repriseMarque : "",
-    reprise_modele: repriseOn && reprisePref.modele ? form.repriseModele : "",
-    reprise_vin: repriseOn && reprisePref.vin ? form.repriseVin : "",
+    reprise_plaque: repriseOn && isFieldEnabled(prefs, "reprisePlaque") ? form.reprisePlaque : "",
+    reprise_marque: repriseOn && isFieldEnabled(prefs, "repriseMarque") ? form.repriseMarque : "",
+    reprise_modele: repriseOn && isFieldEnabled(prefs, "repriseModele") ? form.repriseModele : "",
+    reprise_vin: repriseOn && isFieldEnabled(prefs, "repriseVin") ? form.repriseVin : "",
     reprise_premiere_circulation:
-      repriseOn && reprisePref.premiereCirculation ? form.reprisePremiereCirculation : "",
-    reprise_valeur: repriseOn && reprisePref.valeur ? form.repriseValeur : "",
-    reprise_duree_mois: repriseOn && reprisePref.dureeMois ? form.repriseDureeMois : "",
-    vehiculePrix: form.vehiculePrix,
-    modePaiement: form.modePaiement,
-    acompte: form.acompte,
-    vehiculeRemise: form.vehiculeRemise,
-    vehiculeDateLivraison: form.vehiculeDateLivraison,
+      repriseOn && isFieldEnabled(prefs, "reprisePremiereCirculation") ? form.reprisePremiereCirculation : "",
+    reprise_valeur: repriseOn && isFieldEnabled(prefs, "repriseValeur") ? form.repriseValeur : "",
+    reprise_duree_mois: repriseOn && isFieldEnabled(prefs, "repriseDureeMois") ? form.repriseDureeMois : "",
+    vehiculePrix: isFieldEnabled(prefs, "vehiculePrix") ? form.vehiculePrix : "",
+    modePaiement: isFieldEnabled(prefs, "modePaiement") ? form.modePaiement : "",
+    acompte: isFieldEnabled(prefs, "acompte") ? form.acompte : "",
+    vehiculeRemise: isFieldEnabled(prefs, "vehiculeRemise") ? form.vehiculeRemise : "",
+    vehiculeDateLivraison: isFieldEnabled(prefs, "vehiculeDateLivraison") ? form.vehiculeDateLivraison : "",
+    custom_fields_values: JSON.stringify(form.customFieldsValues ?? {}),
+    custom_fields_defs: JSON.stringify(prefs.fields ?? []),
   };
 }
 
@@ -137,6 +139,12 @@ const NouveauBon = () => {
 
   const updateForm = (patch: Partial<DraftFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));
+  };
+  const updateCustomField = (key: string, value: string) => {
+    setFormState((prev) => ({
+      ...prev,
+      customFieldsValues: { ...(prev.customFieldsValues ?? {}), [key]: value },
+    }));
   };
 
   const handleCniExtracted = (
@@ -230,6 +238,8 @@ const NouveauBon = () => {
                   onChange={updateForm}
                   autoFilledFields={autoFilledClientFields}
                   prefs={formPrefs}
+                  customValues={formState.customFieldsValues}
+                  onCustomFieldChange={updateCustomField}
                 />
               </div>
             </div>
@@ -244,7 +254,13 @@ const NouveauBon = () => {
                   <p className="text-xs text-muted-foreground">Stock & reprise</p>
                 </div>
               </div>
-              <VehiculeVente form={formState} onChange={updateForm} prefs={formPrefs} />
+              <VehiculeVente
+                form={formState}
+                onChange={updateForm}
+                prefs={formPrefs}
+                customValues={formState.customFieldsValues}
+                onCustomFieldChange={updateCustomField}
+              />
             </div>
 
             <div className="card-autodocs border-primary/20">
@@ -257,7 +273,13 @@ const NouveauBon = () => {
                   <p className="text-xs text-muted-foreground">Prix, remise, livraison</p>
                 </div>
               </div>
-              <Reglement form={formState} onChange={updateForm} />
+              <Reglement
+                form={formState}
+                onChange={updateForm}
+                prefs={formPrefs}
+                customValues={formState.customFieldsValues}
+                onCustomFieldChange={updateCustomField}
+              />
             </div>
           </div>
 

@@ -14,8 +14,8 @@ export const sidebarNavConfig = [
   { title: "Historique", path: "/historique", icon: ClipboardList },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
   { title: "Abonnement", path: "/abonnement", icon: CreditCard },
-  { title: "Préférences", path: "/preferences", icon: SlidersHorizontal },
-  { title: "Paramètres", path: "/parametres", icon: Settings },
+  { title: "Modification des champs", path: "/preferences", icon: SlidersHorizontal },
+  { title: "Profil", path: "/parametres", icon: Settings },
 ] as const;
 
 const isCurrentMonth = (iso: string) => {

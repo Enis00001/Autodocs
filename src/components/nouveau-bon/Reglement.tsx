@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import { Wallet, Landmark } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
+import {
+  DEFAULT_FORM_PREFS,
+  getCustomFieldsBySection,
+  isFieldEnabled,
+  type FormFieldPrefs,
+} from "@/utils/formPreferences";
 
 type ReglementProps = {
   form: Pick<
@@ -14,6 +20,9 @@ type ReglementProps = {
     | "repriseValeur"
   >;
   onChange: (patch: Partial<BonDraftData>) => void;
+  prefs?: FormFieldPrefs;
+  customValues?: Record<string, string>;
+  onCustomFieldChange?: (key: string, value: string) => void;
 };
 
 function parseNum(s: string): number {
@@ -24,7 +33,13 @@ function parseNum(s: string): number {
 const formatEur = (n: number) =>
   n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const Reglement = ({ form, onChange }: ReglementProps) => {
+const Reglement = ({
+  form,
+  onChange,
+  prefs = DEFAULT_FORM_PREFS,
+  customValues = {},
+  onCustomFieldChange,
+}: ReglementProps) => {
   const { prix, remise, reprise, netAPayer, acompte, solde } = useMemo(() => {
     const prix = parseNum(form.vehiculePrix);
     const remise = parseNum(form.vehiculeRemise);
@@ -39,6 +54,7 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
     { id: "comptant", label: "Comptant", icon: Wallet },
     { id: "financement", label: "Financement", icon: Landmark },
   ];
+  const customFields = getCustomFieldsBySection(prefs, "reglement");
 
   return (
     <div className="space-y-5">
@@ -50,6 +66,7 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
       </div>
 
       {/* Mode de paiement */}
+      {isFieldEnabled(prefs, "modePaiement") && (
       <div>
         <label className="field-label mb-2 block">Mode de paiement</label>
         <div className="grid grid-cols-2 gap-2">
@@ -73,9 +90,11 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
           })}
         </div>
       </div>
+      )}
 
       {/* Montants */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {isFieldEnabled(prefs, "vehiculePrix") && (
         <div className="flex flex-col gap-1.5 md:col-span-2">
           <label className="field-label flex items-center gap-1.5">
             <span className="text-primary">●</span>
@@ -96,6 +115,8 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
             Pré-rempli depuis le stock si une colonne « Prix » est détectée.
           </p>
         </div>
+        )}
+        {isFieldEnabled(prefs, "vehiculeRemise") && (
         <div className="flex flex-col gap-1.5">
           <label className="field-label">Remise accordée (€)</label>
           <input
@@ -106,6 +127,8 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
             onChange={(e) => onChange({ vehiculeRemise: e.target.value })}
           />
         </div>
+        )}
+        {isFieldEnabled(prefs, "acompte") && (
         <div className="flex flex-col gap-1.5">
           <label className="field-label">Acompte versé (€)</label>
           <input
@@ -116,6 +139,8 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
             onChange={(e) => onChange({ acompte: e.target.value })}
           />
         </div>
+        )}
+        {isFieldEnabled(prefs, "vehiculeDateLivraison") && (
         <div className="flex flex-col gap-1.5 md:col-span-2">
           <label className="field-label">Date de livraison prévue</label>
           <input
@@ -126,6 +151,19 @@ const Reglement = ({ form, onChange }: ReglementProps) => {
             onChange={(e) => onChange({ vehiculeDateLivraison: e.target.value })}
           />
         </div>
+        )}
+        {customFields.map((field) => (
+          <div key={field.id} className="flex flex-col gap-1.5 md:col-span-2">
+            <label className="field-label">{field.label}</label>
+            <input
+              type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+              placeholder="—"
+              className="field-input"
+              value={customValues[field.key] ?? ""}
+              onChange={(e) => onCustomFieldChange?.(field.key, e.target.value)}
+            />
+          </div>
+        ))}
       </div>
 
       {/* Récapitulatif */}
