@@ -31,8 +31,15 @@ function getPrompt(kind: DocumentKind): string {
 
   const perType: Record<DocumentKind, string> = {
     cni: [
-      "Document type: CNI ou Passeport.",
-      "Extraire: nom, prenom, date_naissance, adresse, numero_cni, date_expiration.",
+      "Document type: Carte Nationale d'Identité française (CNI) recto/verso.",
+      "Extraire avec précision les champs suivants (clés exactes): nom, prenom, date_naissance, adresse, numero_cni, date_expiration.",
+      "nom: nom de famille (champ 'NOM', souvent en MAJUSCULES sur la carte).",
+      "prenom: champ 'Prénom(s)' (prénom principal + éventuels autres prénoms).",
+      "numero_cni: numéro de CNI à 12 chiffres (principalement visible au dos de la carte).",
+      "date_naissance: au format JJ MM AAAA (garder les espaces).",
+      "adresse: adresse complète lisible sur la carte.",
+      "Important: si un champ n'est pas totalement lisible, renvoyer la valeur partielle visible plutôt que 'Inconnu'.",
+      "Important: la carte d'identité française a le numéro à 12 chiffres au dos de la carte.",
       "Validation: date_expiration > aujourd'hui.",
       'Si invalide: reason explicite (ex: "CNI expirée le 12/03/2024").',
     ].join("\n"),
@@ -116,6 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body: JSON.stringify({
           model: "gpt-4o",
           temperature: 0,
+          max_tokens: 1000,
           response_format: { type: "json_object" },
           messages: [
             {
