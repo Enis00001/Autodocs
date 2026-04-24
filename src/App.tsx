@@ -30,19 +30,13 @@ const SESSION_INACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
 const LAST_ACTIVITY_KEY = "autodocs_last_activity";
 
 /**
- * Route "/" non-connectée : on force un reload complet pour que Vercel
- * serve le fichier statique `/landing.html`. Sans ça, React Router resterait
- * sur la route "/" côté SPA et afficherait la page blanche / le 404 du router.
+ * Route "/" : on force un reload complet pour servir le fichier statique
+ * `/landing.html`. La landing est publique et accessible même connecté,
+ * donc on ne la court-circuite jamais vers /app.
  */
 const LandingRedirect = () => {
   useEffect(() => {
-    // En prod : `/` est rewrite par Vercel vers /landing.html.
-    // En dev Vite : pour éviter une boucle infinie, on va direct au /login.
-    if (import.meta.env.DEV) {
-      window.location.replace("/login");
-    } else {
-      window.location.replace("/landing.html");
-    }
+    window.location.replace("/landing.html");
   }, []);
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0F1117] text-muted-foreground">
@@ -156,18 +150,9 @@ const App = () => {
               {/* Route "/" côté React : si un utilisateur connecté atterrit ici
                   via une navigation client, on l'envoie direct à /app. Sinon
                   on le renvoie sur la landing statique (rewrite Vercel). */}
-              <Route
-                path="/"
-                element={
-                  needsEmailConfirmation ? (
-                    <Navigate to="/confirmation-email" replace />
-                  ) : effectiveSession ? (
-                    <Navigate to="/app" replace />
-                  ) : (
-                    <LandingRedirect />
-                  )
-                }
-              />
+              {/* Landing publique : accessible à tout le monde, y compris
+                  aux utilisateurs connectés qui veulent revenir dessus. */}
+              <Route path="/" element={<LandingRedirect />} />
 
               <Route
                 path="/login"
