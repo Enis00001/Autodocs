@@ -24,6 +24,7 @@ type ProfilClientProps = {
   };
   onChange: (patch: Partial<ProfilClientProps["form"]>) => void;
   autoFilledFields?: ProfilField[];
+  onManualEditField?: (field: ProfilField) => void;
   prefs?: FormFieldPrefs;
   customValues?: Record<string, string>;
   onCustomFieldChange?: (key: string, value: string) => void;
@@ -33,6 +34,7 @@ const ProfilClient = ({
   form,
   onChange,
   autoFilledFields = [],
+  onManualEditField,
   prefs = DEFAULT_FORM_PREFS,
   customValues = {},
   onCustomFieldChange,
@@ -59,9 +61,10 @@ const ProfilClient = ({
           <input
             type="text"
             value={form[field]}
-            onChange={(e) =>
-              onChange({ [field]: e.target.value } as Partial<ProfilClientProps["form"]>)
-            }
+            onChange={(e) => {
+              onChange({ [field]: e.target.value } as Partial<ProfilClientProps["form"]>);
+              onManualEditField?.(field);
+            }}
             className={cn("field-input", isAuto(field) && autoClass)}
             placeholder="—"
           />

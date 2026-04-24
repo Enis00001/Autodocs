@@ -174,6 +174,12 @@ const NouveauBon = () => {
     });
   };
 
+  const handleManualClientEdit = (
+    field: "clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse",
+  ) => {
+    setAutoFilledClientFields((prev) => prev.filter((f) => f !== field));
+  };
+
   const handleSaveDraft = async () => {
     try {
       const saved = await upsertDraft(formState);
@@ -237,6 +243,7 @@ const NouveauBon = () => {
                   form={formState}
                   onChange={updateForm}
                   autoFilledFields={autoFilledClientFields}
+                  onManualEditField={handleManualClientEdit}
                   prefs={formPrefs}
                   customValues={formState.customFieldsValues}
                   onCustomFieldChange={updateCustomField}
