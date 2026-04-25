@@ -41,6 +41,28 @@ const VALID_KINDS = new Set<string>([
 ]);
 
 function getPrompt(kind: DocumentKind): string {
+  if (kind === "cni") {
+    return [
+      "Tu es un expert en lecture de documents d'identité français.",
+      "Analyse cette image du RECTO d'une carte nationale d'identité française.",
+      "",
+      "Extrait uniquement ces 3 informations visibles sur le recto :",
+      "- NOM DE FAMILLE (écrit en majuscules sur la carte)",
+      "- Prénom(s)",
+      "- Date de naissance (format JJ/MM/AAAA)",
+      "",
+      "Si une information est partiellement lisible, mets ce que tu vois.",
+      "Ne mets jamais 'Inconnu', mets la valeur partielle visible.",
+      "",
+      "Réponds UNIQUEMENT en JSON :",
+      "{",
+      "  'nom': 'NOM en majuscules',",
+      "  'prenom': 'Prénom(s)',",
+      "  'date_naissance': 'JJ/MM/AAAA'",
+      "}",
+    ].join("\n");
+  }
+
   const common = [
     "Tu es un moteur OCR/validation de documents administratifs français.",
     "Réponds STRICTEMENT en JSON valide (sans markdown).",
@@ -53,19 +75,7 @@ function getPrompt(kind: DocumentKind): string {
   ].join("\n");
 
   const perType: Record<DocumentKind, string> = {
-    cni: [
-      "Document type: Carte Nationale d'Identité française (CNI) recto/verso.",
-      "Extraire avec précision les champs suivants (clés exactes): nom, prenom, date_naissance, adresse, numero_cni, date_expiration.",
-      "nom: nom de famille (champ 'NOM', souvent en MAJUSCULES sur la carte).",
-      "prenom: champ 'Prénom(s)' (prénom principal + éventuels autres prénoms).",
-      "numero_cni: numéro de CNI à 12 chiffres (principalement visible au dos de la carte).",
-      "date_naissance: au format JJ MM AAAA (garder les espaces).",
-      "adresse: adresse complète lisible sur la carte.",
-      "Important: si un champ n'est pas totalement lisible, renvoyer la valeur partielle visible plutôt que 'Inconnu'.",
-      "Important: la carte d'identité française a le numéro à 12 chiffres au dos de la carte.",
-      "Validation: date_expiration > aujourd'hui.",
-      'Si invalide: reason explicite (ex: "CNI expirée le 12/03/2024").',
-    ].join("\n"),
+    cni: "",
     permis: [
       "Document type: Permis de conduire.",
       "Extraire: numero, categories, date_expiration.",
@@ -158,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               role: "user",
               content: [
                 { type: "text", text: prompt },
-                { type: "image_url", image_url: { url: imageBase64 } },
+                { type: "image_url", image_url: { url: imageBase64, detail: "high" } },
               ],
             },
           ],
@@ -216,10 +226,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       choices: [{ message: { content: rawContent, refusal: null } }],
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[analyze] fetch error", error);
+    const message = error instanceof Error ? error.message : "Erreur appel OpenAI";
     return res.status(502).json({
-      error: error?.message ?? "Erreur appel OpenAI",
+      error: message,
     });
   }
 }

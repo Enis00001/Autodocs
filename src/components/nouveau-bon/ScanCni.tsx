@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { IdCard, ScanLine } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { analyzeDocument } from "@/utils/analyzeDocument";
 import type { BonDraftData, DocumentScannedState } from "@/utils/drafts";
 
-type CniStatus = "missing" | "pending" | "ok" | "invalid" | "unreadable";
+type CniStatus = "missing" | "pending" | "ok" | "unreadable";
 
 type ScanCniProps = {
   initialScan?: DocumentScannedState;
@@ -33,39 +33,18 @@ function mapCniExtractedToForm(
     patch.clientDateNaissance = extracted.date_naissance;
     fields.push("clientDateNaissance");
   }
-  if (extracted.numero_cni) {
-    patch.clientNumeroCni = extracted.numero_cni;
-    fields.push("clientNumeroCni");
-  }
-  if (extracted.adresse) {
-    patch.clientAdresse = extracted.adresse;
-    fields.push("clientAdresse");
-  }
 
   return { patch, fields };
-}
-
-function mergeExtracted(
-  base: Record<string, string>,
-  incoming: Record<string, string>,
-): Record<string, string> {
-  const next = { ...base };
-  for (const [key, value] of Object.entries(incoming)) {
-    if (typeof value === "string" && value.trim()) next[key] = value;
-  }
-  return next;
 }
 
 const statusDotClass = (status: CniStatus) => {
   if (status === "ok") return "bg-success";
   if (status === "pending") return "bg-warning animate-pulse";
-  if (status === "invalid") return "bg-warning";
   if (status === "unreadable") return "bg-destructive";
   return "bg-muted-foreground";
 };
 
 const detailTextClass = (status: CniStatus) => {
-  if (status === "invalid") return "text-warning";
   if (status === "unreadable") return "text-destructive";
   if (status === "ok") return "text-success";
   return "text-muted-foreground";
@@ -74,133 +53,54 @@ const detailTextClass = (status: CniStatus) => {
 const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) => {
   const [status, setStatus] = useState<CniStatus>(() => {
     if (initialScan?.status === "ok") return "ok";
-    if (initialScan?.status === "invalid") return "invalid";
     if (initialScan?.status === "unreadable") return "unreadable";
     return "missing";
   });
-  const [detail, setDetail] = useState<string>(initialScan?.detail ?? "Recto et verso requis");
+  const [detail, setDetail] = useState<string>(initialScan?.detail ?? "Recto requis");
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [rectoFile, setRectoFile] = useState<File | null>(null);
-  const [versoFile, setVersoFile] = useState<File | null>(null);
-  const [rectoPreview, setRectoPreview] = useState<string | null>(null);
-  const [versoPreview, setVersoPreview] = useState<string | null>(null);
-
-  const rectoImportRef = useRef<HTMLInputElement | null>(null);
   const rectoCameraRef = useRef<HTMLInputElement | null>(null);
-  const versoImportRef = useRef<HTMLInputElement | null>(null);
-  const versoCameraRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (rectoPreview) URL.revokeObjectURL(rectoPreview);
-      if (versoPreview) URL.revokeObjectURL(versoPreview);
-    };
-  }, [rectoPreview, versoPreview]);
 
   const updateStatus = (next: CniStatus, nextDetail: string, extractedData?: Record<string, string>) => {
     setStatus(next);
     setDetail(nextDetail);
-    if (next === "ok" || next === "invalid" || next === "unreadable") {
+    if (next === "ok" || next === "unreadable") {
       onScannedChange?.({ status: next, detail: nextDetail, extractedData });
     } else {
       onScannedChange?.(null);
     }
   };
 
-  const onSideFileSelected = (side: "recto" | "verso", file: File) => {
-    if (side === "recto") {
-      if (rectoPreview) URL.revokeObjectURL(rectoPreview);
-      setRectoFile(file);
-      setRectoPreview(URL.createObjectURL(file));
-    } else {
-      if (versoPreview) URL.revokeObjectURL(versoPreview);
-      setVersoFile(file);
-      setVersoPreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleSideInput = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    side: "recto" | "verso",
-  ) => {
+  const handleRectoInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    console.log("[ScanCni] fichier sélectionné:", side, {
+    e.target.value = "";
+    console.log("[ScanCni] fichier recto sélectionné:", {
       hasFile: Boolean(file),
       name: file?.name,
       type: file?.type,
       size: file?.size,
     });
     if (!file) {
-      console.warn("[ScanCni] aucun fichier récupéré depuis l'input", side);
+      console.warn("[ScanCni] aucun fichier recto récupéré depuis l'input");
       return;
     }
-    onSideFileSelected(side, file);
-    e.target.value = "";
-  };
 
-  const handleConfirm = async () => {
-    console.log("[ScanCni] handleConfirm appelé", {
-      hasRecto: Boolean(rectoFile),
-      hasVerso: Boolean(versoFile),
-      rectoSize: rectoFile?.size,
-      versoSize: versoFile?.size,
-    });
-    if (!rectoFile || !versoFile) {
-      console.warn("[ScanCni] recto ou verso manquant au moment du confirm");
-      return;
-    }
-    setModalOpen(false);
-    updateStatus("pending", "⏳ Analyse recto + verso en cours...");
+    updateStatus("pending", "Analyse du recto en cours...");
 
-    const [rectoAnalysis, versoAnalysis] = await Promise.all([
-      analyzeDocument(rectoFile, "cni"),
-      analyzeDocument(versoFile, "cni"),
-    ]);
-    console.log("[ScanCni] résultats analyse:", {
-      recto: rectoAnalysis,
-      verso: versoAnalysis,
-    });
+    const analysis = await analyzeDocument(file, "cni");
+    console.log("[ScanCni] résultat analyse recto:", analysis);
 
-    const mergedExtracted = mergeExtracted(
-      rectoAnalysis.extractedData ?? {},
-      versoAnalysis.extractedData ?? {},
-    );
-    const mapped = mapCniExtractedToForm(mergedExtracted);
+    const extractedData = analysis.extractedData ?? {};
+    const mapped = mapCniExtractedToForm(extractedData);
 
-    const rectoOk = rectoAnalysis.status === "valid" && rectoAnalysis.validation.isValid;
-    const versoOk = versoAnalysis.status === "valid" && versoAnalysis.validation.isValid;
-
-    if (rectoOk && versoOk) {
-      updateStatus("ok", "✅ CNI complète (recto + verso)", mergedExtracted);
-      if (Object.keys(mapped.patch).length > 0) {
-        onExtracted(mapped.patch, mapped.fields);
-      }
+    if (Object.keys(mapped.patch).length > 0) {
+      updateStatus("ok", "CNI recto analysée", extractedData);
+      onExtracted(mapped.patch, mapped.fields);
       toast({ title: "CNI analysée ✓" });
       return;
     }
 
-    const reasons = [rectoAnalysis.validation.reason, versoAnalysis.validation.reason]
-      .filter((r): r is string => Boolean(r && r.trim()))
-      .join(" | ");
-    const hasInvalid = rectoAnalysis.status === "invalid" || versoAnalysis.status === "invalid";
-    updateStatus(
-      hasInvalid ? "invalid" : "unreadable",
-      `${hasInvalid ? "⚠️" : "❌"} ${reasons || (hasInvalid ? "CNI invalide" : "CNI illisible")}`,
-      mergedExtracted,
-    );
+    updateStatus("unreadable", "Aucune information CNI lisible", extractedData);
   };
-
-  const openModal = (mode: "import" | "scan" = "import") => {
-    setModalOpen(true);
-    // Déclenche automatiquement le sélecteur approprié pour le recto.
-    setTimeout(() => {
-      if (mode === "scan") rectoCameraRef.current?.click();
-      else rectoImportRef.current?.click();
-    }, 50);
-  };
-
-  const canConfirm = Boolean(rectoFile && versoFile);
 
   return (
     <div className="space-y-3">
@@ -210,7 +110,7 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Recto + verso — remplissage automatique du profil client.
+        Recto uniquement - remplissage automatique du nom, prénom et de la date de naissance.
       </p>
 
       <div className="flex flex-col gap-3 rounded-input border border-border/80 bg-secondary/40 p-3 md:flex-row md:items-center">
@@ -220,151 +120,30 @@ const ScanCni = ({ initialScan, onScannedChange, onExtracted }: ScanCniProps) =>
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-medium text-foreground">
-              {status === "ok" ? "Carte d'identité scannée" : "CNI (recto + verso)"}
+              {status === "ok" ? "Carte d'identité scannée" : "CNI recto"}
             </div>
             <div className={`truncate text-[11px] ${detailTextClass(status)}`}>{detail}</div>
           </div>
         </div>
         <div className="flex w-full shrink-0 flex-col items-stretch gap-2 md:w-auto md:flex-row md:items-center">
+          <input
+            ref={rectoCameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleRectoInput}
+          />
           <button
             type="button"
             className="btn-primary min-h-11 w-full cursor-pointer border-0 whitespace-nowrap text-sm font-semibold shadow-indigo ring-2 ring-primary/35 ring-offset-2 ring-offset-background md:order-2 md:w-auto md:text-xs"
-            onClick={() => openModal("scan")}
+            onClick={() => rectoCameraRef.current?.click()}
           >
             <ScanLine className="h-4 w-4 animate-pulse" />
-            Scanner CNI
-          </button>
-          <button
-            type="button"
-            className="btn-secondary min-h-11 w-full cursor-pointer whitespace-nowrap text-sm font-medium md:order-1 md:w-auto md:text-xs"
-            onClick={() => openModal("import")}
-          >
-            Importer
+            Scanner la CNI (recto)
           </button>
         </div>
       </div>
-
-      {modalOpen && (
-        <>
-          <div
-            className="fixed top-0 left-0 w-[100vw] h-[100vh] z-[9998] animate-in fade-in-0 duration-200"
-            style={{ background: "rgba(0,0,0,0.5)" }}
-            onClick={() => setModalOpen(false)}
-          />
-          <div
-            className="fixed inset-0 z-[9999] overflow-y-auto bg-card p-4 animate-in fade-in-0 duration-200 md:inset-auto md:left-1/2 md:top-10 md:h-auto md:max-h-[calc(100vh-5rem)] md:w-[calc(100vw-2rem)] md:max-w-[640px] md:-translate-x-1/2 md:rounded-2xl md:border md:border-border md:p-6 md:slide-in-from-top-4"
-            style={{
-              paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
-            }}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="modal-cni-title"
-          >
-            <h2 id="modal-cni-title" className="font-display text-lg font-bold mb-4">
-              Carte d'identité
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {(["recto", "verso"] as const).map((side) => {
-                const isRecto = side === "recto";
-                const preview = isRecto ? rectoPreview : versoPreview;
-                return (
-                  <div
-                    key={side}
-                    className="rounded-xl border border-border bg-secondary/40 p-3 space-y-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-display text-sm font-bold">
-                        {isRecto ? "Recto" : "Verso"}
-                      </span>
-                      <span
-                        className={`w-2.5 h-2.5 rounded-full ${
-                          preview ? "bg-success" : "bg-muted-foreground"
-                        }`}
-                      />
-                    </div>
-
-                    <button
-                      type="button"
-                      className="w-full h-[150px] rounded-lg border border-dashed border-border bg-card hover:border-primary transition-colors flex items-center justify-center overflow-hidden cursor-pointer"
-                      onClick={() =>
-                        (isRecto ? rectoImportRef.current : versoImportRef.current)?.click()
-                      }
-                    >
-                      {preview ? (
-                        <img
-                          src={preview}
-                          alt={`Aperçu ${side}`}
-                          className="h-full max-h-[150px] w-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          Zone de drop / upload
-                        </span>
-                      )}
-                    </button>
-
-                    <div className="flex gap-2">
-                      <input
-                        ref={isRecto ? rectoImportRef : versoImportRef}
-                        type="file"
-                        accept="image/*,application/pdf"
-                        className="hidden"
-                        onChange={(e) => handleSideInput(e, side)}
-                      />
-                      <input
-                        ref={isRecto ? rectoCameraRef : versoCameraRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        onChange={(e) => handleSideInput(e, side)}
-                      />
-                      <button
-                        type="button"
-                        className="min-h-11 flex-1 rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors cursor-pointer"
-                        onClick={() =>
-                          (isRecto ? rectoCameraRef.current : versoCameraRef.current)?.click()
-                        }
-                      >
-                        📷 Scanner
-                      </button>
-                      <button
-                        type="button"
-                        className="min-h-11 flex-1 rounded-md border border-border bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors cursor-pointer"
-                        onClick={() =>
-                          (isRecto ? rectoImportRef.current : versoImportRef.current)?.click()
-                        }
-                      >
-                        📎 Importer
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                className="min-h-11 px-4 py-2.5 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground transition-colors bg-transparent cursor-pointer"
-                onClick={() => setModalOpen(false)}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                disabled={!canConfirm}
-                className="min-h-11 px-4 py-2.5 rounded-lg text-sm font-medium gradient-primary text-primary-foreground border-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                onClick={handleConfirm}
-              >
-                Confirmer
-              </button>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 };

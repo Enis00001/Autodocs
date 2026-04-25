@@ -37,7 +37,20 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 async function pdfFirstPageToDataUrl(file: File): Promise<string> {
-  const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf");
+  type PdfPage = {
+    getViewport: (options: { scale: number }) => { width: number; height: number };
+    render: (options: {
+      canvasContext: CanvasRenderingContext2D;
+      viewport: { width: number; height: number };
+    }) => { promise: Promise<void> };
+  };
+  type PdfJsModule = {
+    getDocument: (options: { data: ArrayBuffer; disableWorker: boolean }) => {
+      promise: Promise<{ getPage: (pageNumber: number) => Promise<PdfPage> }>;
+    };
+  };
+
+  const pdfjsLib = (await import("pdfjs-dist/legacy/build/pdf")) as PdfJsModule;
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({
     data: arrayBuffer,
@@ -64,23 +77,58 @@ async function toVisionImageDataUrl(file: File): Promise<string> {
   return fileToDataUrl(file);
 }
 
-function normalizeResult(parsed: any): AnalyzeResult {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function toStringRecord(value: Record<string, unknown>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+}
+
+function normalizeCniResult(parsed: unknown): AnalyzeResult {
+  const data = asRecord(parsed) ?? {};
+  const extractedData = {
+    nom: typeof data.nom === "string" ? data.nom : "",
+    prenom: typeof data.prenom === "string" ? data.prenom : "",
+    date_naissance: typeof data.date_naissance === "string" ? data.date_naissance : "",
+  };
+  const hasExtractedValue = Object.values(extractedData).some((value) => value.trim());
+
+  return {
+    status: hasExtractedValue ? "valid" : "unreadable",
+    extractedData,
+    validation: {
+      isValid: hasExtractedValue,
+      reason: hasExtractedValue ? undefined : "Aucune information CNI lisible",
+    },
+  };
+}
+
+function normalizeResult(parsed: unknown, kind: DocumentKind): AnalyzeResult {
+  const data = asRecord(parsed) ?? {};
+  if (kind === "cni" && !data.extracted_data) {
+    return normalizeCniResult(parsed);
+  }
+
   const status =
-    parsed?.status === "valid" || parsed?.status === "invalid" || parsed?.status === "unreadable"
-      ? parsed.status
+    data.status === "valid" || data.status === "invalid" || data.status === "unreadable"
+      ? data.status
       : "unreadable";
-  const extractedData =
-    parsed?.extracted_data && typeof parsed.extracted_data === "object"
-      ? parsed.extracted_data
-      : {};
+  const rawExtractedData = data.extracted_data ? asRecord(data.extracted_data) : null;
+  const extractedData = kind === "cni" ? normalizeCniResult(rawExtractedData).extractedData : rawExtractedData;
+  const validationData = data.validation ? asRecord(data.validation) : null;
   const validation = {
-    isValid: Boolean(parsed?.validation?.is_valid),
+    isValid: Boolean(validationData?.is_valid),
     reason:
-      typeof parsed?.validation?.reason === "string"
-        ? parsed.validation.reason
+      typeof validationData?.reason === "string"
+        ? validationData.reason
         : undefined,
   };
-  return { status, extractedData, validation };
+  return { status, extractedData: extractedData ? toStringRecord(extractedData) : {}, validation };
 }
 
 export async function analyzeDocument(file: File, kind: DocumentKind): Promise<AnalyzeResult> {
@@ -226,7 +274,7 @@ export async function analyzeDocument(file: File, kind: DocumentKind): Promise<A
 
   try {
     const parsed = JSON.parse(content);
-    return normalizeResult(parsed);
+    return normalizeResult(parsed, kind);
   } catch {
     return {
       status: "unreadable",
