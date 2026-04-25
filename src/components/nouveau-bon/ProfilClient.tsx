@@ -125,26 +125,6 @@ const ProfilClient = ({
           autoClass={autoClass}
         />
         <ClientIdentityField
-          field="clientDateNaissance"
-          label="Date de naissance"
-          form={form}
-          onChange={onChange}
-          onManualEditField={onManualEditField}
-          isEnabled={isEnabled}
-          isAuto={isAuto}
-          autoClass={autoClass}
-        />
-        <ClientIdentityField
-          field="clientNumeroCni"
-          label="N° CNI"
-          form={form}
-          onChange={onChange}
-          onManualEditField={onManualEditField}
-          isEnabled={isEnabled}
-          isAuto={isAuto}
-          autoClass={autoClass}
-        />
-        <ClientIdentityField
           field="clientAdresse"
           label="Adresse"
           colSpan2
