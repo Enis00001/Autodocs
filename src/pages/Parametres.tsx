@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import TopBar from "@/components/layout/TopBar";
-import { Upload, Building2, MapPin } from "lucide-react";
+import { Upload, Building2, MapPin, LogOut } from "lucide-react";
 import { loadConcession, saveConcession } from "@/utils/concession";
 import type { ConcessionData } from "@/utils/concession";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 
 const ACCEPT_LOGO = "image/jpeg,image/png,image/svg+xml,.jpg,.jpeg,.png,.svg";
 
 const Parametres = () => {
+  const navigate = useNavigate();
   const [concession, setConcession] = useState<ConcessionData>({
     name: "",
     address: "",
@@ -35,6 +38,11 @@ const Parametres = () => {
   const handleSave = async () => {
     await saveConcession(concession);
     toast({ title: "Paramètres sauvegardés ✓" });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -114,6 +122,14 @@ const Parametres = () => {
           <div className="card-autodocs text-sm text-muted-foreground">
             Ces informations apparaissent sur vos documents et votre espace de travail.
           </div>
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            className="mt-8 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm font-medium text-destructive transition-all hover:border-destructive/50 hover:bg-destructive/15 cursor-pointer"
+          >
+            <LogOut className="h-4 w-4" />
+            Se déconnecter
+          </button>
         </div>
       </div>
     </>
