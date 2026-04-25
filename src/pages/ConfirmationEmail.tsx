@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Mail } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
+import { getSignupEmailRedirectTo } from "@/lib/auth";
 
 const ConfirmationEmailPage = () => {
   const [searchParams] = useSearchParams();
@@ -39,6 +40,9 @@ const ConfirmationEmailPage = () => {
     const { error } = await supabase.auth.resend({
       type: "signup",
       email,
+      options: {
+        emailRedirectTo: getSignupEmailRedirectTo(plan),
+      },
     });
     setLoading(false);
     if (error) {

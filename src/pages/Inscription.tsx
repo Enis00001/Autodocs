@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
+import { getSignupEmailRedirectTo } from "@/lib/auth";
 
 const InscriptionPage = () => {
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ const InscriptionPage = () => {
       email: email.trim(),
       password,
       options: {
+        emailRedirectTo: getSignupEmailRedirectTo(plan),
         data: {
           concession_name: concessionName.trim(),
         },

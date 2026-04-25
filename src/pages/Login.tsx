@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
+import { getSignupEmailRedirectTo } from "@/lib/auth";
 
 /** Extrait un plan valide depuis les searchParams (sinon null). */
 const readPlanParam = (
@@ -59,6 +60,9 @@ const LoginPage = () => {
     const { error } = await supabase.auth.resend({
       type: "signup",
       email: email.trim(),
+      options: {
+        emailRedirectTo: getSignupEmailRedirectTo(plan),
+      },
     });
     setResending(false);
     if (error) {
