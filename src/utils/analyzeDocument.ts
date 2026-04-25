@@ -91,10 +91,18 @@ function toStringRecord(value: Record<string, unknown>): Record<string, string> 
 
 function normalizeCniResult(parsed: unknown): AnalyzeResult {
   const data = asRecord(parsed) ?? {};
+  const dateNaissance =
+    typeof data.date_naissance === "string"
+      ? data.date_naissance
+      : typeof data.dateNaissance === "string"
+        ? data.dateNaissance
+        : typeof data.date_de_naissance === "string"
+          ? data.date_de_naissance
+          : "";
   const extractedData = {
     nom: typeof data.nom === "string" ? data.nom : "",
     prenom: typeof data.prenom === "string" ? data.prenom : "",
-    date_naissance: typeof data.date_naissance === "string" ? data.date_naissance : "",
+    date_naissance: dateNaissance,
   };
   const hasExtractedValue = Object.values(extractedData).some((value) => value.trim());
 

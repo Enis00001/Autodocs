@@ -125,8 +125,8 @@ const ProfilClient = ({
           autoClass={autoClass}
         />
         <ClientIdentityField
-          field="clientAdresse"
-          label="Adresse"
+          field="clientDateNaissance"
+          label="Date de naissance"
           colSpan2
           form={form}
           onChange={onChange}

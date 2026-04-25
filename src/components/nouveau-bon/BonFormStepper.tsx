@@ -10,13 +10,13 @@ const STEPS = [
 export function computeBonStep(form: {
   clientNom: string;
   clientPrenom: string;
-  clientAdresse: string;
+  clientDateNaissance: string;
   stockColonnes: string[] | undefined;
 }): 1 | 2 | 3 {
   const clientOk =
     Boolean(form.clientNom?.trim()) &&
     Boolean(form.clientPrenom?.trim()) &&
-    Boolean(form.clientAdresse?.trim());
+    Boolean(form.clientDateNaissance?.trim());
   if (!clientOk) return 1;
   const hasVeh = Array.isArray(form.stockColonnes) && form.stockColonnes.length > 0;
   if (!hasVeh) return 2;

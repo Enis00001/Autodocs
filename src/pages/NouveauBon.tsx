@@ -102,7 +102,7 @@ const NouveauBon = () => {
 
   const step = useMemo(
     () => computeBonStep(formState),
-    [formState.clientNom, formState.clientPrenom, formState.clientAdresse, formState.stockColonnes],
+    [formState.clientNom, formState.clientPrenom, formState.clientDateNaissance, formState.stockColonnes],
   );
 
   useEffect(() => {

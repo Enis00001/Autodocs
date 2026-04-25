@@ -1,7 +1,7 @@
 const MANDATORY_STRING_FIELDS = [
   "clientNom",
   "clientPrenom",
-  "clientAdresse",
+  "clientDateNaissance",
   "vehiculePrix",
 ] as const;
 
