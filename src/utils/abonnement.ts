@@ -5,7 +5,7 @@ export type AbonnementPlan = "gratuit" | "pro";
 
 export type AbonnementInfo = {
   plan: AbonnementPlan;
-  bonsCeMois: number;
+  bonsTotal: number;
   quota: number; // 10 en gratuit, Infinity en pro (on renverra Number.POSITIVE_INFINITY)
   dateRenouvellement: string | null;
   actif: boolean;
@@ -23,7 +23,7 @@ export async function loadAbonnement(): Promise<AbonnementInfo | null> {
 
   const { data, error } = await supabase
     .from("abonnements")
-    .select("plan, bons_ce_mois, date_renouvellement, actif")
+    .select("plan, bons_total, date_renouvellement, actif")
     .eq("user_id", uid)
     .maybeSingle();
 
@@ -31,7 +31,7 @@ export async function loadAbonnement(): Promise<AbonnementInfo | null> {
     console.error("loadAbonnement:", error);
     return {
       plan: "gratuit",
-      bonsCeMois: 0,
+      bonsTotal: 0,
       quota: QUOTA_GRATUIT,
       dateRenouvellement: null,
       actif: true,
@@ -41,7 +41,7 @@ export async function loadAbonnement(): Promise<AbonnementInfo | null> {
   const plan: AbonnementPlan = data?.plan === "pro" ? "pro" : "gratuit";
   return {
     plan,
-    bonsCeMois: (data?.bons_ce_mois as number | undefined) ?? 0,
+    bonsTotal: (data?.bons_total as number | undefined) ?? 0,
     quota: plan === "pro" ? Number.POSITIVE_INFINITY : QUOTA_GRATUIT,
     dateRenouvellement: (data?.date_renouvellement as string | null) ?? null,
     actif: data?.actif ?? true,
@@ -85,7 +85,7 @@ export async function startCheckout(
  */
 export async function consumeBonQuota(): Promise<{
   plan: AbonnementPlan;
-  bonsCeMois: number;
+  bonsTotal: number;
 }> {
   const uid = await getCurrentUserId();
   if (!uid) throw new Error("Utilisateur non connecté.");
@@ -100,10 +100,10 @@ export async function consumeBonQuota(): Promise<{
     const payload = (await res.json().catch(() => ({}))) as {
       error?: string;
       plan?: AbonnementPlan;
-      bonsCeMois?: number;
+      bonsTotal?: number;
       quota?: number;
     };
-    const err = new Error("Limite mensuelle atteinte.") as Error & {
+    const err = new Error("Limite atteinte.") as Error & {
       code?: string;
       info?: typeof payload;
     };
@@ -115,9 +115,9 @@ export async function consumeBonQuota(): Promise<{
     const txt = await res.text().catch(() => "");
     throw new Error(txt || "Impossible de vérifier votre quota.");
   }
-  const data = (await res.json()) as { plan?: string; bonsCeMois?: number };
+  const data = (await res.json()) as { plan?: string; bonsTotal?: number };
   return {
     plan: data.plan === "pro" ? "pro" : "gratuit",
-    bonsCeMois: data.bonsCeMois ?? 0,
+    bonsTotal: data.bonsTotal ?? 0,
   };
 }

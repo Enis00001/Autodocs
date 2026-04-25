@@ -26,7 +26,7 @@ async function requireAuthUserId(req: VercelRequest): Promise<string | null> {
 }
 
 /**
- * Vérifie le quota mensuel et incrémente `bons_ce_mois` côté serveur.
+ * Vérifie le quota gratuit à vie et incrémente `bons_total` côté serveur.
  * Renvoie `{ ok: true }` si autorisé, sinon `{ ok: false, error }` avec
  * le code HTTP à renvoyer.
  */
@@ -48,38 +48,38 @@ async function checkAndConsumeQuota(
 
   const { data: existing } = await admin
     .from("abonnements")
-    .select("plan, bons_ce_mois")
+    .select("plan, bons_total")
     .eq("user_id", userId)
     .maybeSingle();
 
   const plan = (existing?.plan as string) || "gratuit";
-  const bonsCeMois = (existing?.bons_ce_mois as number) ?? 0;
+  const bonsTotal = (existing?.bons_total as number) ?? 0;
 
-  if (plan !== "pro" && bonsCeMois >= QUOTA_GRATUIT) {
+  if (plan !== "pro" && bonsTotal >= QUOTA_GRATUIT) {
     return {
       ok: false,
       status: 429,
       body: {
-        error: "Quota mensuel atteint. Passez au plan Pro pour continuer.",
+        error: "Limite atteinte — passez au Pro pour des bons illimités.",
         code: "quota_reached",
         plan,
-        bonsCeMois,
+        bonsTotal,
         quota: QUOTA_GRATUIT,
       },
     };
   }
 
-  const nextCount = bonsCeMois + 1;
+  const nextCount = bonsTotal + 1;
   if (!existing) {
     await admin.from("abonnements").insert({
       user_id: userId,
       plan: "gratuit",
-      bons_ce_mois: nextCount,
+      bons_total: nextCount,
     });
   } else {
     await admin
       .from("abonnements")
-      .update({ bons_ce_mois: nextCount, updated_at: new Date().toISOString() })
+      .update({ bons_total: nextCount, updated_at: new Date().toISOString() })
       .eq("user_id", userId);
   }
 

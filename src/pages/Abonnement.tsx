@@ -96,7 +96,8 @@ const Abonnement = () => {
 
   const plan = info?.plan ?? "gratuit";
   const isPro = plan === "pro";
-  const bons = info?.bonsCeMois ?? 0;
+  const bons = info?.bonsTotal ?? 0;
+  const remainingFreeBons = Math.max(0, QUOTA_GRATUIT - bons);
   const percent = Math.min(100, (bons / QUOTA_GRATUIT) * 100);
   const renewal = info?.dateRenouvellement
     ? new Date(info.dateRenouvellement).toLocaleDateString("fr-FR", {
@@ -150,7 +151,7 @@ const Abonnement = () => {
                         ? renewal
                           ? `Renouvellement le ${renewal}`
                           : "Abonnement actif"
-                        : `${QUOTA_GRATUIT} bons de commande par mois`}
+                        : `${QUOTA_GRATUIT} bons de commande offerts`}
                     </p>
                   </div>
                 </div>
@@ -184,7 +185,7 @@ const Abonnement = () => {
               {!isPro && (
                 <div className="card-autodocs space-y-3">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="font-semibold text-foreground">Quota mensuel</span>
+                    <span className="font-semibold text-foreground">Quota gratuit</span>
                     <span className="tabular-nums text-muted-foreground">
                       {bons} / {QUOTA_GRATUIT} bons utilisés
                     </span>
@@ -204,8 +205,8 @@ const Abonnement = () => {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {percent >= 100
-                      ? "Limite atteinte. Passez au plan Pro pour continuer à générer des bons."
-                      : "Compteur remis à zéro à chaque début de mois pour le plan Gratuit."}
+                      ? "Limite atteinte — passez au Pro pour des bons illimités."
+                      : `Il vous reste ${remainingFreeBons} bon${remainingFreeBons > 1 ? "s" : ""} gratuit${remainingFreeBons > 1 ? "s" : ""}.`}
                   </p>
                 </div>
               )}
@@ -217,7 +218,7 @@ const Abonnement = () => {
                   cadence=""
                   current={!isPro}
                   features={[
-                    `${QUOTA_GRATUIT} bons de commande par mois`,
+                    `${QUOTA_GRATUIT} bons de commande offerts`,
                     "Import CSV / Excel du stock",
                     "Génération PDF",
                   ]}

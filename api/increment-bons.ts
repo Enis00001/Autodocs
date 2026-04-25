@@ -5,11 +5,11 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
  *
  * Body JSON : { userId: string }
  * Retourne :
- *   200 { plan, bonsCeMois, quota, allowed: true } si OK
- *   402 { error, plan, bonsCeMois, quota }         si quota atteint
+ *   200 { plan, bonsTotal, quota, allowed: true } si OK
+ *   402 { error, plan, bonsTotal, quota }         si quota atteint
  *
- * Vérifie le quota de l'utilisateur (10 bons/mois en plan gratuit,
- * illimité en plan pro) et incrémente `bons_ce_mois` côté serveur. Appelé
+ * Vérifie le quota de l'utilisateur (10 bons gratuits au total,
+ * illimité en plan pro) et incrémente `bons_total` côté serveur. Appelé
  * par le front juste avant la génération PDF.
  */
 const QUOTA_GRATUIT = 10;
@@ -34,36 +34,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // On récupère (ou crée) la ligne d'abonnement.
   const { data: existing } = await supabaseAdmin
     .from("abonnements")
-    .select("plan, bons_ce_mois, actif")
+    .select("plan, bons_total, actif")
     .eq("user_id", userId)
     .maybeSingle();
 
   const plan = (existing?.plan as string) || "gratuit";
-  const bonsCeMois = (existing?.bons_ce_mois as number) ?? 0;
+  const bonsTotal = (existing?.bons_total as number) ?? 0;
   const quota = plan === "pro" ? Infinity : QUOTA_GRATUIT;
 
-  if (plan !== "pro" && bonsCeMois >= QUOTA_GRATUIT) {
+  if (plan !== "pro" && bonsTotal >= QUOTA_GRATUIT) {
     return res.status(402).json({
       error: "quota_reached",
       plan,
-      bonsCeMois,
+      bonsTotal,
       quota: QUOTA_GRATUIT,
     });
   }
 
-  const nextCount = bonsCeMois + 1;
+  const nextCount = bonsTotal + 1;
 
   if (!existing) {
     await supabaseAdmin.from("abonnements").insert({
       user_id: userId,
       plan: "gratuit",
-      bons_ce_mois: nextCount,
+      bons_total: nextCount,
     });
   } else {
     await supabaseAdmin
       .from("abonnements")
       .update({
-        bons_ce_mois: nextCount,
+        bons_total: nextCount,
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", userId);
@@ -72,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json({
     allowed: true,
     plan,
-    bonsCeMois: nextCount,
+    bonsTotal: nextCount,
     quota: quota === Infinity ? null : quota,
   });
 }

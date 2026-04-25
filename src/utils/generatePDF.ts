@@ -31,19 +31,19 @@ export async function generatePDF(
     const errBody = (await response.json().catch(() => ({}))) as {
       error?: string;
       code?: string;
-      bonsCeMois?: number;
+      bonsTotal?: number;
       quota?: number;
       plan?: string;
     };
     console.error("[generatePDF] Erreur:", errBody);
     if (response.status === 429 || errBody?.code === "quota_reached") {
-      const err = new Error("Quota mensuel atteint.") as Error & {
+      const err = new Error("Limite atteinte.") as Error & {
         code?: string;
-        info?: { bonsCeMois?: number; quota?: number; plan?: string };
+        info?: { bonsTotal?: number; quota?: number; plan?: string };
       };
       err.code = "quota_reached";
       err.info = {
-        bonsCeMois: errBody.bonsCeMois,
+        bonsTotal: errBody.bonsTotal,
         quota: errBody.quota,
         plan: errBody.plan,
       };

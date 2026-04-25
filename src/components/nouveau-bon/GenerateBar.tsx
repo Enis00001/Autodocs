@@ -29,7 +29,7 @@ const GenerateBar = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [quotaBlocked, setQuotaBlocked] = useState<null | {
-    bonsCeMois: number;
+    bonsTotal: number;
     quota: number;
   }>(null);
 
@@ -52,13 +52,13 @@ const GenerateBar = ({
     } catch (err) {
       const e = err as Error & {
         code?: string;
-        info?: { bonsCeMois?: number; quota?: number };
+        info?: { bonsTotal?: number; quota?: number };
       };
       setIsGenerating(false);
       setIsSuccess(false);
       if (e.code === "quota_reached") {
         setQuotaBlocked({
-          bonsCeMois: e.info?.bonsCeMois ?? 0,
+          bonsTotal: e.info?.bonsTotal ?? 0,
           quota: e.info?.quota ?? 10,
         });
         return;
@@ -165,8 +165,8 @@ const GenerateBar = ({
                   <Zap className="h-6 w-6" aria-hidden />
                 </div>
                 <p className="text-center text-sm text-foreground">
-                  Vous avez utilisé {quotaBlocked.bonsCeMois} / {quotaBlocked.quota} bons ce
-                  mois sur le plan Gratuit.
+                  Vous avez utilisé {quotaBlocked.bonsTotal} / {quotaBlocked.quota} bons
+                  gratuits sur le plan Gratuit.
                 </p>
                 <p className="text-center text-xs text-muted-foreground">
                   Passez au plan Pro pour générer des bons de commande illimités.

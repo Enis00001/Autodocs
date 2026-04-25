@@ -7,7 +7,6 @@ import Stripe from "stripe";
  * Reçoit les events Stripe signés. Events traités :
  *   - checkout.session.completed       → plan = "pro"
  *   - customer.subscription.deleted    → plan = "gratuit"
- *   - invoice.payment_succeeded        → bons_ce_mois = 0 (reset mensuel)
  *
  * Nécessite de désactiver le body parser de Vercel pour que la signature
  * soit vérifiable (on a besoin du corps brut).
@@ -119,33 +118,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             })
             .eq("stripe_customer_id", customerId);
         }
-        break;
-      }
-
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-        const customerId = (invoice.customer as string) || null;
-        if (!customerId) break;
-
-        // Reset mensuel du compteur + prolongation date_renouvellement.
-        const subscriptionId = (invoice.subscription as string) || null;
-        let dateRenouvellement: string | null = null;
-        if (subscriptionId) {
-          const sub = await stripe.subscriptions.retrieve(subscriptionId);
-          if (sub.current_period_end) {
-            dateRenouvellement = new Date(sub.current_period_end * 1000).toISOString();
-          }
-        }
-
-        await supabaseAdmin
-          .from("abonnements")
-          .update({
-            bons_ce_mois: 0,
-            actif: true,
-            date_renouvellement: dateRenouvellement,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("stripe_customer_id", customerId);
         break;
       }
 

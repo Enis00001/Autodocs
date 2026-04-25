@@ -102,11 +102,20 @@ CREATE TABLE IF NOT EXISTS abonnements (
   stripe_subscription_id   text,
   plan                     text    DEFAULT 'gratuit',
   bons_ce_mois             integer DEFAULT 0,
+  bons_total               integer DEFAULT 0,
   date_renouvellement      timestamptz,
   actif                    boolean DEFAULT true,
   created_at               timestamptz DEFAULT now(),
   updated_at               timestamptz DEFAULT now()
 );
+
+ALTER TABLE abonnements
+  ADD COLUMN IF NOT EXISTS bons_total integer DEFAULT 0;
+
+UPDATE abonnements
+SET bons_total = bons_ce_mois
+WHERE COALESCE(bons_total, 0) = 0
+  AND COALESCE(bons_ce_mois, 0) > 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS abonnements_user_id_unique
   ON abonnements (user_id);
