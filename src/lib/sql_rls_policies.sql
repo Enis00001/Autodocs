@@ -92,8 +92,6 @@ END $$;
 
 -- ----------------------------------------------------------------------------
 -- 6. abonnements (Stripe)
---    Lecture seule pour l'utilisateur : seules les routes serveur
---    (service role key) peuvent écrire/mettre à jour.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS abonnements (
   id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -122,19 +120,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS abonnements_user_id_unique
 
 ALTER TABLE abonnements ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "user_own_abonnements" ON abonnements;
 DROP POLICY IF EXISTS "user_read_own_subscription" ON abonnements;
-CREATE POLICY "user_read_own_subscription" ON abonnements
-  FOR SELECT
-  USING (auth.uid() = user_id);
-
--- Pas de policy INSERT/UPDATE/DELETE côté client : seul le backend avec le
--- service role key (qui bypass les policies) peut écrire dans cette table.
+CREATE POLICY "user_own_abonnements" ON abonnements
+  FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 -- ----------------------------------------------------------------------------
 -- 7. preferences_formulaire
 --    Préférences de visibilité des champs du formulaire « Nouveau bon ».
---    Une seule ligne par utilisateur ; RLS désactivé (filtré côté appli par
---    user_id dans chaque requête).
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS preferences_formulaire (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -146,4 +141,10 @@ CREATE TABLE IF NOT EXISTS preferences_formulaire (
 CREATE UNIQUE INDEX IF NOT EXISTS preferences_formulaire_user_id_unique
   ON preferences_formulaire (user_id);
 
-ALTER TABLE preferences_formulaire DISABLE ROW LEVEL SECURITY;
+ALTER TABLE preferences_formulaire ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "user_own_preferences" ON preferences_formulaire;
+CREATE POLICY "user_own_preferences" ON preferences_formulaire
+  FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
