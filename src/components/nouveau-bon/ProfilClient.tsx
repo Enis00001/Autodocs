@@ -20,6 +20,7 @@ type ProfilFormShape = {
   clientDateNaissance: BonDraftData["clientDateNaissance"];
   clientNumeroCni: BonDraftData["clientNumeroCni"];
   clientAdresse: BonDraftData["clientAdresse"];
+  clientEmail: BonDraftData["clientEmail"];
 };
 
 type ClientIdentityFieldProps = {
@@ -135,6 +136,16 @@ const ProfilClient = ({
           isAuto={isAuto}
           autoClass={autoClass}
         />
+        <div className="flex flex-col gap-1.5 md:col-span-2">
+          <label className="field-label">Email du client (optionnel — pour envoi du bon de commande)</label>
+          <input
+            type="email"
+            value={form.clientEmail}
+            onChange={(e) => onChange({ clientEmail: e.target.value })}
+            className="field-input"
+            placeholder="exemple@client.com"
+          />
+        </div>
         {customFields.map((field) => (
           <div key={field.id} className="flex flex-col gap-1.5 md:col-span-2">
             <label className="field-label">{field.label}</label>

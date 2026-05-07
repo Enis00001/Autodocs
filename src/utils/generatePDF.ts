@@ -9,6 +9,15 @@ function downloadBase64Pdf(base64: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+type SendPdfEmailPayload = {
+  pdfBase64: string;
+  clientEmail: string;
+  clientNom: string;
+  clientPrenom: string;
+  vehiculeModele: string;
+  vendeurNom: string;
+};
+
 /**
  * Génère un bon de commande PDF via le template HTML côté serveur.
  * Envoie toutes les données du formulaire (standard + custom) à /api/generate-pdf
@@ -61,4 +70,22 @@ export async function generatePDF(
 
   const fileName = `bon-de-commande-${new Date().toISOString().slice(0, 10)}.pdf`;
   downloadBase64Pdf(json.pdfBase64, fileName);
+
+  return {
+    pdfBase64: json.pdfBase64,
+    fileName,
+  };
+}
+
+export async function sendPdfByEmail(payload: SendPdfEmailPayload): Promise<void> {
+  const { apiFetch } = await import("@/lib/apiClient");
+  const response = await apiFetch("/api/send-pdf-email", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errBody = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errBody?.error || `Erreur envoi email (${response.status})`);
+  }
 }

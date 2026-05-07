@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FileText, Loader2, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
-import { generatePDF } from "@/utils/generatePDF";
+import { generatePDF, sendPdfByEmail } from "@/utils/generatePDF";
 import { countMissingMandatoryFields, isDraftFormComplete } from "@/utils/bonFormCompletion";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,11 @@ type GenerateBarProps = {
   documentsUploaded: number;
   missingFieldsCount: number;
   formData: Record<string, string>;
+  clientEmail?: string;
+  clientNom?: string;
+  clientPrenom?: string;
+  vehiculeModele?: string;
+  vendeurNom?: string;
   /** Conservé pour compat API ; inutilisé. */
   templateId: string;
 };
@@ -21,12 +26,21 @@ const GenerateBar = ({
   documentsUploaded,
   missingFieldsCount,
   formData,
+  clientEmail = "",
+  clientNom = "",
+  clientPrenom = "",
+  vehiculeModele = "Véhicule",
+  vendeurNom = "Votre conseiller",
   templateId: _templateId,
 }: GenerateBarProps) => {
   void _templateId;
   const [modalOpen, setModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [showEmailPrompt, setShowEmailPrompt] = useState(false);
+  const [generatedPdfBase64, setGeneratedPdfBase64] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [quotaBlocked, setQuotaBlocked] = useState<null | {
     bonsTotal: number;
@@ -40,15 +54,23 @@ const GenerateBar = ({
     setModalOpen(true);
     setIsGenerating(true);
     setIsSuccess(false);
+    setEmailSent(false);
+    setShowEmailPrompt(false);
+    setGeneratedPdfBase64(null);
     setGenerationError(null);
     setQuotaBlocked(null);
     try {
       // Le quota et l'incrément sont gérés côté serveur (api/generate-pdf.ts).
       // Si le user a atteint la limite, l'API renvoie 429 → on remonte un
       // `code: "quota_reached"` pour afficher le bandeau d'upgrade.
-      await generatePDF(formData);
+      const result = await generatePDF(formData);
       setIsGenerating(false);
-      setIsSuccess(true);
+      setGeneratedPdfBase64(result.pdfBase64);
+      if (clientEmail.trim()) {
+        setShowEmailPrompt(true);
+      } else {
+        setIsSuccess(true);
+      }
     } catch (err) {
       const e = err as Error & {
         code?: string;
@@ -66,6 +88,29 @@ const GenerateBar = ({
       setGenerationError(
         err instanceof Error ? err.message : "Erreur lors de la génération PDF",
       );
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!generatedPdfBase64 || !clientEmail.trim()) return;
+    setIsSendingEmail(true);
+    setGenerationError(null);
+    try {
+      await sendPdfByEmail({
+        pdfBase64: generatedPdfBase64,
+        clientEmail: clientEmail.trim(),
+        clientNom: clientNom.trim(),
+        clientPrenom: clientPrenom.trim(),
+        vehiculeModele: vehiculeModele.trim() || "Véhicule",
+        vendeurNom: vendeurNom.trim() || "Votre conseiller",
+      });
+      setIsSendingEmail(false);
+      setShowEmailPrompt(false);
+      setEmailSent(true);
+      setIsSuccess(true);
+    } catch (err) {
+      setIsSendingEmail(false);
+      setGenerationError(err instanceof Error ? err.message : "Erreur lors de l'envoi de l'email");
     }
   };
 
@@ -135,7 +180,7 @@ const GenerateBar = ({
             className="fixed left-0 top-0 z-[9998] h-[100vh] w-[100vw] animate-in fade-in-0 duration-200"
             style={{ background: "rgba(0,0,0,0.5)" }}
             onClick={() => {
-              if (!isGenerating) setModalOpen(false);
+              if (!isGenerating && !isSendingEmail) setModalOpen(false);
             }}
           />
           <div
@@ -156,6 +201,8 @@ const GenerateBar = ({
                 ? "Limite atteinte"
                 : isGenerating
                   ? "Génération en cours..."
+                  : showEmailPrompt
+                    ? "Envoi par email"
                   : "Bon de commande"}
             </h2>
 
@@ -197,9 +244,40 @@ const GenerateBar = ({
               </div>
             )}
 
-            {!quotaBlocked && isSuccess && (
+            {!quotaBlocked && !isGenerating && showEmailPrompt && (
               <div className="flex flex-col items-center gap-5">
-                <p className="text-center text-sm text-foreground">Bon de commande généré avec succès</p>
+                <p className="text-center text-sm text-foreground">
+                  Envoyer le bon de commande par email à {clientEmail} ?
+                </p>
+                <div className="flex w-full justify-center gap-3">
+                  <button
+                    type="button"
+                    className="btn-primary cursor-pointer border-0 px-4 py-2.5 text-sm"
+                    onClick={handleSendEmail}
+                    disabled={isSendingEmail}
+                  >
+                    {isSendingEmail ? "Envoi..." : "Envoyer"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary cursor-pointer px-4 py-2.5 text-sm"
+                    onClick={() => {
+                      if (isSendingEmail) return;
+                      setShowEmailPrompt(false);
+                      setIsSuccess(true);
+                    }}
+                  >
+                    Non merci
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!quotaBlocked && isSuccess && !showEmailPrompt && (
+              <div className="flex flex-col items-center gap-5">
+                <p className="text-center text-sm text-foreground">
+                  {emailSent ? "Email envoyé ✅" : "Bon de commande généré avec succès"}
+                </p>
                 <div className="flex w-full justify-center gap-3">
                   <button
                     type="button"

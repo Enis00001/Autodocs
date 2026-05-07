@@ -25,6 +25,7 @@ const defaultFormState: DraftFormState = {
   clientDateNaissance: "",
   clientNumeroCni: "",
   clientAdresse: "",
+  clientEmail: "",
   vehiculeStockId: "",
   stockDonnees: {},
   stockColonnes: [],
@@ -70,6 +71,7 @@ function buildPdfFormData(
     clientDateNaissance: isFieldEnabled(prefs, "clientDateNaissance") ? form.clientDateNaissance : "",
     clientNumeroCni: isFieldEnabled(prefs, "clientNumeroCni") ? form.clientNumeroCni : "",
     clientAdresse: isFieldEnabled(prefs, "clientAdresse") ? form.clientAdresse : "",
+    clientEmail: form.clientEmail,
     stock_donnees: JSON.stringify(visibleDonnees),
     stock_colonnes: JSON.stringify(visibleColonnes),
     repriseActive: repriseOn ? "oui" : "non",
@@ -296,6 +298,16 @@ const NouveauBon = () => {
         documentsUploaded={0}
         missingFieldsCount={countMissingMandatoryFields(formState as Record<string, unknown>)}
         formData={buildPdfFormData(formState, formPrefs)}
+        clientEmail={formState.clientEmail}
+        clientNom={formState.clientNom}
+        clientPrenom={formState.clientPrenom}
+        vehiculeModele={
+          formState.stockDonnees?.modele ||
+          formState.stockDonnees?.Modele ||
+          formState.stockDonnees?.MODELE ||
+          "Véhicule"
+        }
+        vendeurNom="Votre conseiller"
         templateId=""
       />
     </>
