@@ -49,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const resend = new Resend(apiKey);
-  const from = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const from = "AutoDocs <noreply@autodocs.services>";
   const subject = `Votre bon de commande — ${vehiculeModele}`;
   const html = `
     <p>Bonjour ${clientPrenom} ${clientNom},</p>

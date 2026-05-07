@@ -1,8 +1,14 @@
 import { useState } from "react";
-import { FileText, Loader2, Zap } from "lucide-react";
+import { FileText, Loader2, Zap, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { generatePDF, sendPdfByEmail } from "@/utils/generatePDF";
+import {
+  generatePDF,
+  sendPdfByEmail,
+  embedSignatureInPdf,
+  downloadBase64Pdf,
+} from "@/utils/generatePDF";
 import { countMissingMandatoryFields, isDraftFormComplete } from "@/utils/bonFormCompletion";
+import SignaturePad from "@/components/SignaturePad";
 import { cn } from "@/lib/utils";
 
 export { countMissingMandatoryFields, isDraftFormComplete };
@@ -18,6 +24,12 @@ type GenerateBarProps = {
   vendeurNom?: string;
   /** Conservé pour compat API ; inutilisé. */
   templateId: string;
+  /**
+   * Callback déclenché quand le PDF a été signé avec succès. Permet à la
+   * page parente de persister le brouillon avec `signed = true` et de mettre
+   * à jour son state local. Reçoit la date ISO de signature.
+   */
+  onSigned?: (signedAt: string) => void | Promise<void>;
 };
 
 const MAX_DOTS = 6;
@@ -32,6 +44,7 @@ const GenerateBar = ({
   vehiculeModele = "Véhicule",
   vendeurNom = "Votre conseiller",
   templateId: _templateId,
+  onSigned,
 }: GenerateBarProps) => {
   void _templateId;
   const [modalOpen, setModalOpen] = useState(false);
@@ -40,7 +53,11 @@ const GenerateBar = ({
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [showEmailPrompt, setShowEmailPrompt] = useState(false);
+  const [showSignaturePrompt, setShowSignaturePrompt] = useState(false);
+  const [isEmbeddingSignature, setIsEmbeddingSignature] = useState(false);
+  const [isSigned, setIsSigned] = useState(false);
   const [generatedPdfBase64, setGeneratedPdfBase64] = useState<string | null>(null);
+  const [generatedFileName, setGeneratedFileName] = useState<string>("");
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [quotaBlocked, setQuotaBlocked] = useState<null | {
     bonsTotal: number;
@@ -49,28 +66,35 @@ const GenerateBar = ({
 
   const canGenerate = documentsUploaded > 0 || missingFieldsCount < 5;
 
+  const resetState = () => {
+    setIsGenerating(false);
+    setIsSuccess(false);
+    setIsSendingEmail(false);
+    setEmailSent(false);
+    setShowEmailPrompt(false);
+    setShowSignaturePrompt(false);
+    setIsEmbeddingSignature(false);
+    setIsSigned(false);
+    setGeneratedPdfBase64(null);
+    setGeneratedFileName("");
+    setGenerationError(null);
+    setQuotaBlocked(null);
+  };
+
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setModalOpen(true);
+    resetState();
     setIsGenerating(true);
-    setIsSuccess(false);
-    setEmailSent(false);
-    setShowEmailPrompt(false);
-    setGeneratedPdfBase64(null);
-    setGenerationError(null);
-    setQuotaBlocked(null);
     try {
       // Le quota et l'incrément sont gérés côté serveur (api/generate-pdf.ts).
-      // Si le user a atteint la limite, l'API renvoie 429 → on remonte un
-      // `code: "quota_reached"` pour afficher le bandeau d'upgrade.
-      const result = await generatePDF(formData);
+      // On désactive le téléchargement automatique : il sera déclenché soit
+      // après signature, soit via le bouton « Télécharger sans signature ».
+      const result = await generatePDF(formData, { download: false });
       setIsGenerating(false);
       setGeneratedPdfBase64(result.pdfBase64);
-      if (clientEmail.trim()) {
-        setShowEmailPrompt(true);
-      } else {
-        setIsSuccess(true);
-      }
+      setGeneratedFileName(result.fileName);
+      setShowSignaturePrompt(true);
     } catch (err) {
       const e = err as Error & {
         code?: string;
@@ -89,6 +113,61 @@ const GenerateBar = ({
         err instanceof Error ? err.message : "Erreur lors de la génération PDF",
       );
     }
+  };
+
+  const finalizeAfterDownload = (base64: string, fileName: string) => {
+    const signedFileName = isSigned
+      ? fileName.replace(/\.pdf$/i, "-signe.pdf")
+      : fileName;
+    downloadBase64Pdf(base64, signedFileName);
+    if (clientEmail.trim()) {
+      setShowEmailPrompt(true);
+    } else {
+      setIsSuccess(true);
+    }
+  };
+
+  const handleValidateSignature = async (signatureBase64: string) => {
+    if (!generatedPdfBase64) return;
+    setIsEmbeddingSignature(true);
+    setGenerationError(null);
+    try {
+      const { pdfBase64: signedPdfBase64 } = await embedSignatureInPdf({
+        pdfBase64: generatedPdfBase64,
+        signatureBase64,
+      });
+      const signedAt = new Date().toISOString();
+      setGeneratedPdfBase64(signedPdfBase64);
+      setIsSigned(true);
+      setShowSignaturePrompt(false);
+      setIsEmbeddingSignature(false);
+
+      const signedFileName = generatedFileName.replace(/\.pdf$/i, "-signe.pdf");
+      downloadBase64Pdf(signedPdfBase64, signedFileName);
+
+      try {
+        await onSigned?.(signedAt);
+      } catch (err) {
+        console.warn("[GenerateBar] onSigned a échoué:", err);
+      }
+
+      if (clientEmail.trim()) {
+        setShowEmailPrompt(true);
+      } else {
+        setIsSuccess(true);
+      }
+    } catch (err) {
+      setIsEmbeddingSignature(false);
+      setGenerationError(
+        err instanceof Error ? err.message : "Erreur lors de l'intégration de la signature",
+      );
+    }
+  };
+
+  const handleSkipSignature = () => {
+    if (!generatedPdfBase64) return;
+    setShowSignaturePrompt(false);
+    finalizeAfterDownload(generatedPdfBase64, generatedFileName);
   };
 
   const handleSendEmail = async () => {
@@ -115,6 +194,8 @@ const GenerateBar = ({
   };
 
   const filledDots = Math.min(documentsUploaded, MAX_DOTS);
+
+  const lockClose = isGenerating || isSendingEmail || isEmbeddingSignature;
 
   return (
     <>
@@ -180,11 +261,14 @@ const GenerateBar = ({
             className="fixed left-0 top-0 z-[9998] h-[100vh] w-[100vw] animate-in fade-in-0 duration-200"
             style={{ background: "rgba(0,0,0,0.5)" }}
             onClick={() => {
-              if (!isGenerating && !isSendingEmail) setModalOpen(false);
+              if (!lockClose) setModalOpen(false);
             }}
           />
           <div
-            className="fixed inset-0 z-[9999] flex animate-in fade-in-0 flex-col overflow-y-auto border border-border bg-[#1A1D27] p-5 duration-200 md:inset-auto md:left-1/2 md:top-10 md:block md:h-auto md:max-h-[calc(100vh-4rem)] md:w-[calc(100vw-2rem)] md:max-w-[400px] md:-translate-x-1/2 md:rounded-2xl md:p-7 md:slide-in-from-top-4"
+            className={cn(
+              "fixed inset-0 z-[9999] flex animate-in fade-in-0 flex-col overflow-y-auto border border-border bg-[#1A1D27] p-5 duration-200 md:inset-auto md:left-1/2 md:top-10 md:block md:h-auto md:max-h-[calc(100vh-4rem)] md:w-[calc(100vw-2rem)] md:-translate-x-1/2 md:rounded-2xl md:p-7 md:slide-in-from-top-4",
+              showSignaturePrompt ? "md:max-w-[520px]" : "md:max-w-[400px]",
+            )}
             style={{
               paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))",
             }}
@@ -201,9 +285,11 @@ const GenerateBar = ({
                 ? "Limite atteinte"
                 : isGenerating
                   ? "Génération en cours..."
-                  : showEmailPrompt
-                    ? "Envoi par email"
-                  : "Bon de commande"}
+                  : showSignaturePrompt
+                    ? "Faire signer le client"
+                    : showEmailPrompt
+                      ? "Envoi par email"
+                    : "Bon de commande"}
             </h2>
 
             {quotaBlocked && (
@@ -244,10 +330,49 @@ const GenerateBar = ({
               </div>
             )}
 
+            {!quotaBlocked && !isGenerating && showSignaturePrompt && (
+              <div className="flex flex-col gap-4">
+                <p className="text-center text-sm text-foreground">
+                  Faites signer votre client ci-dessous, puis téléchargez le bon de
+                  commande signé.
+                </p>
+                {isEmbeddingSignature ? (
+                  <div className="flex flex-col items-center gap-3 py-6">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
+                    <p className="text-sm text-muted-foreground">
+                      Intégration de la signature dans le PDF…
+                    </p>
+                  </div>
+                ) : (
+                  <SignaturePad onValidate={handleValidateSignature} />
+                )}
+                <div className="flex justify-center pt-1">
+                  <button
+                    type="button"
+                    className="btn-secondary cursor-pointer px-3 py-2 text-xs"
+                    onClick={handleSkipSignature}
+                    disabled={isEmbeddingSignature}
+                  >
+                    Télécharger sans signature
+                  </button>
+                </div>
+                {generationError && (
+                  <p className="text-center text-xs text-destructive">{generationError}</p>
+                )}
+              </div>
+            )}
+
             {!quotaBlocked && !isGenerating && showEmailPrompt && (
               <div className="flex flex-col items-center gap-5">
+                {isSigned && (
+                  <div className="flex items-center gap-2 rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> PDF signé
+                  </div>
+                )}
                 <p className="text-center text-sm text-foreground">
-                  Envoyer le bon de commande par email à {clientEmail} ?
+                  Envoyer le bon de commande {isSigned ? "signé " : ""}par email à
+                  {" "}
+                  {clientEmail} ?
                 </p>
                 <div className="flex w-full justify-center gap-3">
                   <button
@@ -273,10 +398,19 @@ const GenerateBar = ({
               </div>
             )}
 
-            {!quotaBlocked && isSuccess && !showEmailPrompt && (
+            {!quotaBlocked && isSuccess && !showEmailPrompt && !showSignaturePrompt && (
               <div className="flex flex-col items-center gap-5">
+                {isSigned && (
+                  <div className="flex items-center gap-2 rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> PDF signé
+                  </div>
+                )}
                 <p className="text-center text-sm text-foreground">
-                  {emailSent ? "Email envoyé ✅" : "Bon de commande généré avec succès"}
+                  {emailSent
+                    ? "Email envoyé ✅"
+                    : isSigned
+                      ? "Bon de commande signé téléchargé."
+                      : "Bon de commande généré avec succès"}
                 </p>
                 <div className="flex w-full justify-center gap-3">
                   <button
@@ -297,18 +431,21 @@ const GenerateBar = ({
               </div>
             )}
 
-            {!quotaBlocked && !isGenerating && generationError && (
-              <div className="flex flex-col items-center gap-4">
-                <p className="text-center text-sm text-destructive">{generationError}</p>
-                <button
-                  type="button"
-                  className="btn-secondary cursor-pointer px-4 py-2.5 text-sm"
-                  onClick={() => setModalOpen(false)}
-                >
-                  Fermer
-                </button>
-              </div>
-            )}
+            {!quotaBlocked &&
+              !isGenerating &&
+              !showSignaturePrompt &&
+              generationError && (
+                <div className="flex flex-col items-center gap-4">
+                  <p className="text-center text-sm text-destructive">{generationError}</p>
+                  <button
+                    type="button"
+                    className="btn-secondary cursor-pointer px-4 py-2.5 text-sm"
+                    onClick={() => setModalOpen(false)}
+                  >
+                    Fermer
+                  </button>
+                </div>
+              )}
           </div>
         </>
       )}

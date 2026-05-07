@@ -62,6 +62,14 @@ export type BonDraftData = {
   customFieldsValues: Record<string, string>;
 
   documentsScanned: Record<string, DocumentScannedState>;
+
+  /**
+   * Vrai dès qu'un PDF signé a été généré pour ce brouillon.
+   * Persisté dans `vehicle_field_values.signed` pour ne pas modifier le schéma.
+   */
+  signed?: boolean;
+  /** Date ISO de la signature (si `signed === true`). */
+  signedAt?: string;
 };
 
 type BrouillonRow = {
@@ -192,6 +200,8 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     vehiculeDateLivraison: row.vehicule_date_livraison ?? "",
     customFieldsValues: parseStringDict(rawKv.custom_fields_values),
     documentsScanned: sanitizeScannedDocuments(row.documents_scanned),
+    signed: kvStr.signed === "true",
+    signedAt: kvStr.signed_at || undefined,
   };
 }
 
@@ -210,6 +220,8 @@ function draftToPayload(d: BonDraftData) {
     stock_donnees: d.stockDonnees ?? {},
     stock_colonnes: Array.isArray(d.stockColonnes) ? d.stockColonnes : [],
     custom_fields_values: d.customFieldsValues ?? {},
+    signed: d.signed ? "true" : "false",
+    signed_at: d.signedAt ?? "",
   };
   return {
     client_nom: d.clientNom,
@@ -267,6 +279,60 @@ export async function getDraft(id: string): Promise<BonDraftData | undefined> {
   }
   if (!data) return undefined;
   return rowToDraft(data as BrouillonRow);
+}
+
+/**
+ * Marque un brouillon comme signé (le bon de commande a été signé par le
+ * client). Utilisé après un upload réussi du PDF signé. La donnée est
+ * persistée dans `vehicle_field_values` (clé `signed` + `signed_at`).
+ */
+export async function markDraftSigned(
+  id: string,
+  signedAt: string = new Date().toISOString(),
+): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
+  const { data: existing, error: readError } = await supabase
+    .from("brouillons")
+    .select("vehicle_field_values")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (readError || !existing) {
+    console.error("markDraftSigned read:", readError);
+    return;
+  }
+
+  const currentKv =
+    existing.vehicle_field_values && typeof existing.vehicle_field_values === "object"
+      ? (existing.vehicle_field_values as Record<string, unknown>)
+      : {};
+
+  const nextKv = {
+    ...currentKv,
+    signed: "true",
+    signed_at: signedAt,
+  };
+
+  const { error } = await supabase
+    .from("brouillons")
+    .update({
+      vehicle_field_values: nextKv,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("markDraftSigned update:", error);
+    return;
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("autodocs_drafts_updated"));
+  }
 }
 
 export async function deleteDraft(id: string): Promise<void> {

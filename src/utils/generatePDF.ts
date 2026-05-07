@@ -1,4 +1,4 @@
-function downloadBase64Pdf(base64: string, filename: string) {
+export function downloadBase64Pdf(base64: string, filename: string) {
   const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   const blob = new Blob([bytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
@@ -18,6 +18,16 @@ type SendPdfEmailPayload = {
   vendeurNom: string;
 };
 
+type GeneratePdfOptions = {
+  /**
+   * Si `true`, déclenche le téléchargement automatique du PDF dans le
+   * navigateur (comportement historique). Mettre à `false` pour orchestrer
+   * un flow de signature avant le téléchargement final.
+   * @default true
+   */
+  download?: boolean;
+};
+
 /**
  * Génère un bon de commande PDF via le template HTML côté serveur.
  * Envoie toutes les données du formulaire (standard + custom) à /api/generate-pdf
@@ -25,8 +35,9 @@ type SendPdfEmailPayload = {
  */
 export async function generatePDF(
   formData: Record<string, string>,
-  _templateId?: string,
+  options: GeneratePdfOptions = {},
 ) {
+  const { download = true } = options;
   const nonEmpty = Object.entries(formData).filter(([, v]) => v.trim() !== "");
   console.log(`[generatePDF] Envoi de ${nonEmpty.length} champs à /api/generate-pdf`);
 
@@ -69,12 +80,42 @@ export async function generatePDF(
   }
 
   const fileName = `bon-de-commande-${new Date().toISOString().slice(0, 10)}.pdf`;
-  downloadBase64Pdf(json.pdfBase64, fileName);
+  if (download) {
+    downloadBase64Pdf(json.pdfBase64, fileName);
+  }
 
   return {
     pdfBase64: json.pdfBase64,
     fileName,
   };
+}
+
+/**
+ * Intègre une signature client (PNG en base64) dans un PDF généré.
+ * Renvoie le PDF modifié encodé en base64.
+ */
+export async function embedSignatureInPdf(payload: {
+  pdfBase64: string;
+  signatureBase64: string;
+}): Promise<{ pdfBase64: string }> {
+  const { apiFetch } = await import("@/lib/apiClient");
+  const response = await apiFetch("/api/embed-signature", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errBody = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(
+      errBody?.error || `Erreur intégration signature (${response.status})`,
+    );
+  }
+
+  const json = (await response.json()) as { pdfBase64?: string };
+  if (!json?.pdfBase64) {
+    throw new Error("Réponse invalide du serveur signature.");
+  }
+  return { pdfBase64: json.pdfBase64 };
 }
 
 export async function sendPdfByEmail(payload: SendPdfEmailPayload): Promise<void> {

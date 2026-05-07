@@ -190,6 +190,31 @@ const NouveauBon = () => {
     }
   };
 
+  /**
+   * Appelé par GenerateBar après une signature réussie. Persiste le brouillon
+   * avec `signed = true` et `signedAt`. Crée le brouillon s'il n'existait pas
+   * encore (cas d'un PDF généré sans sauvegarde manuelle préalable).
+   */
+  const handleSigned = useCallback(
+    async (signedAt: string) => {
+      try {
+        const saved = await upsertDraft({ ...formState, signed: true, signedAt });
+        setFormState((prev) => ({
+          ...prev,
+          id: saved.id,
+          signed: true,
+          signedAt,
+        }));
+        toast({ title: "Bon de commande signé", description: "Le brouillon a été marqué comme signé." });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Impossible d'enregistrer la signature.";
+        toast({ title: "Échec d'enregistrement", description: message, variant: "destructive" });
+      }
+    },
+    [formState],
+  );
+
   return (
     <>
       <TopBar
@@ -309,6 +334,7 @@ const NouveauBon = () => {
         }
         vendeurNom="Votre conseiller"
         templateId=""
+        onSigned={handleSigned}
       />
     </>
   );

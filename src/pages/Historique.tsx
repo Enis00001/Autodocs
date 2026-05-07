@@ -128,16 +128,30 @@ const Historique = () => {
                           {formatDate(d.createdAt)}
                         </td>
                         <td className="hidden py-3 md:table-cell">
-                          <span
-                            className={cn(
-                              "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                              complet
-                                ? "bg-success/15 text-success"
-                                : "bg-amber-500/15 text-amber-400",
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={cn(
+                                "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                                complet
+                                  ? "bg-success/15 text-success"
+                                  : "bg-amber-500/15 text-amber-400",
+                              )}
+                            >
+                              {complet ? "Complet" : "En cours"}
+                            </span>
+                            {d.signed && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success"
+                                title={
+                                  d.signedAt
+                                    ? `Signé le ${new Date(d.signedAt).toLocaleDateString("fr-FR")}`
+                                    : "Signé"
+                                }
+                              >
+                                Signé ✅
+                              </span>
                             )}
-                          >
-                            {complet ? "Complet" : "En cours"}
-                          </span>
+                          </div>
                         </td>
                         <td className="py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5 md:gap-2">
