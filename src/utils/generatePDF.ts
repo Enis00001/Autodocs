@@ -16,6 +16,24 @@ type SendPdfEmailPayload = {
   clientPrenom: string;
   vehiculeModele: string;
   vendeurNom: string;
+  /** Email du vendeur (pour la confirmation de signature client). */
+  vendeurEmail?: string;
+  /** ID du brouillon — permet de relier la `signature_request` au brouillon. */
+  brouillonId?: string;
+  /** Données du formulaire (sérialisables) pour permettre au lien de signature
+   *  publique de re-rendre le PDF avec les deux signatures. */
+  formData?: Record<string, string>;
+  /** Signature vendeur déjà capturée (base64 PNG). */
+  signatureVendeurBase64?: string;
+};
+
+export type SendPdfEmailResult = {
+  ok: true;
+  signatureRequest?: {
+    token: string;
+    signUrl: string;
+    expiresAt: string;
+  };
 };
 
 type GeneratePdfOptions = {
@@ -91,12 +109,14 @@ export async function generatePDF(
 }
 
 /**
- * Intègre une signature client (PNG en base64) dans un PDF généré.
- * Renvoie le PDF modifié encodé en base64.
+ * Intègre une signature (vendeur et/ou client) dans le PDF en re-rendant le
+ * HTML serveur-side avec les zones {{signature_vendeur}} / {{signature_client}}
+ * remplacées par des balises <img>. Renvoie le PDF résultant en base64.
  */
 export async function embedSignatureInPdf(payload: {
-  pdfBase64: string;
-  signatureBase64: string;
+  formData: Record<string, string>;
+  signatureVendeurBase64?: string;
+  signatureClientBase64?: string;
 }): Promise<{ pdfBase64: string }> {
   const { apiFetch } = await import("@/lib/apiClient");
   const response = await apiFetch("/api/embed-signature", {
@@ -118,7 +138,33 @@ export async function embedSignatureInPdf(payload: {
   return { pdfBase64: json.pdfBase64 };
 }
 
-export async function sendPdfByEmail(payload: SendPdfEmailPayload): Promise<void> {
+/**
+ * Re-envoie l'email contenant le lien de signature pour un brouillon donné.
+ * Réutilise le token existant si la signature_request n'est pas expirée,
+ * sinon en crée une nouvelle (avec le PDF déjà persisté).
+ */
+export async function resendSignatureEmail(payload: {
+  brouillonId?: string;
+  token?: string;
+}): Promise<{ ok: true; token: string; signUrl: string; expiresAt: string }> {
+  const { apiFetch } = await import("@/lib/apiClient");
+  const response = await apiFetch("/api/resend-signature-email", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const errBody = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(errBody?.error || `Erreur renvoi du lien (${response.status})`);
+  }
+  return (await response.json()) as {
+    ok: true;
+    token: string;
+    signUrl: string;
+    expiresAt: string;
+  };
+}
+
+export async function sendPdfByEmail(payload: SendPdfEmailPayload): Promise<SendPdfEmailResult> {
   const { apiFetch } = await import("@/lib/apiClient");
   const response = await apiFetch("/api/send-pdf-email", {
     method: "POST",
@@ -129,4 +175,9 @@ export async function sendPdfByEmail(payload: SendPdfEmailPayload): Promise<void
     const errBody = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(errBody?.error || `Erreur envoi email (${response.status})`);
   }
+
+  const json = (await response.json().catch(() => ({}))) as {
+    signatureRequest?: { token: string; signUrl: string; expiresAt: string };
+  };
+  return { ok: true, signatureRequest: json.signatureRequest };
 }

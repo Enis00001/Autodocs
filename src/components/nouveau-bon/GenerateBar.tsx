@@ -22,14 +22,23 @@ type GenerateBarProps = {
   clientPrenom?: string;
   vehiculeModele?: string;
   vendeurNom?: string;
+  /** Email du vendeur courant — utilisé pour la confirmation de signature client. */
+  vendeurEmail?: string;
+  /** ID du brouillon courant (sauvegardé). Optionnel. */
+  brouillonId?: string;
   /** Conservé pour compat API ; inutilisé. */
   templateId: string;
   /**
-   * Callback déclenché quand le PDF a été signé avec succès. Permet à la
-   * page parente de persister le brouillon avec `signed = true` et de mettre
-   * à jour son state local. Reçoit la date ISO de signature.
+   * Callback déclenché quand le PDF a été signé (côté vendeur) avec succès.
+   * Permet à la page parente de persister le brouillon avec `signed = true`
+   * et de mettre à jour son state local. Reçoit la date ISO de signature.
    */
   onSigned?: (signedAt: string) => void | Promise<void>;
+  /**
+   * Callback optionnel déclenché après l'envoi de l'email de signature
+   * (lien public envoyé au client). Reçoit le token unique.
+   */
+  onSignatureRequestSent?: (token: string) => void | Promise<void>;
 };
 
 const MAX_DOTS = 6;
@@ -43,8 +52,11 @@ const GenerateBar = ({
   clientPrenom = "",
   vehiculeModele = "Véhicule",
   vendeurNom = "Votre conseiller",
+  vendeurEmail = "",
+  brouillonId,
   templateId: _templateId,
   onSigned,
+  onSignatureRequestSent,
 }: GenerateBarProps) => {
   void _templateId;
   const [modalOpen, setModalOpen] = useState(false);
@@ -56,6 +68,8 @@ const GenerateBar = ({
   const [showSignaturePrompt, setShowSignaturePrompt] = useState(false);
   const [isEmbeddingSignature, setIsEmbeddingSignature] = useState(false);
   const [isSigned, setIsSigned] = useState(false);
+  const [signatureVendeurBase64, setSignatureVendeurBase64] = useState<string | null>(null);
+  const [signatureRequestUrl, setSignatureRequestUrl] = useState<string | null>(null);
   const [generatedPdfBase64, setGeneratedPdfBase64] = useState<string | null>(null);
   const [generatedFileName, setGeneratedFileName] = useState<string>("");
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -75,6 +89,8 @@ const GenerateBar = ({
     setShowSignaturePrompt(false);
     setIsEmbeddingSignature(false);
     setIsSigned(false);
+    setSignatureVendeurBase64(null);
+    setSignatureRequestUrl(null);
     setGeneratedPdfBase64(null);
     setGeneratedFileName("");
     setGenerationError(null);
@@ -132,12 +148,15 @@ const GenerateBar = ({
     setIsEmbeddingSignature(true);
     setGenerationError(null);
     try {
+      // On re-rend le PDF côté serveur en injectant la signature vendeur
+      // dans la zone HTML « Cachet & signature » via {{signature_vendeur}}.
       const { pdfBase64: signedPdfBase64 } = await embedSignatureInPdf({
-        pdfBase64: generatedPdfBase64,
-        signatureBase64,
+        formData,
+        signatureVendeurBase64: signatureBase64,
       });
       const signedAt = new Date().toISOString();
       setGeneratedPdfBase64(signedPdfBase64);
+      setSignatureVendeurBase64(signatureBase64);
       setIsSigned(true);
       setShowSignaturePrompt(false);
       setIsEmbeddingSignature(false);
@@ -175,18 +194,30 @@ const GenerateBar = ({
     setIsSendingEmail(true);
     setGenerationError(null);
     try {
-      await sendPdfByEmail({
+      const result = await sendPdfByEmail({
         pdfBase64: generatedPdfBase64,
         clientEmail: clientEmail.trim(),
         clientNom: clientNom.trim(),
         clientPrenom: clientPrenom.trim(),
         vehiculeModele: vehiculeModele.trim() || "Véhicule",
         vendeurNom: vendeurNom.trim() || "Votre conseiller",
+        vendeurEmail: vendeurEmail.trim() || undefined,
+        brouillonId,
+        formData,
+        signatureVendeurBase64: signatureVendeurBase64 ?? undefined,
       });
       setIsSendingEmail(false);
       setShowEmailPrompt(false);
       setEmailSent(true);
       setIsSuccess(true);
+      if (result.signatureRequest?.signUrl) {
+        setSignatureRequestUrl(result.signatureRequest.signUrl);
+        try {
+          await onSignatureRequestSent?.(result.signatureRequest.token);
+        } catch (err) {
+          console.warn("[GenerateBar] onSignatureRequestSent a échoué:", err);
+        }
+      }
     } catch (err) {
       setIsSendingEmail(false);
       setGenerationError(err instanceof Error ? err.message : "Erreur lors de l'envoi de l'email");
@@ -286,7 +317,7 @@ const GenerateBar = ({
                 : isGenerating
                   ? "Génération en cours..."
                   : showSignaturePrompt
-                    ? "Faire signer le client"
+                    ? "Signature du vendeur"
                     : showEmailPrompt
                       ? "Envoi par email"
                     : "Bon de commande"}
@@ -333,8 +364,8 @@ const GenerateBar = ({
             {!quotaBlocked && !isGenerating && showSignaturePrompt && (
               <div className="flex flex-col gap-4">
                 <p className="text-center text-sm text-foreground">
-                  Faites signer votre client ci-dessous, puis téléchargez le bon de
-                  commande signé.
+                  Signez ci-dessous (zone « Cachet & signature » du vendeur).
+                  La signature client se fera ensuite via le lien envoyé par email.
                 </p>
                 {isEmbeddingSignature ? (
                   <div className="flex flex-col items-center gap-3 py-6">
@@ -366,13 +397,16 @@ const GenerateBar = ({
               <div className="flex flex-col items-center gap-5">
                 {isSigned && (
                   <div className="flex items-center gap-2 rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> PDF signé
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Vendeur signé
                   </div>
                 )}
                 <p className="text-center text-sm text-foreground">
-                  Envoyer le bon de commande {isSigned ? "signé " : ""}par email à
-                  {" "}
-                  {clientEmail} ?
+                  Envoyer le bon de commande {isSigned ? "signé par le vendeur " : ""}
+                  par email à <strong>{clientEmail}</strong> ?
+                </p>
+                <p className="text-center text-xs text-muted-foreground">
+                  Un lien de signature électronique sera inclus pour permettre au
+                  client de signer en ligne.
                 </p>
                 <div className="flex w-full justify-center gap-3">
                   <button
@@ -402,7 +436,7 @@ const GenerateBar = ({
               <div className="flex flex-col items-center gap-5">
                 {isSigned && (
                   <div className="flex items-center gap-2 rounded-full bg-success/15 px-3 py-1 text-xs font-semibold text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> PDF signé
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Vendeur signé
                   </div>
                 )}
                 <p className="text-center text-sm text-foreground">
@@ -412,6 +446,16 @@ const GenerateBar = ({
                       ? "Bon de commande signé téléchargé."
                       : "Bon de commande généré avec succès"}
                 </p>
+                {emailSent && signatureRequestUrl && (
+                  <div className="w-full rounded-lg border border-border bg-muted/40 p-3 text-xs">
+                    <p className="mb-2 text-muted-foreground">
+                      Lien de signature électronique envoyé au client :
+                    </p>
+                    <code className="break-all text-[11px] text-foreground/90">
+                      {signatureRequestUrl}
+                    </code>
+                  </div>
+                )}
                 <div className="flex w-full justify-center gap-3">
                   <button
                     type="button"

@@ -14,6 +14,7 @@ import { BonDraftData, loadDrafts, deleteDraft } from "@/utils/drafts";
 import { getCurrentUserId } from "@/lib/auth";
 import { loadStockVehicules } from "@/utils/stockVehicules";
 import { isDraftFormComplete } from "@/utils/bonFormCompletion";
+import SignatureStatusBadge from "@/components/SignatureStatusBadge";
 import { cn } from "@/lib/utils";
 
 const isCurrentMonth = (iso: string) => {
@@ -235,18 +236,7 @@ const Dashboard = () => {
                               >
                                 {complet ? "Complet" : "En cours"}
                               </span>
-                              {d.signed && (
-                                <span
-                                  className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success"
-                                  title={
-                                    d.signedAt
-                                      ? `Signé le ${new Date(d.signedAt).toLocaleDateString("fr-FR")}`
-                                      : "Signé"
-                                  }
-                                >
-                                  Signé ✅
-                                </span>
-                              )}
+                              <SignatureStatusBadge draft={d} showResendButton />
                             </div>
                           </td>
                           <td className="py-3 text-right">

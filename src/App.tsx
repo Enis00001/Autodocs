@@ -20,6 +20,7 @@ import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/Login";
 import InscriptionPage from "./pages/Inscription";
 import ConfirmationEmailPage from "./pages/ConfirmationEmail";
+import SignerDocument from "./pages/SignerDocument";
 import { supabase } from "./lib/supabase";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -154,6 +155,10 @@ const App = () => {
               {/* Landing publique : accessible à tout le monde, y compris
                   aux utilisateurs connectés qui veulent revenir dessus. */}
               <Route path="/" element={<LandingRedirect />} />
+
+              {/* Page publique de signature électronique. Accessible SANS
+                  authentification : le token UUID v4 sert de clé secrète. */}
+              <Route path="/signer/:token" element={<SignerDocument />} />
 
               <Route
                 path="/login"

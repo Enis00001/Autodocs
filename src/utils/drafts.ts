@@ -64,12 +64,22 @@ export type BonDraftData = {
   documentsScanned: Record<string, DocumentScannedState>;
 
   /**
-   * Vrai dès qu'un PDF signé a été généré pour ce brouillon.
-   * Persisté dans `vehicle_field_values.signed` pour ne pas modifier le schéma.
+   * Vrai dès qu'un PDF signé par le vendeur a été généré pour ce brouillon.
+   * Persisté dans `vehicle_field_values.signed`.
    */
   signed?: boolean;
-  /** Date ISO de la signature (si `signed === true`). */
+  /** Date ISO de la signature vendeur (si `signed === true`). */
   signedAt?: string;
+  /**
+   * Token de la dernière demande de signature client envoyée par email.
+   * Permet d'afficher un statut « En attente de signature client » et
+   * d'offrir un bouton « Renvoyer le lien ».
+   */
+  signatureRequestToken?: string;
+  /** Date ISO d'envoi du dernier email de demande de signature. */
+  signatureRequestSentAt?: string;
+  /** Date ISO de signature côté client (signature via /signer/:token). */
+  clientSignedAt?: string;
 };
 
 type BrouillonRow = {
@@ -202,6 +212,9 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     documentsScanned: sanitizeScannedDocuments(row.documents_scanned),
     signed: kvStr.signed === "true",
     signedAt: kvStr.signed_at || undefined,
+    signatureRequestToken: kvStr.signature_request_token || undefined,
+    signatureRequestSentAt: kvStr.signature_request_sent_at || undefined,
+    clientSignedAt: kvStr.client_signed_at || undefined,
   };
 }
 
@@ -222,6 +235,9 @@ function draftToPayload(d: BonDraftData) {
     custom_fields_values: d.customFieldsValues ?? {},
     signed: d.signed ? "true" : "false",
     signed_at: d.signedAt ?? "",
+    signature_request_token: d.signatureRequestToken ?? "",
+    signature_request_sent_at: d.signatureRequestSentAt ?? "",
+    client_signed_at: d.clientSignedAt ?? "",
   };
   return {
     client_nom: d.clientNom,
@@ -327,6 +343,61 @@ export async function markDraftSigned(
 
   if (error) {
     console.error("markDraftSigned update:", error);
+    return;
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("autodocs_drafts_updated"));
+  }
+}
+
+/**
+ * Trace dans le brouillon qu'une demande de signature électronique a été
+ * envoyée au client (token + date d'envoi). Utilisé pour afficher
+ * « En attente de signature client » dans la liste des brouillons.
+ */
+export async function markDraftSignatureRequestSent(
+  id: string,
+  token: string,
+  sentAt: string = new Date().toISOString(),
+): Promise<void> {
+  const userId = await getCurrentUserId();
+  if (!userId) return;
+
+  const { data: existing, error: readError } = await supabase
+    .from("brouillons")
+    .select("vehicle_field_values")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (readError || !existing) {
+    console.error("markDraftSignatureRequestSent read:", readError);
+    return;
+  }
+
+  const currentKv =
+    existing.vehicle_field_values && typeof existing.vehicle_field_values === "object"
+      ? (existing.vehicle_field_values as Record<string, unknown>)
+      : {};
+
+  const nextKv = {
+    ...currentKv,
+    signature_request_token: token,
+    signature_request_sent_at: sentAt,
+  };
+
+  const { error } = await supabase
+    .from("brouillons")
+    .update({
+      vehicle_field_values: nextKv,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("markDraftSignatureRequestSent update:", error);
     return;
   }
 

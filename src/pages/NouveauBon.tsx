@@ -10,7 +10,13 @@ import GenerateBar, { countMissingMandatoryFields } from "@/components/nouveau-b
 import { BonFormStepper, computeBonStep } from "@/components/nouveau-bon/BonFormStepper";
 import { toast } from "@/hooks/use-toast";
 import { usePreferencesFormulaire } from "@/hooks/usePreferencesFormulaire";
-import { BonDraftData, getDraft, upsertDraft } from "@/utils/drafts";
+import {
+  BonDraftData,
+  getDraft,
+  markDraftSignatureRequestSent,
+  upsertDraft,
+} from "@/utils/drafts";
+import { supabase } from "@/lib/supabase";
 import { isFieldEnabled, isStockColumnVisible, type FormFieldPrefs } from "@/utils/formPreferences";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
@@ -97,10 +103,23 @@ const NouveauBon = () => {
   const navigate = useNavigate();
   const params = useParams<{ id: string }>();
   const [formState, setFormState] = useState<DraftFormState>(defaultFormState);
+  const [vendeurEmail, setVendeurEmail] = useState<string>("");
   const [autoFilledClientFields, setAutoFilledClientFields] = useState<
     Array<"clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse">
   >([]);
   const { formPrefs } = usePreferencesFormulaire();
+
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      const email = data.user?.email ?? "";
+      if (email) setVendeurEmail(email);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const step = useMemo(
     () => computeBonStep(formState),
@@ -191,9 +210,9 @@ const NouveauBon = () => {
   };
 
   /**
-   * Appelé par GenerateBar après une signature réussie. Persiste le brouillon
-   * avec `signed = true` et `signedAt`. Crée le brouillon s'il n'existait pas
-   * encore (cas d'un PDF généré sans sauvegarde manuelle préalable).
+   * Appelé par GenerateBar après la signature vendeur réussie. Persiste le
+   * brouillon avec `signed = true` et `signedAt`. Crée le brouillon s'il
+   * n'existait pas encore (cas d'un PDF généré sans sauvegarde manuelle).
    */
   const handleSigned = useCallback(
     async (signedAt: string) => {
@@ -205,7 +224,7 @@ const NouveauBon = () => {
           signed: true,
           signedAt,
         }));
-        toast({ title: "Bon de commande signé", description: "Le brouillon a été marqué comme signé." });
+        toast({ title: "Bon signé par le vendeur", description: "Le brouillon a été marqué comme signé." });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Impossible d'enregistrer la signature.";
@@ -213,6 +232,30 @@ const NouveauBon = () => {
       }
     },
     [formState],
+  );
+
+  /**
+   * Appelé après envoi de l'email de signature au client : trace le token
+   * dans le brouillon pour permettre l'affichage du statut « En attente de
+   * signature client » dans le tableau de bord.
+   */
+  const handleSignatureRequestSent = useCallback(
+    async (token: string) => {
+      const draftId = formState.id;
+      if (!draftId) return;
+      const sentAt = new Date().toISOString();
+      try {
+        await markDraftSignatureRequestSent(draftId, token, sentAt);
+        setFormState((prev) => ({
+          ...prev,
+          signatureRequestToken: token,
+          signatureRequestSentAt: sentAt,
+        }));
+      } catch (err) {
+        console.warn("[NouveauBon] markDraftSignatureRequestSent a échoué:", err);
+      }
+    },
+    [formState.id],
   );
 
   return (
@@ -333,8 +376,11 @@ const NouveauBon = () => {
           "Véhicule"
         }
         vendeurNom="Votre conseiller"
+        vendeurEmail={vendeurEmail}
+        brouillonId={formState.id}
         templateId=""
         onSigned={handleSigned}
+        onSignatureRequestSent={handleSignatureRequestSent}
       />
     </>
   );

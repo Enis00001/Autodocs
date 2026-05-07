@@ -148,3 +148,42 @@ CREATE POLICY "user_own_preferences" ON preferences_formulaire
   FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
+
+-- ----------------------------------------------------------------------------
+-- 8. signature_requests
+--    Demandes de signature électronique envoyées au client par email.
+--    Le client signe via un lien public /signer/:token (sans authentification),
+--    donc les API exposent les données via service-role + token UUID v4.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS signature_requests (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  token              text UNIQUE NOT NULL,
+  brouillon_id       text,
+  user_id            uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  client_email       text NOT NULL,
+  client_nom         text,
+  client_prenom      text,
+  vendeur_email      text,
+  vendeur_nom        text,
+  vehicule_modele    text,
+  pdf_base64         text NOT NULL,
+  form_data          jsonb NOT NULL DEFAULT '{}'::jsonb,
+  signature_vendeur  text,
+  signature_client   text,
+  signed_at          timestamptz,
+  expires_at         timestamptz NOT NULL DEFAULT (now() + interval '7 days'),
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_signature_requests_brouillon_id
+  ON signature_requests (brouillon_id);
+CREATE INDEX IF NOT EXISTS idx_signature_requests_user_id
+  ON signature_requests (user_id);
+CREATE INDEX IF NOT EXISTS idx_signature_requests_token
+  ON signature_requests (token);
+
+-- L'API /signer/:token (publique, anonyme) doit pouvoir lire la ligne
+-- correspondante via le token. Les API serveur utilisent SUPABASE_SERVICE_ROLE_KEY
+-- pour bypass RLS — on désactive RLS ici pour ne pas dépendre d'une policy
+-- complexe (le token UUID v4 sert de secret).
+ALTER TABLE signature_requests DISABLE ROW LEVEL SECURITY;

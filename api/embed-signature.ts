@@ -1,37 +1,43 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { buildHtml, renderPdfFromHtml } from "./_lib/bon-template";
 
 type EmbedSignatureBody = {
+  /**
+   * Données du formulaire (mêmes clés que celles envoyées à /api/generate-pdf).
+   * Permettent de re-rendre le HTML avec la signature insérée.
+   */
+  formData?: Record<string, string>;
+  /**
+   * Signature vendeur (base64 PNG, data URL acceptée). Insérée dans la zone
+   * « Cachet & signature » via le placeholder {{signature_vendeur}} du
+   * template HTML.
+   */
+  signatureVendeurBase64?: string;
+  /**
+   * Signature client (optionnel — utilisé par /api/complete-signature pour
+   * produire le PDF final avec les deux signatures). Insérée dans la zone
+   * « L'acheteur ».
+   */
+  signatureClientBase64?: string;
+  /**
+   * @deprecated — ancien contrat (PDF déjà généré + signature en base64).
+   * Conservé pour compat ; déclenche désormais une erreur explicite invitant
+   * à passer `formData`.
+   */
   pdfBase64?: string;
   signatureBase64?: string;
 };
 
 /**
- * Coordonnées de la signature dans le PDF généré (origine en bas à gauche,
- * conforme à pdf-lib).
+ * Endpoint POST /api/embed-signature
  *
- * Le template HTML (api/generate-pdf.ts) place deux blocs de signature en bas
- * de page (acheteur à gauche, vendeur à droite). On dépose ici la signature
- * du client dans la zone « signature client ». Les valeurs ont été calibrées
- * sur un A4 (595×842 pt) ; ajustez si vous personnalisez le template.
+ * Reçoit `{ formData, signatureVendeurBase64 [, signatureClientBase64] }`
+ * et reconstruit le PDF en intégrant les images de signature directement
+ * dans les zones HTML du template (`{{signature_vendeur}}` /
+ * `{{signature_client}}`), évitant ainsi la pose à coordonnées fixes.
+ *
+ * Renvoie `{ pdfBase64 }`.
  */
-const SIGNATURE_BOX = {
-  x: 350,
-  y: 50,
-  width: 150,
-  height: 60,
-};
-
-function decodeBase64Png(input: string): Buffer {
-  const cleaned = input.replace(/^data:image\/png;base64,/, "").trim();
-  return Buffer.from(cleaned, "base64");
-}
-
-function decodeBase64Pdf(input: string): Buffer {
-  const cleaned = input.replace(/^data:application\/pdf;base64,/, "").trim();
-  return Buffer.from(cleaned, "base64");
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -49,56 +55,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     body = req.body as EmbedSignatureBody;
   }
 
-  const pdfBase64 = String(body.pdfBase64 ?? "").trim();
-  const signatureBase64 = String(body.signatureBase64 ?? "").trim();
+  // Compat : on rejette explicitement l'ancien contrat (pdfBase64 +
+  // signatureBase64). Les clients à jour envoient désormais formData +
+  // signatureVendeurBase64.
+  if (body.pdfBase64 && !body.formData) {
+    return res.status(400).json({
+      error:
+        "Contrat obsolète : envoyez `formData` + `signatureVendeurBase64` pour permettre l'incrustation HTML.",
+    });
+  }
 
-  if (!pdfBase64) return res.status(400).json({ error: "pdfBase64 requis" });
-  if (!signatureBase64) {
-    return res.status(400).json({ error: "signatureBase64 requis" });
+  const formData = body.formData;
+  const signatureVendeurBase64 =
+    body.signatureVendeurBase64?.trim() || body.signatureBase64?.trim() || "";
+  const signatureClientBase64 = body.signatureClientBase64?.trim() || "";
+
+  if (!formData || typeof formData !== "object") {
+    return res.status(400).json({ error: "formData requis" });
+  }
+  if (!signatureVendeurBase64 && !signatureClientBase64) {
+    return res
+      .status(400)
+      .json({ error: "Au moins une signature (vendeur ou client) est requise." });
   }
 
   try {
-    const pdfBytes = decodeBase64Pdf(pdfBase64);
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    const pages = pdfDoc.getPages();
-    if (pages.length === 0) {
-      return res.status(400).json({ error: "PDF sans page" });
-    }
-    const lastPage = pages[pages.length - 1];
-
-    const signatureBytes = decodeBase64Png(signatureBase64);
-    const signatureImage = await pdfDoc.embedPng(signatureBytes);
-
-    // Conserve le ratio natif de la signature pour éviter une déformation.
-    const scaled = signatureImage.scaleToFit(
-      SIGNATURE_BOX.width,
-      SIGNATURE_BOX.height,
-    );
-
-    lastPage.drawImage(signatureImage, {
-      x: SIGNATURE_BOX.x,
-      y: SIGNATURE_BOX.y,
-      width: scaled.width,
-      height: scaled.height,
+    const html = buildHtml(formData, {
+      signatureVendeurBase64,
+      signatureClientBase64,
     });
-
-    const date = new Date().toLocaleDateString("fr-FR");
-    const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    lastPage.drawText(`Signe le ${date}`, {
-      x: SIGNATURE_BOX.x,
-      y: SIGNATURE_BOX.y - 10,
-      size: 8,
-      font: helvetica,
-      color: rgb(0.4, 0.4, 0.4),
-    });
-
-    const signedPdfBytes = await pdfDoc.save();
-    const signedBase64 = Buffer.from(signedPdfBytes).toString("base64");
-
-    return res.status(200).json({ pdfBase64: signedBase64 });
+    const pdfBuffer = await renderPdfFromHtml(html);
+    const pdfBase64 = pdfBuffer.toString("base64");
+    return res.status(200).json({ pdfBase64 });
   } catch (err) {
     const message =
-      err instanceof Error ? err.message : "Echec de l'integration de la signature";
+      err instanceof Error
+        ? err.message
+        : "Echec de l'incrustation de la signature dans le PDF";
     console.error("[embed-signature] error:", err);
     return res.status(500).json({ error: message });
   }
