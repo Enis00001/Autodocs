@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/actions.ts": {
+      "includeFiles": "public/templates/**"
+    }
+  },
   "rewrites": [
     { "source": "/", "destination": "/landing.html" },
     { "source": "/cgu", "destination": "/cgu.html" },

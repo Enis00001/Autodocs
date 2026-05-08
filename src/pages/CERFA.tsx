@@ -14,31 +14,23 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserId } from "@/lib/auth";
-import { downloadBase64Pdf } from "@/utils/generatePDF";
 import { loadDrafts, type BonDraftData } from "@/utils/drafts";
 import {
   loadProfilConcession,
   isProfilCessionComplet,
   type ProfilConcession,
 } from "@/utils/profilConcession";
-import cerfaTemplate from "@/templates/cerfa-cession.html?raw";
+import {
+  downloadCerfaPdf,
+  generateCERFA,
+  type CerfaData,
+} from "@/utils/generateCERFA";
 
 /* -------------------------------------------------------------------------- */
-/*  Types                                                                     */
+/*  Types & constantes                                                        */
 /* -------------------------------------------------------------------------- */
 
-type GenreVehicule =
-  | ""
-  | "VP"
-  | "CTTE"
-  | "MOTO"
-  | "CYCL"
-  | "VASP"
-  | "CAM"
-  | "REM"
-  | "SREM";
-
-const GENRES: { value: GenreVehicule; label: string }[] = [
+const GENRES = [
   { value: "", label: "—" },
   { value: "VP", label: "VP — Voiture particulière" },
   { value: "CTTE", label: "CTTE — Camionnette" },
@@ -48,15 +40,11 @@ const GENRES: { value: GenreVehicule; label: string }[] = [
   { value: "CAM", label: "CAM — Camion" },
   { value: "REM", label: "REM — Remorque" },
   { value: "SREM", label: "SREM — Semi-remorque" },
-];
-
-const ENERGIES = ["", "Essence", "Diesel", "Électrique", "Hybride", "GPL", "GNV"] as const;
-type Energie = (typeof ENERGIES)[number];
+] as const;
 
 type Sexe = "M" | "F" | "";
 
 type CerfaFormState = {
-  /** ID du brouillon source. */
   brouillonId: string;
 
   // ---- Acheteur ----
@@ -74,18 +62,20 @@ type CerfaFormState = {
   vin: string;
   marque: string;
   modele: string;
-  type: string;
+  typeVariante: string;
   dateMec: string;
   kilometrage: string;
-  genre: GenreVehicule;
-  energie: Energie;
+  genre: string;
+  certificatPresent: "oui" | "non";
   numeroFormule: string;
-  dateCertificatImmat: string;
+  motifAbsenceCi: string;
 
   // ---- Cession ----
   cessionLieu: string;
   cessionDate: string;
   cessionHeure: string;
+  certifSituationAdmin: boolean;
+  certifPasTransformation: boolean;
 };
 
 type CerfaRow = {
@@ -98,7 +88,7 @@ type CerfaRow = {
 };
 
 /* -------------------------------------------------------------------------- */
-/*  Helpers : extraction & mapping                                            */
+/*  Heuristiques de mapping véhicule                                          */
 /* -------------------------------------------------------------------------- */
 
 const FIELD_PATTERNS: Record<string, RegExp[]> = {
@@ -147,14 +137,6 @@ function nowHHMM(): string {
   ).padStart(2, "0")}`;
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 function sanitizeFileName(input: string): string {
   return input
     .normalize("NFD")
@@ -165,93 +147,56 @@ function sanitizeFileName(input: string): string {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Helpers : remplissage du template                                         */
+/*  Construction du payload CerfaData attendu par l'API                       */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Remplit le template HTML CERFA avec les variables passées en paramètre.
- * Les valeurs sont escapées pour éviter toute injection HTML, puis
- * insérées dans les `{{PLACEHOLDER}}`. Tout placeholder restant est
- * remplacé par une chaîne vide.
- */
-function fillCerfaTemplate(
-  template: string,
-  vars: Record<string, string>,
-): string {
-  let html = template;
-  for (const [key, raw] of Object.entries(vars)) {
-    const value = escapeHtml(String(raw ?? ""));
-    html = html.replaceAll(`{{${key}}}`, value);
-  }
-  html = html.replace(/\{\{[A-Z0-9_]+\}\}/g, "");
-  return html;
-}
-
-function buildCerfaVariables(state: CerfaFormState, profil: ProfilConcession | null) {
-  const cb = (active: boolean) => (active ? "☑" : "☐");
-
-  const vendeurNom =
-    (profil?.nomConcession ?? "").trim() || "Concession";
-  const vendeurAdresse = (profil?.adresse ?? "").trim();
-  const vendeurCp = (profil?.codePostal ?? "").trim();
-  const vendeurVille = (profil?.ville ?? "").trim();
-  const vendeurSiren = (profil?.siren ?? "").trim();
-
-  const hasNumeroFormule = state.numeroFormule.trim() !== "";
-
+function buildCerfaData(
+  state: CerfaFormState,
+  profil: ProfilConcession | null,
+): CerfaData {
   return {
     // Véhicule
-    VEHICULE_IMMATRICULATION: state.immatriculation.trim(),
-    VEHICULE_VIN: state.vin.trim(),
-    VEHICULE_DATE_MEC: state.dateMec.trim(),
-    VEHICULE_MARQUE: state.marque.trim(),
-    VEHICULE_TYPE: state.type.trim(),
-    VEHICULE_GENRE: state.genre,
-    VEHICULE_MODELE: state.modele.trim(),
-    VEHICULE_KILOMETRAGE: state.kilometrage.trim(),
-    VEHICULE_CI_OUI: cb(hasNumeroFormule),
-    VEHICULE_CI_NON: cb(!hasNumeroFormule),
-    VEHICULE_NUMERO_FORMULE: state.numeroFormule.trim(),
-    VEHICULE_DATE_CI: state.dateCertificatImmat.trim(),
-    VEHICULE_MOTIF_ABSENCE_CI: "",
+    immatriculation: state.immatriculation.trim(),
+    vin: state.vin.trim(),
+    date_mise_en_circulation: state.dateMec.trim(),
+    marque: state.marque.trim(),
+    type_variante: state.typeVariante.trim(),
+    genre: state.genre,
+    denomination: state.modele.trim(),
+    kilometrage: state.kilometrage.trim(),
+    numero_formule:
+      state.certificatPresent === "oui" ? state.numeroFormule.trim() : "",
+    motif_absence_ci:
+      state.certificatPresent === "non" ? state.motifAbsenceCi.trim() : "",
 
-    // Vendeur (concession ⇒ personne morale par défaut)
-    VENDEUR_TYPE_PHYSIQUE: cb(false),
-    VENDEUR_TYPE_MORALE: cb(true),
-    VENDEUR_SEXE_M: cb(false),
-    VENDEUR_SEXE_F: cb(false),
-    VENDEUR_NOM: vendeurNom,
-    VENDEUR_SIREN: vendeurSiren,
-    VENDEUR_ADRESSE: vendeurAdresse,
-    VENDEUR_CODE_POSTAL: vendeurCp,
-    VENDEUR_VILLE: vendeurVille,
-    VENDEUR_CESSION: cb(true),
-    VENDEUR_DESTRUCTION: cb(false),
-    VENDEUR_CERT_SITUATION: cb(false),
-    VENDEUR_CERT_NON_TRANSFO: cb(false),
-    VENDEUR_CERT_VHU: cb(false),
-    VENDEUR_VHU_AGREMENT: "",
+    // Vendeur (concession ⇒ personne morale)
+    vendeur_type: "morale",
+    vendeur_nom: (profil?.nomConcession ?? "").trim() || "Concession",
+    vendeur_siren: (profil?.siren ?? "").trim(),
+    vendeur_adresse: (profil?.adresse ?? "").trim(),
+    vendeur_code_postal: (profil?.codePostal ?? "").trim(),
+    vendeur_ville: (profil?.ville ?? "").trim(),
+    cession_date: state.cessionDate.trim(),
+    cession_heure: state.cessionHeure.trim(),
+    cession_lieu: state.cessionLieu.trim() || (profil?.ville ?? "").trim(),
+    cession_motif: "",
+    certif_situation_admin: state.certifSituationAdmin,
+    certif_pas_transformation: state.certifPasTransformation,
+    certif_vhu: false,
+    vendeur_agrement_vhu: "",
 
-    // Acheteur
-    ACHETEUR_TYPE_PHYSIQUE: cb(true),
-    ACHETEUR_TYPE_MORALE: cb(false),
-    ACHETEUR_SEXE_M: cb(state.acheteurSexe === "M"),
-    ACHETEUR_SEXE_F: cb(state.acheteurSexe === "F"),
-    ACHETEUR_NOM: state.acheteurNom.trim(),
-    ACHETEUR_PRENOM: state.acheteurPrenom.trim(),
-    ACHETEUR_SIRET: "",
-    ACHETEUR_DATE_NAISSANCE: state.acheteurDateNaissance.trim(),
-    ACHETEUR_LIEU_NAISSANCE: state.acheteurLieuNaissance.trim(),
-    ACHETEUR_ADRESSE: state.acheteurAdresse.trim(),
-    ACHETEUR_CODE_POSTAL: state.acheteurCodePostal.trim(),
-    ACHETEUR_VILLE: state.acheteurVille.trim(),
-    ACHETEUR_CERT_ACQUERIR: cb(true),
-    ACHETEUR_CERT_INFO: cb(true),
-
-    // Cession
-    CESSION_DATE: state.cessionDate.trim(),
-    CESSION_HEURE: state.cessionHeure.trim(),
-    CESSION_LIEU: state.cessionLieu.trim(),
+    // Acheteur (par défaut personne physique)
+    acheteur_type: "physique",
+    acheteur_sexe: state.acheteurSexe || undefined,
+    acheteur_nom: state.acheteurNom.trim(),
+    acheteur_prenom: state.acheteurPrenom.trim(),
+    acheteur_date_naissance: state.acheteurDateNaissance.trim(),
+    acheteur_lieu_naissance: state.acheteurLieuNaissance.trim(),
+    acheteur_adresse: state.acheteurAdresse.trim(),
+    acheteur_code_postal: state.acheteurCodePostal.trim(),
+    acheteur_ville: state.acheteurVille.trim(),
+    acheteur_cert_acquerir: true,
+    acheteur_cert_informe: true,
   };
 }
 
@@ -273,16 +218,18 @@ const emptyState: CerfaFormState = {
   vin: "",
   marque: "",
   modele: "",
-  type: "",
+  typeVariante: "",
   dateMec: "",
   kilometrage: "",
   genre: "",
-  energie: "",
+  certificatPresent: "oui",
   numeroFormule: "",
-  dateCertificatImmat: "",
+  motifAbsenceCi: "",
   cessionLieu: "",
   cessionDate: todayFr(),
   cessionHeure: nowHHMM(),
+  certifSituationAdmin: false,
+  certifPasTransformation: false,
 };
 
 const CERFA = () => {
@@ -298,13 +245,11 @@ const CERFA = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Chargement initial : brouillons + profil + historique CERFA
   useEffect(() => {
     void loadDrafts().then(setDrafts);
     void loadProfilConcession().then((p) => {
       setProfil(p);
       setProfilLoaded(true);
-      // Pré-remplir le lieu de cession avec la ville de la concession.
       if (p?.ville) {
         setState((s) => (s.cessionLieu ? s : { ...s, cessionLieu: p.ville }));
       }
@@ -336,7 +281,6 @@ const CERFA = () => {
     }
   };
 
-  // Lookup map brouillon_id → label « Prénom Nom — Immat » pour l'historique
   const draftLookup = useMemo(() => {
     const m = new Map<string, BonDraftData>();
     for (const d of drafts) m.set(d.id, d);
@@ -354,7 +298,7 @@ const CERFA = () => {
     const donnees = draft.stockDonnees ?? {};
     const marque = findInDonnees(donnees, FIELD_PATTERNS.marque);
     const modele = findInDonnees(donnees, FIELD_PATTERNS.modele);
-    const type = findInDonnees(donnees, FIELD_PATTERNS.type);
+    const typeVariante = findInDonnees(donnees, FIELD_PATTERNS.type);
     const immat = findInDonnees(donnees, FIELD_PATTERNS.immatriculation);
     const vin = findInDonnees(donnees, FIELD_PATTERNS.vin);
     const dateMec = findInDonnees(donnees, FIELD_PATTERNS.dateMec);
@@ -366,14 +310,12 @@ const CERFA = () => {
       acheteurNom: draft.clientNom ?? "",
       acheteurPrenom: draft.clientPrenom ?? "",
       acheteurDateNaissance: draft.clientDateNaissance ?? "",
-      // L'adresse du brouillon est libre (peut contenir CP+ville). On la met
-      // dans le champ adresse, le commercial complétera CP/ville s'il faut.
       acheteurAdresse: draft.clientAdresse ?? "",
       immatriculation: immat,
       vin,
       marque,
       modele,
-      type,
+      typeVariante,
       dateMec,
       kilometrage: km,
     }));
@@ -387,6 +329,10 @@ const CERFA = () => {
     if (!state.immatriculation.trim()) next.add("immatriculation");
     if (!state.acheteurNom.trim()) next.add("acheteurNom");
     if (!state.acheteurAdresse.trim()) next.add("acheteurAdresse");
+    if (!state.marque.trim()) next.add("marque");
+    if (!state.kilometrage.trim()) next.add("kilometrage");
+    if (!state.cessionDate.trim()) next.add("cessionDate");
+    if (!state.cessionLieu.trim()) next.add("cessionLieu");
     setErrors(next);
     return next.size === 0;
   };
@@ -398,7 +344,7 @@ const CERFA = () => {
       toast({
         title: "Champs manquants",
         description:
-          "Immatriculation, nom de l'acheteur et adresse de l'acheteur sont requis.",
+          "Vérifiez les champs marqués en rouge avant de générer le CERFA.",
         variant: "destructive",
       });
       return;
@@ -406,34 +352,16 @@ const CERFA = () => {
 
     setGenerating(true);
     try {
-      const variables = buildCerfaVariables(state, profil);
-      const html = fillCerfaTemplate(cerfaTemplate, variables);
-
-      const { apiFetch } = await import("@/lib/apiClient");
-      const response = await apiFetch("/api/generate-pdf", {
-        method: "POST",
-        body: JSON.stringify({ html }),
-      });
-
-      if (!response.ok) {
-        const errBody = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        throw new Error(
-          errBody?.error || `Erreur génération CERFA (${response.status})`,
-        );
-      }
-
-      const json = (await response.json()) as { pdfBase64?: string };
-      if (!json.pdfBase64) throw new Error("Réponse invalide du serveur PDF.");
+      const cerfaData = buildCerfaData(state, profil);
+      const pdfBase64 = await generateCERFA(cerfaData);
 
       const userId = await getCurrentUserId();
       if (userId) {
         const { error: insertError } = await supabase.from("cerfas").insert({
           user_id: userId,
           brouillon_id: state.brouillonId || null,
-          cerfa_data: { ...variables, _state: state },
-          pdf_base64: json.pdfBase64,
+          cerfa_data: cerfaData,
+          pdf_base64: pdfBase64,
         });
         if (insertError) {
           console.warn("[cerfa] persist failed:", insertError);
@@ -443,9 +371,9 @@ const CERFA = () => {
       const fileName = `cerfa-cession-${
         sanitizeFileName(state.immatriculation) || "vehicule"
       }.pdf`;
-      downloadBase64Pdf(json.pdfBase64, fileName);
+      downloadCerfaPdf(pdfBase64, fileName);
 
-      toast({ title: "CERFA généré ✓" });
+      toast({ title: "CERFA généré — 2 exemplaires ✓" });
       void refreshHistory();
     } catch (err) {
       console.error("[cerfa] generate:", err);
@@ -472,10 +400,10 @@ const CERFA = () => {
     }
     setDownloadingId(row.id);
     try {
-      const data = (row.cerfa_data ?? {}) as Record<string, string>;
-      const immat = String(data.VEHICULE_IMMATRICULATION ?? "").trim();
+      const data = (row.cerfa_data ?? {}) as Partial<CerfaData>;
+      const immat = String(data.immatriculation ?? "").trim();
       const fileName = `cerfa-cession-${sanitizeFileName(immat) || "vehicule"}.pdf`;
-      downloadBase64Pdf(row.pdf_base64, fileName);
+      downloadCerfaPdf(row.pdf_base64, fileName);
     } finally {
       setDownloadingId(null);
     }
@@ -514,13 +442,15 @@ const CERFA = () => {
   const profilManquant = profilLoaded && !isProfilCessionComplet(profil);
 
   const errClass = (field: keyof CerfaFormState) =>
-    errors.has(field) ? "field-input border-destructive ring-1 ring-destructive" : "field-input";
+    errors.has(field)
+      ? "field-input border-destructive ring-1 ring-destructive"
+      : "field-input";
 
   return (
     <>
       <TopBar
         title="CERFA de cession"
-        subtitle="Générez et archivez les certificats de cession (CERFA 15776*01)"
+        subtitle="Remplit le PDF officiel CERFA 15776*01 (2 exemplaires)"
       />
       <div className="page-shell">
         <div className="page-content space-y-5 max-w-5xl">
@@ -552,7 +482,7 @@ const CERFA = () => {
                     </div>
                     <p className="text-muted-foreground">
                       Sans nom, adresse, code postal et ville, la section
-                      vendeur du CERFA ne pourra pas être pré-remplie.
+                      vendeur du CERFA ne sera pas pré-remplie.
                     </p>
                   </div>
                   <Link
@@ -564,305 +494,169 @@ const CERFA = () => {
                 </div>
               )}
 
-              {/* ----- Étape 1 : Sélection bon de commande ----- */}
+              {/* ----- Sélecteur brouillon ----- */}
               <div className="card-autodocs space-y-3">
                 <div className="card-title-autodocs">
-                  1. Sélectionner un bon de commande
+                  Pré-remplir depuis un bon de commande
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="field-label">Bon de commande source</label>
-                  <select
-                    className="field-input"
-                    value={state.brouillonId}
-                    onChange={(e) => handleSelectDraft(e.target.value)}
-                  >
-                    <option value="">— Saisie manuelle —</option>
-                    {drafts.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {draftLabel(d)}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground">
-                    Les champs acheteur et véhicule seront pré-remplis.
-                    Vous pourrez ensuite compléter les informations manquantes.
-                  </p>
-                </div>
+                <select
+                  className="field-input"
+                  value={state.brouillonId}
+                  onChange={(e) => handleSelectDraft(e.target.value)}
+                >
+                  <option value="">— Saisie manuelle —</option>
+                  {drafts.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {draftLabel(d)}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Pré-remplit acheteur (nom, prénom, date de naissance,
+                  adresse) + véhicule (immat, VIN, marque, modèle…).
+                </p>
               </div>
 
-              {/* ----- Étape 2 : Champs ----- */}
+              {/* ============================================== */}
+              {/*  Section Véhicule                              */}
+              {/* ============================================== */}
               <div className="card-autodocs space-y-4">
-                <div className="card-title-autodocs">2. Compléter les champs</div>
-
-                {/* Acheteur */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Acheteur
-                  </h3>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">
-                        Nom <span className="text-destructive">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        className={errClass("acheteurNom")}
-                        value={state.acheteurNom}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, acheteurNom: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Prénom</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={state.acheteurPrenom}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, acheteurPrenom: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Date de naissance</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="JJ/MM/AAAA"
-                        value={state.acheteurDateNaissance}
-                        onChange={(e) =>
-                          setState((s) => ({
-                            ...s,
-                            acheteurDateNaissance: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Lieu de naissance</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Ville"
-                        value={state.acheteurLieuNaissance}
-                        onChange={(e) =>
-                          setState((s) => ({
-                            ...s,
-                            acheteurLieuNaissance: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5 md:col-span-2">
-                      <label className="field-label">
-                        Adresse <span className="text-destructive">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        className={errClass("acheteurAdresse")}
-                        value={state.acheteurAdresse}
-                        onChange={(e) =>
-                          setState((s) => ({
-                            ...s,
-                            acheteurAdresse: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Code postal</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        inputMode="numeric"
-                        maxLength={5}
-                        value={state.acheteurCodePostal}
-                        onChange={(e) =>
-                          setState((s) => ({
-                            ...s,
-                            acheteurCodePostal: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Ville</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={state.acheteurVille}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, acheteurVille: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5 md:col-span-2">
-                      <label className="field-label">Sexe</label>
-                      <div className="flex gap-4 pt-1">
-                        {(["M", "F"] as const).map((s) => (
-                          <label
-                            key={s}
-                            className="inline-flex cursor-pointer items-center gap-2 text-sm"
-                          >
-                            <input
-                              type="radio"
-                              name="acheteur-sexe"
-                              value={s}
-                              checked={state.acheteurSexe === s}
-                              onChange={() =>
-                                setState((curr) => ({ ...curr, acheteurSexe: s }))
-                              }
-                            />
-                            {s === "M" ? "Masculin" : "Féminin"}
-                          </label>
-                        ))}
-                        {state.acheteurSexe && (
-                          <button
-                            type="button"
-                            className="text-xs text-muted-foreground underline cursor-pointer"
-                            onClick={() =>
-                              setState((curr) => ({ ...curr, acheteurSexe: "" }))
+                <div className="card-title-autodocs">🚗 Véhicule</div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">
+                      Immatriculation <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className={errClass("immatriculation")}
+                      placeholder="AB-123-CD"
+                      value={state.immatriculation}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, immatriculation: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">N° d'identification (VIN)</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={state.vin}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, vin: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Date 1ère mise en circulation</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="JJ/MM/AAAA"
+                      value={state.dateMec}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, dateMec: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">
+                      Marque <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className={errClass("marque")}
+                      value={state.marque}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, marque: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Dénomination commerciale (modèle)</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={state.modele}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, modele: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Genre national</label>
+                    <select
+                      className="field-input"
+                      value={state.genre}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, genre: e.target.value }))
+                      }
+                    >
+                      {GENRES.map((g) => (
+                        <option key={g.value} value={g.value}>
+                          {g.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Type / variante / version</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={state.typeVariante}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, typeVariante: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">
+                      Kilométrage <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className={errClass("kilometrage")}
+                      value={state.kilometrage}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, kilometrage: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">
+                      Certificat d'immatriculation présent ?
+                    </label>
+                    <div className="flex gap-4 pt-1">
+                      {(["oui", "non"] as const).map((v) => (
+                        <label
+                          key={v}
+                          className="inline-flex cursor-pointer items-center gap-2 text-sm"
+                        >
+                          <input
+                            type="radio"
+                            name="certif-present"
+                            value={v}
+                            checked={state.certificatPresent === v}
+                            onChange={() =>
+                              setState((s) => ({ ...s, certificatPresent: v }))
                             }
-                          >
-                            Effacer
-                          </button>
-                        )}
-                      </div>
+                          />
+                          {v.toUpperCase()}
+                        </label>
+                      ))}
                     </div>
                   </div>
-                </div>
-
-                {/* Véhicule */}
-                <div className="space-y-3 pt-2 border-t border-border/40">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Véhicule
-                  </h3>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div className="flex flex-col gap-1.5">
+                  {state.certificatPresent === "oui" ? (
+                    <div className="flex flex-col gap-1.5 md:col-span-2">
                       <label className="field-label">
-                        Immatriculation <span className="text-destructive">*</span>
+                        N° de formule (carte grise) — 9 caractères max
                       </label>
                       <input
                         type="text"
-                        className={errClass("immatriculation")}
-                        placeholder="AB-123-CD"
-                        value={state.immatriculation}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, immatriculation: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">VIN / N° série</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={state.vin}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, vin: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Marque</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={state.marque}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, marque: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Modèle</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={state.modele}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, modele: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Type / variante / version</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={state.type}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, type: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Date 1ère mise en circulation</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="JJ/MM/AAAA"
-                        value={state.dateMec}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, dateMec: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Kilométrage</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        inputMode="numeric"
-                        value={state.kilometrage}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, kilometrage: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Genre national</label>
-                      <select
-                        className="field-input"
-                        value={state.genre}
-                        onChange={(e) =>
-                          setState((s) => ({
-                            ...s,
-                            genre: e.target.value as GenreVehicule,
-                          }))
-                        }
-                      >
-                        {GENRES.map((g) => (
-                          <option key={g.value} value={g.value}>
-                            {g.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Énergie</label>
-                      <select
-                        className="field-input"
-                        value={state.energie}
-                        onChange={(e) =>
-                          setState((s) => ({
-                            ...s,
-                            energie: e.target.value as Energie,
-                          }))
-                        }
-                      >
-                        {ENERGIES.map((e) => (
-                          <option key={e || "_empty"} value={e}>
-                            {e || "—"}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">N° de formule (carte grise)</label>
-                      <input
-                        type="text"
+                        maxLength={9}
                         className="field-input"
                         value={state.numeroFormule}
                         onChange={(e) =>
@@ -870,67 +664,305 @@ const CERFA = () => {
                         }
                       />
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">
-                        Date du certificat d'immat. (ancien format)
-                      </label>
+                  ) : (
+                    <div className="flex flex-col gap-1.5 md:col-span-2">
+                      <label className="field-label">Motif d'absence</label>
                       <input
                         type="text"
                         className="field-input"
-                        placeholder="JJ/MM/AAAA"
-                        value={state.dateCertificatImmat}
+                        value={state.motifAbsenceCi}
                         onChange={(e) =>
-                          setState((s) => ({
-                            ...s,
-                            dateCertificatImmat: e.target.value,
-                          }))
+                          setState((s) => ({ ...s, motifAbsenceCi: e.target.value }))
                         }
                       />
                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ============================================== */}
+              {/*  Section Vendeur                               */}
+              {/* ============================================== */}
+              <div className="card-autodocs space-y-4">
+                <div className="card-title-autodocs">
+                  🏢 Vendeur (ancien propriétaire)
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Pré-rempli depuis votre profil concession.
+                  Modifiez ces champs depuis{" "}
+                  <Link to="/profil-concession" className="underline">
+                    Ma concession
+                  </Link>
+                  .
+                </p>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">Raison sociale</label>
+                    <input
+                      type="text"
+                      className="field-input opacity-80"
+                      value={profil?.nomConcession ?? ""}
+                      readOnly
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">SIREN</label>
+                    <input
+                      type="text"
+                      className="field-input opacity-80"
+                      value={profil?.siren ?? ""}
+                      readOnly
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Code postal</label>
+                    <input
+                      type="text"
+                      className="field-input opacity-80"
+                      value={profil?.codePostal ?? ""}
+                      readOnly
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">Adresse</label>
+                    <input
+                      type="text"
+                      className="field-input opacity-80"
+                      value={profil?.adresse ?? ""}
+                      readOnly
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Ville</label>
+                    <input
+                      type="text"
+                      className="field-input opacity-80"
+                      value={profil?.ville ?? ""}
+                      readOnly
+                    />
                   </div>
                 </div>
 
-                {/* Cession */}
-                <div className="space-y-3 pt-2 border-t border-border/40">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Cession
-                  </h3>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Lieu (ville)</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        value={state.cessionLieu}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, cessionLieu: e.target.value }))
-                        }
-                      />
+                <div className="grid grid-cols-1 gap-3 border-t border-border/40 pt-3 md:grid-cols-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">
+                      Date de cession <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className={errClass("cessionDate")}
+                      placeholder="JJ/MM/AAAA"
+                      value={state.cessionDate}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, cessionDate: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Heure</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="HH:MM"
+                      value={state.cessionHeure}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, cessionHeure: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">
+                      Lieu (Fait à) <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className={errClass("cessionLieu")}
+                      value={state.cessionLieu}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, cessionLieu: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 border-t border-border/40 pt-3">
+                  <p className="text-xs text-muted-foreground">
+                    Cases à cocher (le vendeur certifie en outre…) :
+                  </p>
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={state.certifSituationAdmin}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          certifSituationAdmin: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>
+                      Avoir remis le certificat de situation administrative
+                      (- de 15 jours).
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={state.certifPasTransformation}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          certifPasTransformation: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Véhicule sans transformation notable.</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* ============================================== */}
+              {/*  Section Acheteur                              */}
+              {/* ============================================== */}
+              <div className="card-autodocs space-y-4">
+                <div className="card-title-autodocs">
+                  👤 Acheteur (nouveau propriétaire)
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">Sexe</label>
+                    <div className="flex gap-4 pt-1">
+                      {(["M", "F"] as const).map((v) => (
+                        <label
+                          key={v}
+                          className="inline-flex cursor-pointer items-center gap-2 text-sm"
+                        >
+                          <input
+                            type="radio"
+                            name="acheteur-sexe"
+                            value={v}
+                            checked={state.acheteurSexe === v}
+                            onChange={() =>
+                              setState((s) => ({ ...s, acheteurSexe: v }))
+                            }
+                          />
+                          {v === "M" ? "Masculin" : "Féminin"}
+                        </label>
+                      ))}
+                      {state.acheteurSexe && (
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground underline cursor-pointer"
+                          onClick={() =>
+                            setState((s) => ({ ...s, acheteurSexe: "" }))
+                          }
+                        >
+                          Effacer
+                        </button>
+                      )}
                     </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Date</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="JJ/MM/AAAA"
-                        value={state.cessionDate}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, cessionDate: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="field-label">Heure</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="HH:MM"
-                        value={state.cessionHeure}
-                        onChange={(e) =>
-                          setState((s) => ({ ...s, cessionHeure: e.target.value }))
-                        }
-                      />
-                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">
+                      Nom <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className={errClass("acheteurNom")}
+                      value={state.acheteurNom}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, acheteurNom: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Prénom</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={state.acheteurPrenom}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, acheteurPrenom: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Date de naissance</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="JJ/MM/AAAA"
+                      value={state.acheteurDateNaissance}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          acheteurDateNaissance: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Lieu de naissance</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={state.acheteurLieuNaissance}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          acheteurLieuNaissance: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">
+                      Adresse <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className={errClass("acheteurAdresse")}
+                      placeholder="12 rue de la Paix"
+                      value={state.acheteurAdresse}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          acheteurAdresse: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Code postal</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={5}
+                      className="field-input"
+                      value={state.acheteurCodePostal}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          acheteurCodePostal: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Ville</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      value={state.acheteurVille}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          acheteurVille: e.target.value,
+                        }))
+                      }
+                    />
                   </div>
                 </div>
               </div>
@@ -949,7 +981,9 @@ const CERFA = () => {
                   ) : (
                     <FileText className="h-4 w-4" />
                   )}
-                  {generating ? "Génération en cours…" : "Générer le CERFA"}
+                  {generating
+                    ? "Génération en cours…"
+                    : "Générer le CERFA (2 exemplaires)"}
                 </button>
               </div>
             </TabsContent>
@@ -979,13 +1013,11 @@ const CERFA = () => {
                     </thead>
                     <tbody>
                       {history.map((row) => {
-                        const data = (row.cerfa_data ?? {}) as Record<string, string>;
+                        const data = (row.cerfa_data ?? {}) as Partial<CerfaData>;
                         const acheteurNom =
-                          `${data.ACHETEUR_PRENOM ?? ""} ${data.ACHETEUR_NOM ?? ""}`
+                          `${data.acheteur_prenom ?? ""} ${data.acheteur_nom ?? ""}`
                             .trim() || "—";
-                        const immat = String(
-                          data.VEHICULE_IMMATRICULATION ?? "—",
-                        ).trim();
+                        const immat = String(data.immatriculation ?? "—").trim();
                         const isDownloading = downloadingId === row.id;
                         const isDeleting = deletingId === row.id;
                         return (

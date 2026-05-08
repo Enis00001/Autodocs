@@ -2,6 +2,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Resend } from "resend";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { PDFDocument } from "pdf-lib";
 
 /* ==================================================================
  *  Supabase admin / auth helpers (ex api/_lib/supabase-admin.ts)
@@ -1224,6 +1227,381 @@ async function handleResendSignatureEmail(
   });
 }
 
+/* ==================================================================
+ *  CERFA 15776*01 — Remplissage du PDF officiel via pdf-lib
+ *
+ *  Le PDF de référence (`public/templates/cerfa_15776-01.pdf`) est un
+ *  AcroForm 2 pages publié par la République française : Page1 et
+ *  Page2 portent les mêmes champs (114 au total). On remplit les deux
+ *  pages avec les mêmes valeurs puis `flatten()` pour figer le rendu.
+ *
+ *  Mapping radios / cases (option PDF "1" = première option, "2" = seconde) :
+ *    radio1 = Présence du certificat d'immatriculation : OUI=1 / NON=2
+ *    radio2 = Vendeur : Personne physique=1 / morale=2
+ *    radio3 = Vendeur : Sexe M=1 / F=2 (pertinent si physique)
+ *    radio4 = Vendeur : « céder »=1 / « céder pour destruction »=2
+ *    radio5 = Acheteur : Personne physique=1 / morale=2
+ *    radio6 = Acheteur : Sexe M=1 / F=2
+ *    ckb_ValidationDéclaration1/2/3  = certifications vendeur (3 cases)
+ *    ckb_ValidationDéclarationA1/A2  = certifications acheteur (2 cases)
+ *
+ *  Vercel : le fichier est inclus dans le bundle de la fonction grâce
+ *  à `vercel.json` → `functions["api/actions.ts"].includeFiles`.
+ * ================================================================== */
+
+type CerfaInput = Record<string, unknown>;
+
+const TYPES_VOIE_RE =
+  /^(rue|avenue|av\.?|bd\.?|boulevard|impasse|chemin|route|place|all[ée]e|cours|quai|chauss[ée]e|square|zone|zac|za|villa|passage|sentier|esplanade|hameau|lieu-dit|cit[ée])\b/i;
+
+function pickStr(o: CerfaInput, key: string): string {
+  const v = o[key];
+  return typeof v === "string" ? v.trim() : "";
+}
+function pickBool(o: CerfaInput, key: string): boolean {
+  const v = o[key];
+  return v === true || v === "true" || v === 1 || v === "1";
+}
+
+/**
+ * Découpe une adresse libre en (numéro, extension, type de voie, nom).
+ * Si le pattern ne matche pas, l'intégralité va dans `nomVoie` — le
+ * formulaire reste correct (la voie complète apparaît).
+ */
+function parseAdresse(raw: string): {
+  numero: string;
+  extension: string;
+  typeVoie: string;
+  nomVoie: string;
+} {
+  const trimmed = raw.replace(/\s+/g, " ").trim();
+  if (!trimmed) return { numero: "", extension: "", typeVoie: "", nomVoie: "" };
+  const m = /^(\d+)\s*(?:(bis|ter|quater)\s+)?(.+)$/i.exec(trimmed);
+  if (!m) return { numero: "", extension: "", typeVoie: "", nomVoie: trimmed };
+  const numero = m[1];
+  const extension = (m[2] ?? "").toLowerCase();
+  const reste = m[3];
+  const typeMatch = TYPES_VOIE_RE.exec(reste);
+  if (!typeMatch) {
+    return { numero, extension, typeVoie: "", nomVoie: reste };
+  }
+  const typeVoie = typeMatch[1];
+  const nomVoie = reste.slice(typeMatch[0].length).trim();
+  return { numero, extension, typeVoie, nomVoie };
+}
+
+/**
+ * Découpe une date "DD/MM/YYYY" (ou "YYYY-MM-DD") en (jour, mois, année).
+ */
+function parseDate(raw: string): { j: string; m: string; a: string } {
+  const s = raw.trim();
+  if (!s) return { j: "", m: "", a: "" };
+  const slash = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(s);
+  if (slash) {
+    const j = slash[1].padStart(2, "0");
+    const m = slash[2].padStart(2, "0");
+    const aRaw = slash[3];
+    const a = aRaw.length === 2 ? `20${aRaw}` : aRaw;
+    return { j, m, a };
+  }
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  if (iso) {
+    return {
+      j: iso[3].padStart(2, "0"),
+      m: iso[2].padStart(2, "0"),
+      a: iso[1],
+    };
+  }
+  return { j: "", m: "", a: "" };
+}
+
+/**
+ * Découpe une heure (H, HH, "HH:MM", "HHhMM") en (HH, MM).
+ */
+function parseHeure(raw: string): { hh: string; mm: string } {
+  const s = raw.trim();
+  if (!s) return { hh: "", mm: "" };
+  const both = /^(\d{1,2})[h:.](\d{1,2})$/i.exec(s);
+  if (both) {
+    return { hh: both[1].padStart(2, "0"), mm: both[2].padStart(2, "0") };
+  }
+  const justH = /^(\d{1,2})$/.exec(s);
+  if (justH) return { hh: justH[1].padStart(2, "0"), mm: "00" };
+  return { hh: "", mm: "" };
+}
+
+function loadCerfaTemplate(): Buffer {
+  // Le bundle Vercel inclut public/templates/** via vercel.json.
+  const filePath = path.join(
+    process.cwd(),
+    "public",
+    "templates",
+    "cerfa_15776-01.pdf",
+  );
+  return readFileSync(filePath);
+}
+
+async function handleFillCerfa(
+  req: VercelRequest,
+  data: CerfaInput,
+  res: VercelResponse,
+) {
+  const userId = await getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Non autorisé" });
+
+  const cerfaInput =
+    data.cerfa_data && typeof data.cerfa_data === "object"
+      ? (data.cerfa_data as CerfaInput)
+      : (data as CerfaInput);
+
+  // ---------- Données véhicule ----------
+  const immat = pickStr(cerfaInput, "immatriculation");
+  const vin = pickStr(cerfaInput, "vin");
+  const dateMec = parseDate(pickStr(cerfaInput, "date_mise_en_circulation"));
+  const marque = pickStr(cerfaInput, "marque");
+  const typeVariante = pickStr(cerfaInput, "type_variante");
+  const genre = pickStr(cerfaInput, "genre");
+  const denomination = pickStr(cerfaInput, "denomination");
+  const kilometrage = pickStr(cerfaInput, "kilometrage");
+  const numeroFormule = pickStr(cerfaInput, "numero_formule");
+  const dateCi = parseDate(pickStr(cerfaInput, "date_ci_ancien_format"));
+  const motifAbsenceCi = pickStr(cerfaInput, "motif_absence_ci");
+
+  // ---------- Vendeur (concession) ----------
+  const vendeurType =
+    pickStr(cerfaInput, "vendeur_type").toLowerCase() === "physique"
+      ? "physique"
+      : "morale";
+  const vendeurNom = pickStr(cerfaInput, "vendeur_nom");
+  const vendeurSiren = pickStr(cerfaInput, "vendeur_siren").replace(/\s+/g, "");
+  const vendeurAdresse = parseAdresse(pickStr(cerfaInput, "vendeur_adresse"));
+  const vendeurCp = pickStr(cerfaInput, "vendeur_code_postal");
+  const vendeurVille = pickStr(cerfaInput, "vendeur_ville");
+  const cessionDate = parseDate(pickStr(cerfaInput, "cession_date"));
+  const cessionHeure = parseHeure(pickStr(cerfaInput, "cession_heure"));
+  const cessionLieu = pickStr(cerfaInput, "cession_lieu");
+  const certifSituation = pickBool(cerfaInput, "certif_situation_admin");
+  const certifNonTransfo = pickBool(cerfaInput, "certif_pas_transformation");
+  const certifVhu = pickBool(cerfaInput, "certif_vhu");
+  const vendeurAgrement = pickStr(cerfaInput, "vendeur_agrement_vhu");
+  const cession = pickStr(cerfaInput, "cession_motif").toLowerCase(); // "" | "destruction"
+
+  // ---------- Acheteur ----------
+  const acheteurType =
+    pickStr(cerfaInput, "acheteur_type").toLowerCase() === "morale"
+      ? "morale"
+      : "physique";
+  const acheteurSexe = pickStr(cerfaInput, "acheteur_sexe").toUpperCase(); // "M" | "F"
+  const acheteurNom = pickStr(cerfaInput, "acheteur_nom");
+  const acheteurPrenom = pickStr(cerfaInput, "acheteur_prenom");
+  const acheteurSiret =
+    pickStr(cerfaInput, "acheteur_siret").replace(/\s+/g, "");
+  const acheteurDateNaiss = parseDate(
+    pickStr(cerfaInput, "acheteur_date_naissance"),
+  );
+  const acheteurLieuNaiss = pickStr(cerfaInput, "acheteur_lieu_naissance");
+  const acheteurAdresse = parseAdresse(pickStr(cerfaInput, "acheteur_adresse"));
+  const acheteurCp = pickStr(cerfaInput, "acheteur_code_postal");
+  const acheteurVille = pickStr(cerfaInput, "acheteur_ville");
+
+  // Validation minimale
+  if (!immat || !acheteurNom || !acheteurAdresse.nomVoie) {
+    return res.status(400).json({
+      error:
+        "Champs requis manquants : immatriculation, nom acheteur, adresse acheteur.",
+    });
+  }
+
+  // ---------- Chargement du PDF officiel ----------
+  let pdfBytes: Buffer;
+  try {
+    pdfBytes = loadCerfaTemplate();
+  } catch (err) {
+    console.error("[fill-cerfa] template not found:", err);
+    return res.status(500).json({
+      error:
+        "Modèle CERFA introuvable côté serveur (public/templates/cerfa_15776-01.pdf).",
+    });
+  }
+
+  let doc: PDFDocument;
+  try {
+    doc = await PDFDocument.load(pdfBytes);
+  } catch (err) {
+    console.error("[fill-cerfa] PDFDocument.load:", err);
+    return res.status(500).json({ error: "PDF officiel illisible." });
+  }
+  const form = doc.getForm();
+
+  // Helpers tolérants : maxLength, champ inconnu, etc.
+  const safeSetText = (name: string, value: string) => {
+    try {
+      const f = form.getTextField(name);
+      const max = f.getMaxLength();
+      const v = max !== undefined ? value.slice(0, max) : value;
+      f.setText(v);
+    } catch (err) {
+      console.warn("[fill-cerfa] setText", name, err);
+    }
+  };
+  const safeCheck = (name: string, on: boolean) => {
+    try {
+      const f = form.getCheckBox(name);
+      if (on) f.check();
+      else f.uncheck();
+    } catch (err) {
+      console.warn("[fill-cerfa] check", name, err);
+    }
+  };
+  const safeRadio = (name: string, option: string | null) => {
+    if (!option) return;
+    try {
+      form.getRadioGroup(name).select(option);
+    } catch (err) {
+      console.warn("[fill-cerfa] radio", name, err);
+    }
+  };
+
+  // On remplit les deux pages identiquement.
+  const PAGES = ["Page1", "Page2"] as const;
+
+  for (const PG of PAGES) {
+    const p = `topmostSubform[0].${PG}[0]`;
+
+    // ---- Véhicule ----
+    safeSetText(`${p}.num_Immatriculation[0]`, immat);
+    safeSetText(`${p}.num_Identification[0]`, vin);
+    safeSetText(`${p}.num_DateImmatriculationJour[0]`, dateMec.j);
+    safeSetText(`${p}.num_DateImmatriculationMois[0]`, dateMec.m);
+    safeSetText(`${p}.num_DateImmatriculationAnnée[0]`, dateMec.a);
+    safeSetText(`${p}.txt_MarqueVéhicule[0]`, marque);
+    safeSetText(`${p}.txt_TypeVarianteVersionVéhicule[0]`, typeVariante);
+    safeSetText(`${p}.txt_GenreNational[0]`, genre);
+    safeSetText(`${p}.txt_DénominationCommerciale[0]`, denomination);
+    safeSetText(`${p}.num_KilométrageCompteur[0]`, kilometrage);
+
+    // Présence du certificat d'immatriculation : OUI si numero_formule fourni.
+    const certificatPresent = numeroFormule.length > 0;
+    safeRadio(`${p}.Groupe_de_boutons_radio1[0]`, certificatPresent ? "1" : "2");
+    safeSetText(`${p}.num_Formule[0]`, numeroFormule);
+    safeSetText(`${p}.txt_MotifAbscenceCertificat[0]`, motifAbsenceCi);
+    safeSetText(`${p}.num_DateCertificatJour[0]`, dateCi.j);
+    safeSetText(`${p}.num_DateCertificatMois[0]`, dateCi.m);
+    safeSetText(`${p}.num_DateCertificatAnnée[0]`, dateCi.a);
+
+    // ---- Vendeur ----
+    safeRadio(
+      `${p}.Groupe_de_boutons_radio2[0]`,
+      vendeurType === "physique" ? "1" : "2",
+    );
+    // Sexe vendeur seulement si personne physique
+    if (vendeurType === "physique") {
+      const sexeVendeur = pickStr(cerfaInput, "vendeur_sexe").toUpperCase();
+      safeRadio(
+        `${p}.Groupe_de_boutons_radio3[0]`,
+        sexeVendeur === "M" ? "1" : sexeVendeur === "F" ? "2" : null,
+      );
+    }
+    safeSetText(`${p}.txt_IdentitéVendeur[0]`, vendeurNom);
+    safeSetText(`${p}.Num_Siret[0]`, vendeurSiren);
+    safeSetText(`${p}.num_VoieAdresse[0]`, vendeurAdresse.numero);
+    safeSetText(`${p}.txt_ExtensionAdresse[0]`, vendeurAdresse.extension);
+    safeSetText(`${p}.txt_TypeVoieAdresse[0]`, vendeurAdresse.typeVoie);
+    safeSetText(`${p}.txt_NomVoie[0]`, vendeurAdresse.nomVoie);
+    safeSetText(`${p}.num_CodePostalAdresse[0]`, vendeurCp);
+    safeSetText(`${p}.txt_CommuneAdresse[0]`, vendeurVille);
+
+    // « céder » vs « céder pour destruction »
+    safeRadio(
+      `${p}.Groupe_de_boutons_radio4[0]`,
+      cession === "destruction" ? "2" : "1",
+    );
+    safeSetText(`${p}.num_DateVenteJour[0]`, cessionDate.j);
+    safeSetText(`${p}.num_DateVenteMois[0]`, cessionDate.m);
+    safeSetText(`${p}.num_DateVenteAnnée[0]`, cessionDate.a);
+    safeSetText(`${p}.num_HoraireVente1[0]`, cessionHeure.hh);
+    safeSetText(`${p}.num_HoraireVente2[0]`, cessionHeure.mm);
+    safeSetText(`${p}.num_Agrément[0]`, vendeurAgrement);
+    safeSetText(`${p}.txt_LieuDéclaration1[0]`, cessionLieu);
+    safeSetText(`${p}.num_DateDéclaration[0]`, pickStr(cerfaInput, "cession_date"));
+
+    // 3 certifications vendeur
+    safeCheck(`${p}.ckb_ValidationDéclaration1[0]`, certifSituation);
+    safeCheck(`${p}.ckb_ValidationDéclaration2[0]`, certifNonTransfo);
+    safeCheck(`${p}.ckb_ValidationDéclaration3[0]`, certifVhu);
+
+    // ---- Acheteur ----
+    safeRadio(
+      `${p}.Groupe_de_boutons_radio5[0]`,
+      acheteurType === "morale" ? "2" : "1",
+    );
+    if (acheteurType === "physique") {
+      safeRadio(
+        `${p}.Groupe_de_boutons_radio6[0]`,
+        acheteurSexe === "M" ? "1" : acheteurSexe === "F" ? "2" : null,
+      );
+    }
+    const acheteurFullName =
+      [acheteurNom, acheteurPrenom].filter(Boolean).join(" ").trim();
+    safeSetText(`${p}.txt_IdentitéAcheteur[0]`, acheteurFullName);
+    safeSetText(`${p}.num_SiretAcheteur[0]`, acheteurSiret);
+    safeSetText(
+      `${p}.txt_LieuNaissanceAcheteur[0]`,
+      acheteurLieuNaiss,
+    );
+    safeSetText(`${p}.num_DateNaissanceAcheteurJ[0]`, acheteurDateNaiss.j);
+    safeSetText(`${p}.num_DateNaissanceAcheteurM[0]`, acheteurDateNaiss.m);
+    safeSetText(`${p}.num_DateNaissanceAcheteurA[0]`, acheteurDateNaiss.a);
+    safeSetText(`${p}.num_VoieAdresseAcheteur[0]`, acheteurAdresse.numero);
+    safeSetText(
+      `${p}.txt_ExtensionAdresseAcheteur[0]`,
+      acheteurAdresse.extension,
+    );
+    safeSetText(
+      `${p}.txt_TypeVoieAdresseAcheteur[0]`,
+      acheteurAdresse.typeVoie,
+    );
+    safeSetText(`${p}.txt_NomVoieAdresseAcheteur[0]`, acheteurAdresse.nomVoie);
+    safeSetText(`${p}.num_CodePostalAdresseAcheteur[0]`, acheteurCp);
+    safeSetText(`${p}.txt_CommuneAdresseAcheteur[0]`, acheteurVille);
+    safeSetText(`${p}.txt_LieuDéclaration2[0]`, cessionLieu);
+    safeSetText(`${p}.txt_dateDéclaration[0]`, pickStr(cerfaInput, "cession_date"));
+
+    // 2 certifications acheteur — cochées par défaut (l'acheteur « acquiert »
+    // et « est informé »), peuvent être explicitement décochées via input.
+    const certAcquerir = cerfaInput.acheteur_cert_acquerir === false ? false : true;
+    const certInforme = cerfaInput.acheteur_cert_informe === false ? false : true;
+    safeCheck(`${p}.ckb_ValidationDéclarationA1[0]`, certAcquerir);
+    safeCheck(`${p}.ckb_ValidationDéclarationA2[0]`, certInforme);
+
+    // Opposition à la prospection commerciale (par défaut non cochée)
+    safeCheck(
+      `${p}.ckb_OppositionUtilisationDonnée[0]`,
+      pickBool(cerfaInput, "opposition_prospection"),
+    );
+  }
+
+  // Fige les valeurs pour qu'elles s'affichent partout (impressions, viewers
+  // mobiles, etc.). flatten() supprime aussi tout reste de XFA.
+  try {
+    form.flatten();
+  } catch (err) {
+    console.warn("[fill-cerfa] flatten:", err);
+  }
+
+  let outBytes: Uint8Array;
+  try {
+    outBytes = await doc.save();
+  } catch (err) {
+    console.error("[fill-cerfa] save:", err);
+    return res.status(500).json({ error: "Échec de la génération du PDF." });
+  }
+
+  return res.status(200).json({
+    pdf_base64: Buffer.from(outBytes).toString("base64"),
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -1247,6 +1625,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleCompleteSignature(data, res);
     case "resend-signature-email":
       return handleResendSignatureEmail(req, data, res);
+    case "fill-cerfa":
+      return handleFillCerfa(req, data, res);
     default:
       return res.status(400).json({ error: "Action inconnue" });
   }

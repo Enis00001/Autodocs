@@ -94,8 +94,14 @@ const LoginPage = () => {
       redirectTo: `${window.location.origin}/reset-password`,
     });
     setForgotLoading(false);
-    if (error) {
-      setForgotError("Une erreur est survenue, veuillez réessayer.");
+
+    // Supabase ne révèle jamais si l'email existe ou non (sécurité contre
+    // l'énumération de comptes). On affiche donc toujours le message de
+    // succès — sauf vraie erreur serveur (rate limit) qui doit être
+    // signalée à l'utilisateur pour qu'il sache pourquoi le mail n'arrive
+    // pas tout de suite.
+    if (error?.message && /rate.?limit|too.?many/i.test(error.message)) {
+      setForgotError("Trop de tentatives, réessayez dans quelques minutes.");
       return;
     }
     setForgotSuccess(true);
