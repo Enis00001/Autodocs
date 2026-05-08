@@ -10,155 +10,6 @@ import puppeteer from "puppeteer-core";
 
 const QUOTA_GRATUIT = 10;
 
-/* ==================================================================
- *  CERFA 15776*01 — Déclaration de cession d'un véhicule
- *
- *  Template HTML inliné (source de vérité humaine :
- *  `src/templates/cerfa-cession.html`). Toute modification ici DOIT
- *  être répliquée dans ce fichier source.
- *
- *  Placeholders attendus dans `formData` côté front (cf.
- *  `src/utils/generateCERFA.ts`) :
- *    NOM_VENDEUR, ADRESSE_VENDEUR, SIREN_VENDEUR,
- *    NOM_ACHETEUR, PRENOM_ACHETEUR, ADRESSE_ACHETEUR,
- *    DATE_NAISSANCE_ACHETEUR,
- *    MARQUE_VEHICULE, MODELE_VEHICULE, IMMATRICULATION, VIN,
- *    PREMIERE_CIRCULATION, KILOMETRAGE,
- *    DATE_CESSION, HEURE_CESSION, LIEU_CESSION,
- *    ETAT_VENDU_EN_LETAT ("x" si coché), ETAT_AVEC_CT ("x" si coché)
- *  Plus, pour la signature : `signatureVendeurBase64` injecté en
- *  `{{signature_vendeur}}` (vide = zone à signer à la main).
- * ================================================================== */
-
-const CERFA_TEMPLATE_HTML = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-<meta charset="UTF-8">
-<style>
-  @page { size: A4; margin: 14mm 12mm 14mm 12mm; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; font-size: 10.5px; color: #111; line-height: 1.45; }
-  .page { width: 100%; }
-  .cerfa-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px; }
-  .cerfa-header .republique { font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px; color: #444; }
-  .cerfa-header .doc-title { font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
-  .cerfa-header .doc-subtitle { font-size: 10px; color: #444; margin-top: 2px; }
-  .cerfa-header .cerfa-num { text-align: right; border: 1.5px solid #000; padding: 4px 8px; font-weight: 700; font-size: 11px; white-space: nowrap; }
-  .cerfa-header .cerfa-num small { display: block; font-size: 8.5px; font-weight: 500; color: #555; margin-top: 1px; }
-  .section { margin-bottom: 10px; border: 1px solid #000; }
-  .section-title { background: #000; color: #fff; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 4px 8px; }
-  .section-body { padding: 8px 10px; }
-  .field-row { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 6px; }
-  .field-row:last-child { margin-bottom: 0; }
-  .field { flex: 1 1 45%; min-width: 200px; display: flex; flex-direction: column; gap: 1px; }
-  .field.full { flex: 1 1 100%; }
-  .field.short { flex: 0 1 30%; min-width: 140px; }
-  .field-label { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.3px; color: #555; font-weight: 600; }
-  .field-value { border-bottom: 1px solid #555; padding: 2px 2px 3px 2px; min-height: 16px; font-size: 11px; color: #111; font-weight: 500; }
-  .checkbox-row { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px; }
-  .checkbox-item { display: flex; align-items: center; gap: 6px; font-size: 10.5px; }
-  .checkbox-box { display: inline-block; width: 12px; height: 12px; border: 1.5px solid #000; text-align: center; line-height: 9px; font-weight: 800; font-size: 12px; }
-  .signatures { display: flex; gap: 14px; margin-top: 12px; }
-  .sig-box { flex: 1; border: 1px solid #000; padding: 8px 10px; min-height: 110px; display: flex; flex-direction: column; }
-  .sig-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
-  .sig-mention { font-size: 9.5px; color: #444; margin-bottom: 4px; }
-  .sig-zone { flex: 1; border: 1px dashed #999; margin-top: 6px; display: flex; align-items: center; justify-content: center; min-height: 70px; }
-  .sig-zone img { max-width: 200px; max-height: 80px; display: block; }
-  .sig-zone.empty { color: #999; font-size: 9px; font-style: italic; }
-  .footer { margin-top: 10px; padding-top: 6px; border-top: 1px solid #ccc; font-size: 8px; color: #777; text-align: center; line-height: 1.3; }
-  .legal { margin-top: 8px; font-size: 9px; color: #444; line-height: 1.4; border: 1px dashed #888; padding: 6px 8px; background: #fafafa; }
-  .legal strong { color: #111; }
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="cerfa-header">
-    <div>
-      <div class="republique">République Française</div>
-      <div class="doc-title">Déclaration de cession d'un véhicule</div>
-      <div class="doc-subtitle">À remettre par l'ancien titulaire à l'acquéreur</div>
-    </div>
-    <div class="cerfa-num">N° 15776*01<small>Cerfa</small></div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">1 — Ancien titulaire (vendeur)</div>
-    <div class="section-body">
-      <div class="field-row"><div class="field full"><span class="field-label">Nom / Raison sociale</span><span class="field-value">{{NOM_VENDEUR}}</span></div></div>
-      <div class="field-row"><div class="field full"><span class="field-label">Adresse</span><span class="field-value">{{ADRESSE_VENDEUR}}</span></div></div>
-      <div class="field-row"><div class="field"><span class="field-label">N° SIREN (si professionnel)</span><span class="field-value">{{SIREN_VENDEUR}}</span></div></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">2 — Nouveau titulaire (acheteur)</div>
-    <div class="section-body">
-      <div class="field-row">
-        <div class="field"><span class="field-label">Nom de famille</span><span class="field-value">{{NOM_ACHETEUR}}</span></div>
-        <div class="field"><span class="field-label">Prénom(s)</span><span class="field-value">{{PRENOM_ACHETEUR}}</span></div>
-      </div>
-      <div class="field-row"><div class="field"><span class="field-label">Date de naissance</span><span class="field-value">{{DATE_NAISSANCE_ACHETEUR}}</span></div></div>
-      <div class="field-row"><div class="field full"><span class="field-label">Adresse</span><span class="field-value">{{ADRESSE_ACHETEUR}}</span></div></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">3 — Véhicule</div>
-    <div class="section-body">
-      <div class="field-row">
-        <div class="field"><span class="field-label">Marque</span><span class="field-value">{{MARQUE_VEHICULE}}</span></div>
-        <div class="field"><span class="field-label">Modèle / Type</span><span class="field-value">{{MODELE_VEHICULE}}</span></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><span class="field-label">N° d'immatriculation</span><span class="field-value">{{IMMATRICULATION}}</span></div>
-        <div class="field"><span class="field-label">N° d'identification (VIN)</span><span class="field-value">{{VIN}}</span></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><span class="field-label">Date de 1ère mise en circulation</span><span class="field-value">{{PREMIERE_CIRCULATION}}</span></div>
-        <div class="field"><span class="field-label">Kilométrage au compteur</span><span class="field-value">{{KILOMETRAGE}}</span></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">4 — Cession du véhicule</div>
-    <div class="section-body">
-      <div class="field-row">
-        <div class="field"><span class="field-label">Date de cession</span><span class="field-value">{{DATE_CESSION}}</span></div>
-        <div class="field short"><span class="field-label">Heure</span><span class="field-value">{{HEURE_CESSION}}</span></div>
-        <div class="field"><span class="field-label">Lieu</span><span class="field-value">{{LIEU_CESSION}}</span></div>
-      </div>
-      <div class="checkbox-row">
-        <div class="checkbox-item"><span class="checkbox-box">{{ETAT_VENDU_EN_LETAT}}</span>Véhicule vendu en l'état (pour pièces détachées ou destruction)</div>
-        <div class="checkbox-item"><span class="checkbox-box">{{ETAT_AVEC_CT}}</span>Véhicule vendu avec contrôle technique en cours de validité</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="signatures">
-    <div class="sig-box">
-      <div class="sig-title">Signature de l'ancien titulaire (vendeur)</div>
-      <div class="sig-mention">Précédée de la mention « Vendu en l'état le {{DATE_CESSION}} ».</div>
-      <div class="sig-zone">{{signature_vendeur}}</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-title">Signature du nouveau titulaire (acheteur)</div>
-      <div class="sig-mention">Précédée de la mention « Lu et approuvé le {{DATE_CESSION}} ».</div>
-      <div class="sig-zone empty">À signer à la main</div>
-    </div>
-  </div>
-
-  <div class="legal">
-    <strong>Démarche en ligne :</strong> l'ancien titulaire dispose de 15 jours à compter de la cession pour déclarer la vente sur
-    <strong>histovec.interieur.gouv.fr</strong> ou <strong>ants.gouv.fr</strong>.
-    Un exemplaire de cette déclaration doit être remis à l'acquéreur, qui dispose à son tour d'un délai d'un mois pour effectuer la demande de nouvelle carte grise à son nom.
-  </div>
-
-  <div class="footer">Document généré par AutoDocs — Conforme à la trame du formulaire Cerfa 15776*01 (Déclaration de cession d'un véhicule).</div>
-</div>
-</body>
-</html>`;
-
 const BON_TEMPLATE_HTML = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -597,63 +448,6 @@ function buildHtml(
   return html;
 }
 
-/**
- * Construit le HTML CERFA 15776*01 à partir du `formData` envoyé par le
- * front (cf. `src/utils/generateCERFA.ts`). Tous les placeholders attendus
- * sont remplis ; les champs vides apparaissent comme tirets « — » pour
- * matérialiser visuellement les zones non renseignées (à compléter à la
- * main si besoin).
- */
-function buildCerfaHtml(
-  formData: Record<string, string>,
-  signatures: SignatureImages = {},
-): string {
-  let html = CERFA_TEMPLATE_HTML;
-
-  const get = (key: string) => escapeHtml((formData[key] ?? "").trim());
-
-  // Cases à cocher : on accepte plusieurs représentations vraies.
-  const truthyCheckbox = (raw: string): boolean => {
-    const v = String(raw ?? "").trim().toLowerCase();
-    return ["x", "1", "true", "oui", "yes", "on"].includes(v);
-  };
-  const checkbox = (key: string) =>
-    truthyCheckbox(formData[key] ?? "") ? "X" : "";
-
-  const signatureVendeurHtml = buildSignatureImg(signatures.signatureVendeurBase64);
-  html = html.replace(/\{\{signature_vendeur\}\}/g, signatureVendeurHtml);
-
-  const placeholders: Record<string, string> = {
-    NOM_VENDEUR: get("NOM_VENDEUR"),
-    ADRESSE_VENDEUR: get("ADRESSE_VENDEUR"),
-    SIREN_VENDEUR: get("SIREN_VENDEUR"),
-    NOM_ACHETEUR: get("NOM_ACHETEUR"),
-    PRENOM_ACHETEUR: get("PRENOM_ACHETEUR"),
-    ADRESSE_ACHETEUR: get("ADRESSE_ACHETEUR"),
-    DATE_NAISSANCE_ACHETEUR: get("DATE_NAISSANCE_ACHETEUR"),
-    MARQUE_VEHICULE: get("MARQUE_VEHICULE"),
-    MODELE_VEHICULE: get("MODELE_VEHICULE"),
-    IMMATRICULATION: get("IMMATRICULATION"),
-    VIN: get("VIN"),
-    PREMIERE_CIRCULATION: get("PREMIERE_CIRCULATION"),
-    KILOMETRAGE: get("KILOMETRAGE"),
-    DATE_CESSION: get("DATE_CESSION"),
-    HEURE_CESSION: get("HEURE_CESSION"),
-    LIEU_CESSION: get("LIEU_CESSION"),
-    ETAT_VENDU_EN_LETAT: checkbox("ETAT_VENDU_EN_LETAT"),
-    ETAT_AVEC_CT: checkbox("ETAT_AVEC_CT"),
-  };
-
-  for (const [key, value] of Object.entries(placeholders)) {
-    html = html.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value || "—");
-  }
-
-  // Tout placeholder restant (sécurité) → tiret.
-  html = html.replace(/\{\{[A-Za-z0-9_]+\}\}/g, "—");
-
-  return html;
-}
-
 async function renderPdfFromHtml(html: string): Promise<Buffer> {
   let browser;
   try {
@@ -759,6 +553,15 @@ async function checkAndConsumeQuota(
 
 /* ==================================================================
  *  Main handler
+ *
+ *  Deux contrats supportés :
+ *    A. `{ formData }` (legacy) : flow bon de commande standard. Le
+ *       template `BON_TEMPLATE_HTML` est rempli côté serveur et le quota
+ *       gratuit est décrémenté.
+ *    B. `{ html }` (escape hatch) : un HTML déjà rempli côté front est
+ *       rendu directement en PDF, sans toucher au quota. Utilisé par
+ *       les documents annexes (ex. CERFA de cession) qui ne consomment
+ *       pas de crédit « bon de commande ».
  * ================================================================== */
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -783,16 +586,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     body = req.body ?? {};
   }
 
-  const documentType =
-    typeof body.documentType === "string" ? body.documentType.toLowerCase().trim() : "bon";
-  const isCerfa = documentType === "cerfa";
+  const customHtml =
+    typeof body.html === "string" && body.html.trim().length > 0
+      ? body.html
+      : null;
 
   const shouldBypassQuota =
     process.env.NODE_ENV === "development" ||
     process.env.BYPASS_QUOTA === "true" ||
-    // Le CERFA de cession est un document annexe à un bon de commande déjà
-    // comptabilisé : il ne consomme pas de crédit supplémentaire.
-    isCerfa;
+    // Les documents annexes envoyés sous forme de HTML déjà rendu
+    // (ex. CERFA de cession) ne consomment pas de crédit.
+    customHtml !== null;
 
   if (!shouldBypassQuota) {
     const quota = await checkAndConsumeQuota(userId);
@@ -801,20 +605,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const formData = (body.formData ?? body) as Record<string, string>;
-  if (!formData || typeof formData !== "object") {
-    return res.status(400).json({ error: "formData requis" });
-  }
-
   try {
     let html: string;
-    if (isCerfa) {
-      const sigVendeur =
-        typeof body.signatureVendeurBase64 === "string"
-          ? body.signatureVendeurBase64
-          : undefined;
-      html = buildCerfaHtml(formData, { signatureVendeurBase64: sigVendeur });
+    if (customHtml) {
+      html = customHtml;
     } else {
+      const formData = (body.formData ?? body) as Record<string, string>;
+      if (!formData || typeof formData !== "object") {
+        return res.status(400).json({ error: "formData requis" });
+      }
       html = buildHtml(formData);
     }
     const pdfBuffer = await renderPdfFromHtml(html);

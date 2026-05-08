@@ -15,19 +15,14 @@ const ResetPasswordPage = () => {
     let mounted = true;
 
     const verifyRecoverySession = async () => {
-      const hash = window.location.hash || "";
-      const hasRecoveryToken = hash.includes("access_token=");
-
-      const { data, error: sessionError } = await supabase.auth.getSession();
-      const hasSession = !!data.session;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (!mounted) return;
 
-      if (sessionError || (!hasSession && !hasRecoveryToken)) {
-        navigate("/login", {
-          replace: true,
-          state: { flashMessage: "Lien expiré, veuillez recommencer." },
-        });
+      if (!session) {
+        navigate("/login", { replace: true });
         return;
       }
 
@@ -64,7 +59,8 @@ const ResetPasswordPage = () => {
     }
 
     setSuccess(true);
-    setTimeout(() => {
+    setTimeout(async () => {
+      await supabase.auth.signOut();
       navigate("/login", {
         replace: true,
         state: { flashMessage: "Mot de passe mis à jour !" },
@@ -92,6 +88,7 @@ const ResetPasswordPage = () => {
               <input
                 type="password"
                 className="field-input"
+                minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

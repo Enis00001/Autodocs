@@ -16,6 +16,8 @@ import StockVehicules from "./pages/StockVehicules";
 import Parametres from "./pages/Parametres";
 import Preferences from "./pages/Preferences";
 import Abonnement from "./pages/Abonnement";
+import CERFA from "./pages/CERFA";
+import ProfilConcession from "./pages/ProfilConcession";
 import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/Login";
 import InscriptionPage from "./pages/Inscription";
@@ -209,11 +211,13 @@ const App = () => {
                 <Route path="/nouveau-bon" element={<NouveauBon />} />
                 <Route path="/nouveau-bon/:id" element={<NouveauBon />} />
                 <Route path="/historique" element={<Historique />} />
+                <Route path="/cerfa" element={<CERFA />} />
                 <Route path="/templates" element={<TemplatesPage />} />
                 <Route path="/infos-vehicule" element={<VehicleFieldsPage />} />
                 <Route path="/stock-vehicules" element={<StockVehicules />} />
                 <Route path="/parametres" element={<Parametres />} />
                 <Route path="/preferences" element={<Preferences />} />
+                <Route path="/profil-concession" element={<ProfilConcession />} />
                 <Route path="/abonnement" element={<Abonnement />} />
               </Route>
               <Route

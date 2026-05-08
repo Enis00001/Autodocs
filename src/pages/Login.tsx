@@ -95,7 +95,7 @@ const LoginPage = () => {
     });
     setForgotLoading(false);
     if (error) {
-      setForgotError("Aucun compte trouvé avec cet email.");
+      setForgotError("Une erreur est survenue, veuillez réessayer.");
       return;
     }
     setForgotSuccess(true);
@@ -164,7 +164,7 @@ const LoginPage = () => {
               setForgotError(null);
               setForgotSuccess(false);
             }}
-            className="text-sm text-primary hover:underline cursor-pointer bg-transparent border-0 p-0"
+            className="text-sm text-gray-500 underline cursor-pointer bg-transparent border-0 p-0"
           >
             Mot de passe oublié ?
           </button>
@@ -178,6 +178,7 @@ const LoginPage = () => {
                 <input
                   type="email"
                   className="field-input"
+                  placeholder="Votre adresse email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   required
@@ -193,7 +194,7 @@ const LoginPage = () => {
             </form>
             {forgotSuccess && (
               <p className="mt-3 text-sm text-emerald-400">
-                Lien envoyé ! Vérifiez votre boîte mail.
+                Lien envoyé ! Vérifiez votre boîte mail (et vos spams).
               </p>
             )}
             {forgotError && <p className="mt-3 text-sm text-destructive">{forgotError}</p>}

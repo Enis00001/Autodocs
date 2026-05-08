@@ -1,399 +1,782 @@
 <!--
-  Source de vérité du template HTML utilisé pour générer le PDF
-  « Déclaration de cession d'un véhicule » (CERFA n°15776*01).
+  Template HTML — Certificat de cession d'un véhicule d'occasion
+  Reproduction de la trame du formulaire administratif public
+  Cerfa N° 15776*01 (publié par l'État français, à remplir par
+  l'ancien et le nouveau propriétaire — articles R322-4 et R322-9
+  du code de la route).
 
-  ⚠️ Toute modification ici DOIT être répliquée dans
-     `api/generate-pdf.ts → CERFA_TEMPLATE_HTML`
-  car le template est inliné dans la fonction serverless pour éviter les
-  problèmes de filesystem côté Vercel.
+  Le PDF généré contient deux exemplaires identiques :
+    - Page 1 : exemplaire destiné à l'ancien propriétaire
+    - Page 2 : exemplaire destiné au nouveau propriétaire
 
-  Placeholders dynamiques :
-    Vendeur (concession)
-      - {{NOM_VENDEUR}}            : Raison sociale ou nom du vendeur
-      - {{ADRESSE_VENDEUR}}        : Adresse complète
-      - {{SIREN_VENDEUR}}          : N° SIREN si pro (vide si particulier)
+  Les placeholders {{XXX}} sont remplacés côté front par les
+  données issues du brouillon AutoDocs + du profil concession,
+  cf. src/pages/CERFA.tsx → fillCerfaTemplate().
+
+  Placeholders attendus :
+    Véhicule
+      VEHICULE_IMMATRICULATION, VEHICULE_VIN, VEHICULE_DATE_MEC,
+      VEHICULE_MARQUE, VEHICULE_TYPE, VEHICULE_GENRE,
+      VEHICULE_MODELE, VEHICULE_KILOMETRAGE,
+      VEHICULE_CI_OUI ("X" si coché), VEHICULE_CI_NON ("X" si coché),
+      VEHICULE_NUMERO_FORMULE, VEHICULE_DATE_CI,
+      VEHICULE_MOTIF_ABSENCE_CI
+
+    Vendeur (concession ⇒ personne morale par défaut)
+      VENDEUR_TYPE_PHYSIQUE ("X" si coché), VENDEUR_TYPE_MORALE ("X" si coché),
+      VENDEUR_SEXE_M ("X" si coché), VENDEUR_SEXE_F ("X" si coché),
+      VENDEUR_NOM, VENDEUR_SIREN,
+      VENDEUR_ADRESSE, VENDEUR_CODE_POSTAL, VENDEUR_VILLE,
+      VENDEUR_CESSION ("X" si coché), VENDEUR_DESTRUCTION ("X" si coché),
+      VENDEUR_CERT_SITUATION ("X"), VENDEUR_CERT_NON_TRANSFO ("X"),
+      VENDEUR_CERT_VHU ("X"), VENDEUR_VHU_AGREMENT
 
     Acheteur
-      - {{NOM_ACHETEUR}}           : Nom de famille
-      - {{PRENOM_ACHETEUR}}        : Prénom(s)
-      - {{ADRESSE_ACHETEUR}}       : Adresse complète
-      - {{DATE_NAISSANCE_ACHETEUR}}: JJ/MM/AAAA
+      ACHETEUR_TYPE_PHYSIQUE ("X" si coché), ACHETEUR_TYPE_MORALE ("X" si coché),
+      ACHETEUR_SEXE_M ("X" si coché), ACHETEUR_SEXE_F ("X" si coché),
+      ACHETEUR_NOM, ACHETEUR_PRENOM, ACHETEUR_SIRET,
+      ACHETEUR_DATE_NAISSANCE, ACHETEUR_LIEU_NAISSANCE,
+      ACHETEUR_ADRESSE, ACHETEUR_CODE_POSTAL, ACHETEUR_VILLE,
+      ACHETEUR_CERT_ACQUERIR ("X"), ACHETEUR_CERT_INFO ("X")
 
-    Véhicule
-      - {{MARQUE_VEHICULE}}        : Marque
-      - {{MODELE_VEHICULE}}        : Type / commercial
-      - {{IMMATRICULATION}}        : N° d'immatriculation (AA-123-AA)
-      - {{VIN}}                    : N° d'identification (VIN / châssis)
-      - {{PREMIERE_CIRCULATION}}   : Date de 1ère mise en circulation
-      - {{KILOMETRAGE}}            : Km au compteur
-
-    Cession
-      - {{DATE_CESSION}}           : JJ/MM/AAAA
-      - {{HEURE_CESSION}}          : HH:MM
-      - {{LIEU_CESSION}}           : Ville
-      - {{ETAT_VENDU_EN_LETAT}}    : "x" si coché, "" sinon
-      - {{ETAT_AVEC_CT}}           : "x" si coché, "" sinon
-
-    Signature
-      - {{signature_vendeur}}      : <img> base64 (vide = zone à signer à la main)
+    Cession (commun aux 2 sections)
+      CESSION_DATE, CESSION_HEURE, CESSION_LIEU
 -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <style>
-  @page { size: A4; margin: 14mm 12mm 14mm 12mm; }
+  @page { size: A4; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 210mm; }
   body {
-    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
-    font-size: 10.5px;
-    color: #111;
-    line-height: 1.45;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt;
+    line-height: 1.35;
+    color: #1a1a1a;
   }
-  .page { width: 100%; }
 
-  .cerfa-header {
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 10mm;
+    background: #fff;
+    position: relative;
+    page-break-after: always;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  /* ---------- En-tête ---------- */
+  .doc-head {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    border-bottom: 2px solid #000;
-    padding-bottom: 8px;
-    margin-bottom: 12px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 4mm;
+    margin-bottom: 4mm;
   }
-  .cerfa-header .republique {
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    color: #444;
-  }
-  .cerfa-header .doc-title {
-    font-size: 15px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-top: 2px;
-  }
-  .cerfa-header .doc-subtitle {
-    font-size: 10px;
-    color: #444;
-    margin-top: 2px;
-  }
-  .cerfa-header .cerfa-num {
-    text-align: right;
-    border: 1.5px solid #000;
-    padding: 4px 8px;
+  .doc-head .titres { flex: 1; padding-right: 10mm; }
+  .doc-title {
+    font-size: 11pt;
     font-weight: 700;
-    font-size: 11px;
-    white-space: nowrap;
-  }
-  .cerfa-header .cerfa-num small {
-    display: block;
-    font-size: 8.5px;
-    font-weight: 500;
-    color: #555;
-    margin-top: 1px;
-  }
-
-  .section { margin-bottom: 10px; border: 1px solid #000; }
-  .section-title {
-    background: #000;
-    color: #fff;
-    font-size: 10.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 4px 8px;
-  }
-  .section-body { padding: 8px 10px; }
-
-  .field-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 18px;
-    margin-bottom: 6px;
-  }
-  .field-row:last-child { margin-bottom: 0; }
-  .field {
-    flex: 1 1 45%;
-    min-width: 200px;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-  .field.full { flex: 1 1 100%; }
-  .field.short { flex: 0 1 30%; min-width: 140px; }
-  .field-label {
-    font-size: 8.5px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    color: #555;
+    text-align: center;
+  }
+  .doc-subtitle {
+    font-size: 8.5pt;
+    text-align: center;
+    margin-top: 1mm;
+    font-style: italic;
+  }
+  .doc-legal {
+    font-size: 7.5pt;
+    text-align: center;
+    margin-top: 1mm;
+    color: #444;
+  }
+  .cerfa-badge {
+    width: 28mm;
+    border: 1px solid #333;
+    padding: 1.5mm 2mm;
+    text-align: center;
+    font-size: 8pt;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .cerfa-badge small {
+    display: block;
+    font-size: 7pt;
+    font-weight: 400;
+    margin-top: 0.5mm;
+  }
+
+  /* ---------- Sections ---------- */
+  .section {
+    border: 1px solid #333;
+    margin-bottom: 3mm;
+  }
+  .section-head {
+    background: #f0f0f0;
+    border-bottom: 1px solid #333;
+    padding: 1.5mm 2.5mm;
+    font-weight: 700;
+    font-size: 9.5pt;
+    text-transform: uppercase;
+  }
+  .section-head .sub {
+    display: inline;
+    font-weight: 400;
+    font-size: 8.5pt;
+    text-transform: none;
+    color: #444;
+    margin-left: 4px;
+  }
+  .section-body { padding: 2mm 2.5mm; }
+
+  /* ---------- Tableaux & lignes de champs ---------- */
+  .veh-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .veh-table td {
+    border: 1px solid #333;
+    padding: 1.2mm 1.8mm;
+    font-size: 8.5pt;
+    vertical-align: top;
+  }
+  .veh-table .lbl {
+    background: #f0f0f0;
+    width: 38%;
     font-weight: 600;
   }
-  .field-value {
-    border-bottom: 1px solid #555;
-    padding: 2px 2px 3px 2px;
-    min-height: 16px;
-    font-size: 11px;
-    color: #111;
-    font-weight: 500;
+  .veh-table .lbl small {
+    display: inline;
+    font-weight: 400;
+    color: #555;
+    font-size: 7.5pt;
   }
-  .field-value.empty { color: #999; font-style: italic; font-weight: 400; }
+  .veh-table .val { font-weight: 500; min-height: 4mm; }
 
-  .checkbox-row {
+  .row {
     display: flex;
     flex-wrap: wrap;
-    gap: 14px;
-    margin-top: 6px;
+    gap: 1.5mm 4mm;
+    margin: 1mm 0;
   }
-  .checkbox-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10.5px;
+  .field {
+    flex: 1 1 46%;
+    min-width: 60mm;
   }
-  .checkbox-box {
+  .field .l {
+    font-size: 7.5pt;
+    color: #444;
+    text-transform: none;
+  }
+  .field .v {
+    border-bottom: 1px solid #555;
+    padding: 0.5mm 0.5mm 1mm 0.5mm;
+    min-height: 4.5mm;
+    font-size: 9.5pt;
+  }
+  .field.full { flex: 1 1 100%; }
+
+  /* ---------- Cases à cocher Unicode ---------- */
+  .cb {
     display: inline-block;
-    width: 12px;
-    height: 12px;
-    border: 1.5px solid #000;
-    text-align: center;
-    line-height: 9px;
-    font-weight: 800;
-    font-size: 12px;
+    font-family: "Segoe UI Symbol", "DejaVu Sans", sans-serif;
+    font-size: 11pt;
+    line-height: 1;
+    margin-right: 1mm;
+    vertical-align: -1px;
   }
+  .cb-line {
+    margin: 1mm 0;
+    font-size: 9pt;
+    line-height: 1.45;
+  }
+  .cb-line .cb { margin-right: 1.5mm; }
 
-  .signatures {
+  /* ---------- Mention « Je soussigné(e) » ---------- */
+  .declare {
+    margin: 1.5mm 0 1mm 0;
+    font-weight: 600;
+    font-size: 9.5pt;
+  }
+  .inline-list {
     display: flex;
-    gap: 14px;
-    margin-top: 12px;
-  }
-  .sig-box {
-    flex: 1;
-    border: 1px solid #000;
-    padding: 8px 10px;
-    min-height: 110px;
-    display: flex;
-    flex-direction: column;
-  }
-  .sig-title {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    margin-bottom: 4px;
-  }
-  .sig-mention {
-    font-size: 9.5px;
-    color: #444;
-    margin-bottom: 4px;
-  }
-  .sig-zone {
-    flex: 1;
-    border: 1px dashed #999;
-    margin-top: 6px;
-    display: flex;
+    gap: 6mm;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: center;
-    min-height: 70px;
+    font-size: 9pt;
+    margin: 1mm 0;
   }
-  .sig-zone img {
-    max-width: 200px;
-    max-height: 80px;
-    display: block;
-  }
-  .sig-zone.empty { color: #999; font-size: 9px; font-style: italic; }
 
-  .footer {
-    margin-top: 10px;
-    padding-top: 6px;
-    border-top: 1px solid #ccc;
-    font-size: 8px;
-    color: #777;
-    text-align: center;
+  /* ---------- Signatures ---------- */
+  .sign-block {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 4mm;
+    margin: 2mm 0 1mm 0;
+  }
+  .sign-block .fait {
+    flex: 1;
+    font-size: 9pt;
+  }
+  .sign-zone {
+    width: 60mm;
+    border: 1px solid #333;
+    padding: 1.5mm;
+  }
+  .sign-zone .h {
+    font-size: 8pt;
+    font-weight: 600;
     line-height: 1.3;
+    margin-bottom: 1mm;
   }
-  .legal {
-    margin-top: 8px;
-    font-size: 9px;
+  .sign-zone .h small {
+    display: block;
+    font-size: 7pt;
+    font-weight: 400;
+    color: #555;
+  }
+  .sign-zone .pad {
+    height: 30mm;
+    border: 1px dashed #999;
+  }
+
+  /* ---------- Pied de page ---------- */
+  .doc-foot {
+    margin-top: 3mm;
+    padding-top: 2mm;
+    border-top: 1px solid #999;
+    font-size: 7.5pt;
+    color: #555;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .exemplaire {
+    font-style: italic;
+  }
+  .opposition {
+    font-size: 7.5pt;
     color: #444;
-    line-height: 1.4;
-    border: 1px dashed #888;
-    padding: 6px 8px;
-    background: #fafafa;
+    margin-top: 1mm;
   }
-  .legal strong { color: #111; }
 </style>
 </head>
 <body>
+
+<!-- ====================================================== -->
+<!--  EXEMPLAIRE 1 - destiné à l'ancien propriétaire        -->
+<!-- ====================================================== -->
 <div class="page">
 
-  <div class="cerfa-header">
-    <div>
-      <div class="republique">République Française</div>
-      <div class="doc-title">Déclaration de cession d'un véhicule</div>
-      <div class="doc-subtitle">À remettre par l'ancien titulaire à l'acquéreur</div>
+  <div class="doc-head">
+    <div class="titres">
+      <div class="doc-title">Certificat de cession d'un véhicule d'occasion</div>
+      <div class="doc-subtitle">(à remplir par l'ancien propriétaire et le nouveau propriétaire)</div>
+      <div class="doc-legal">Articles R322-4 et R322-9 du code de la route</div>
     </div>
-    <div class="cerfa-num">
-      N° 15776*01
-      <small>Cerfa</small>
+    <div class="cerfa-badge">
+      cerfa
+      <small>N° 15776*01</small>
     </div>
   </div>
 
-  <!-- =================== ANCIEN TITULAIRE / VENDEUR =================== -->
+  <!-- =============== LE VÉHICULE =============== -->
   <div class="section">
-    <div class="section-title">1 — Ancien titulaire (vendeur)</div>
+    <div class="section-head">
+      Le véhicule<span class="sub">— à remplir par l'ancien propriétaire</span>
+    </div>
     <div class="section-body">
-      <div class="field-row">
+      <table class="veh-table">
+        <tr>
+          <td class="lbl">(A) Numéro d'immatriculation du véhicule</td>
+          <td class="val">{{VEHICULE_IMMATRICULATION}}</td>
+        </tr>
+        <tr>
+          <td class="lbl">(E) Numéro d'identification du véhicule</td>
+          <td class="val">{{VEHICULE_VIN}}</td>
+        </tr>
+        <tr>
+          <td class="lbl">(B) Date de 1<sup>re</sup> immatriculation du véhicule</td>
+          <td class="val">{{VEHICULE_DATE_MEC}}</td>
+        </tr>
+        <tr>
+          <td class="lbl">(D.1) Marque</td>
+          <td class="val">{{VEHICULE_MARQUE}}</td>
+        </tr>
+        <tr>
+          <td class="lbl">(D.2) Type, variante, version</td>
+          <td class="val">{{VEHICULE_TYPE}}</td>
+        </tr>
+        <tr>
+          <td class="lbl">(J.1) Genre national</td>
+          <td class="val">{{VEHICULE_GENRE}}</td>
+        </tr>
+        <tr>
+          <td class="lbl">(D.3) Dénomination commerciale</td>
+          <td class="val">{{VEHICULE_MODELE}}</td>
+        </tr>
+        <tr>
+          <td class="lbl">Kilométrage inscrit au compteur du véhicule</td>
+          <td class="val">{{VEHICULE_KILOMETRAGE}}</td>
+        </tr>
+      </table>
+
+      <div style="margin-top: 2mm; font-size: 8.5pt;">
+        Présence du certificat d'immatriculation :
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VEHICULE_CI_OUI}}</span>
+        OUI — numéro de formule <strong>{{VEHICULE_NUMERO_FORMULE}}</strong>
+        <small style="color:#555; font-size: 7.5pt;">
+          (figure sur le 1<sup>er</sup> volet du certificat d'immatriculation, format AB-123-CD)
+        </small>
+        ou (I) date du certificat d'immatriculation <strong>{{VEHICULE_DATE_CI}}</strong>
+        <small style="color:#555; font-size: 7.5pt;">
+          (si ancien format d'immatriculation, type 123 AB 45)
+        </small>
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VEHICULE_CI_NON}}</span>
+        NON — Motif d'absence : <strong>{{VEHICULE_MOTIF_ABSENCE_CI}}</strong>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============== ANCIEN PROPRIÉTAIRE =============== -->
+  <div class="section">
+    <div class="section-head">Ancien propriétaire</div>
+    <div class="section-body">
+      <div class="inline-list">
+        <span><span class="cb">{{VENDEUR_TYPE_PHYSIQUE}}</span> Personne physique</span>
+        <span>Sexe :
+          <span class="cb">{{VENDEUR_SEXE_M}}</span> M
+          <span class="cb" style="margin-left:3mm;">{{VENDEUR_SEXE_F}}</span> F
+        </span>
+        <span><span class="cb">{{VENDEUR_TYPE_MORALE}}</span> Personne morale</span>
+      </div>
+
+      <div class="declare">Je soussigné(e),</div>
+      <div class="row">
+        <div class="field" style="flex: 1 1 65%;">
+          <div class="l">NOM, NOM D'USAGE le cas échéant et PRÉNOM ou RAISON SOCIALE</div>
+          <div class="v">{{VENDEUR_NOM}}</div>
+        </div>
+        <div class="field" style="flex: 1 1 30%;">
+          <div class="l">N° SIRET (le cas échéant)</div>
+          <div class="v">{{VENDEUR_SIREN}}</div>
+        </div>
+      </div>
+
+      <div class="declare" style="margin-top: 1.5mm;">Adresse complète :</div>
+      <div class="row">
         <div class="field full">
-          <span class="field-label">Nom / Raison sociale</span>
-          <span class="field-value">{{NOM_VENDEUR}}</span>
+          <div class="l">N° de la voie · Extension (bis, ter…) · Type de voie · Nom de la voie</div>
+          <div class="v">{{VENDEUR_ADRESSE}}</div>
         </div>
       </div>
-      <div class="field-row">
+      <div class="row">
+        <div class="field" style="flex: 1 1 30%;">
+          <div class="l">Code postal</div>
+          <div class="v">{{VENDEUR_CODE_POSTAL}}</div>
+        </div>
+        <div class="field" style="flex: 1 1 65%;">
+          <div class="l">Commune</div>
+          <div class="v">{{VENDEUR_VILLE}}</div>
+        </div>
+      </div>
+
+      <div class="declare" style="margin-top: 1.5mm;">
+        Certifie (veuillez cocher la case correspondante) :
+      </div>
+      <div class="inline-list">
+        <span><span class="cb">{{VENDEUR_CESSION}}</span> céder</span>
+        <span><span class="cb">{{VENDEUR_DESTRUCTION}}</span> céder pour destruction</span>
+      </div>
+      <div style="font-size: 9pt; margin: 1mm 0;">
+        Le <strong>{{CESSION_DATE}}</strong> à <strong>{{CESSION_HEURE}}</strong> h
+        le véhicule désigné ci-dessus.
+      </div>
+
+      <div class="declare" style="margin-top: 1.5mm;">
+        Je certifie en outre (veuillez cocher la case correspondante) :
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VENDEUR_CERT_SITUATION}}</span>
+        Avoir remis au nouveau propriétaire un certificat établi depuis moins
+        de quinze jours par le ministre de l'Intérieur, attestant à sa date
+        d'édition de la situation administrative du véhicule ;
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VENDEUR_CERT_NON_TRANSFO}}</span>
+        Que ce véhicule n'a pas subi de transformation notable susceptible
+        de modifier les indications du certificat de conformité ou de l'actuel
+        certificat d'immatriculation ;
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VENDEUR_CERT_VHU}}</span>
+        Que ce véhicule est cédé pour destruction à un professionnel de la
+        destruction des véhicules hors d'usage (VHU) portant le n° d'agrément :
+        <strong>{{VENDEUR_VHU_AGREMENT}}</strong>.
+        <small style="color:#555; font-size: 7.5pt;">
+          (Le numéro d'agrément VHU du professionnel acquéreur est obligatoire
+          si le véhicule est une voiture particulière, une camionnette ou un
+          cyclomoteur à trois roues. La liste des professionnels agréés est
+          disponible sur https://immatriculation.ants.gouv.fr).
+        </small>
+      </div>
+
+      <div class="sign-block">
+        <div class="fait">
+          Fait à <strong>{{CESSION_LIEU}}</strong>,
+          le <strong>{{CESSION_DATE}}</strong>
+        </div>
+        <div class="sign-zone">
+          <div class="h">
+            Signature de l'ancien propriétaire,
+            <small>(Pour les sociétés : nom et qualité du signataire et cachet)</small>
+          </div>
+          <div class="pad"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =============== NOUVEAU PROPRIÉTAIRE =============== -->
+  <div class="section">
+    <div class="section-head">Nouveau propriétaire</div>
+    <div class="section-body">
+      <div class="inline-list">
+        <span><span class="cb">{{ACHETEUR_TYPE_PHYSIQUE}}</span> Personne physique</span>
+        <span>Sexe :
+          <span class="cb">{{ACHETEUR_SEXE_M}}</span> M
+          <span class="cb" style="margin-left:3mm;">{{ACHETEUR_SEXE_F}}</span> F
+        </span>
+        <span><span class="cb">{{ACHETEUR_TYPE_MORALE}}</span> Personne morale</span>
+      </div>
+
+      <div class="declare">Je soussigné(e),</div>
+      <div class="row">
+        <div class="field" style="flex: 1 1 65%;">
+          <div class="l">NOM, NOM D'USAGE le cas échéant et PRÉNOM ou RAISON SOCIALE</div>
+          <div class="v">{{ACHETEUR_NOM}} {{ACHETEUR_PRENOM}}</div>
+        </div>
+        <div class="field" style="flex: 1 1 30%;">
+          <div class="l">N° SIRET (le cas échéant)</div>
+          <div class="v">{{ACHETEUR_SIRET}}</div>
+        </div>
+      </div>
+
+      <div style="font-size: 9pt; margin: 1.5mm 0 1mm 0;">
+        Né(e) le <strong>{{ACHETEUR_DATE_NAISSANCE}}</strong>
+        à <strong>{{ACHETEUR_LIEU_NAISSANCE}}</strong>
+      </div>
+
+      <div class="declare" style="margin-top: 1mm;">Adresse complète :</div>
+      <div class="row">
         <div class="field full">
-          <span class="field-label">Adresse</span>
-          <span class="field-value">{{ADRESSE_VENDEUR}}</span>
+          <div class="l">N° de la voie · Extension (bis, ter…) · Type de voie · Nom de la voie</div>
+          <div class="v">{{ACHETEUR_ADRESSE}}</div>
         </div>
       </div>
-      <div class="field-row">
-        <div class="field">
-          <span class="field-label">N° SIREN (si professionnel)</span>
-          <span class="field-value">{{SIREN_VENDEUR}}</span>
+      <div class="row">
+        <div class="field" style="flex: 1 1 30%;">
+          <div class="l">Code postal</div>
+          <div class="v">{{ACHETEUR_CODE_POSTAL}}</div>
+        </div>
+        <div class="field" style="flex: 1 1 65%;">
+          <div class="l">Commune</div>
+          <div class="v">{{ACHETEUR_VILLE}}</div>
+        </div>
+      </div>
+
+      <div class="declare" style="margin-top: 1.5mm;">
+        Certifie (veuillez cocher la case correspondante) :
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{ACHETEUR_CERT_ACQUERIR}}</span>
+        Acquérir le véhicule désigné ci-dessus aux dates et heures indiquées
+        par l'ancien propriétaire ;
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{ACHETEUR_CERT_INFO}}</span>
+        Avoir été informé de la situation administrative du véhicule.
+      </div>
+
+      <div class="sign-block">
+        <div class="fait">
+          Fait à <strong>{{CESSION_LIEU}}</strong>,
+          le <strong>{{CESSION_DATE}}</strong>
+        </div>
+        <div class="sign-zone">
+          <div class="h">
+            Signature du nouveau propriétaire,
+            <small>(Pour les sociétés : nom et qualité du signataire et cachet)</small>
+          </div>
+          <div class="pad"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- =================== NOUVEAU TITULAIRE / ACHETEUR =================== -->
-  <div class="section">
-    <div class="section-title">2 — Nouveau titulaire (acheteur)</div>
-    <div class="section-body">
-      <div class="field-row">
-        <div class="field">
-          <span class="field-label">Nom de famille</span>
-          <span class="field-value">{{NOM_ACHETEUR}}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">Prénom(s)</span>
-          <span class="field-value">{{PRENOM_ACHETEUR}}</span>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <span class="field-label">Date de naissance</span>
-          <span class="field-value">{{DATE_NAISSANCE_ACHETEUR}}</span>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field full">
-          <span class="field-label">Adresse</span>
-          <span class="field-value">{{ADRESSE_ACHETEUR}}</span>
-        </div>
-      </div>
-    </div>
+  <div class="opposition">
+    Je m'oppose à la réutilisation de mes données personnelles à des fins
+    de prospection commerciale.
   </div>
 
-  <!-- =================== VÉHICULE =================== -->
-  <div class="section">
-    <div class="section-title">3 — Véhicule</div>
-    <div class="section-body">
-      <div class="field-row">
-        <div class="field">
-          <span class="field-label">Marque</span>
-          <span class="field-value">{{MARQUE_VEHICULE}}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">Modèle / Type</span>
-          <span class="field-value">{{MODELE_VEHICULE}}</span>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <span class="field-label">N° d'immatriculation</span>
-          <span class="field-value">{{IMMATRICULATION}}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">N° d'identification (VIN)</span>
-          <span class="field-value">{{VIN}}</span>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <span class="field-label">Date de 1ère mise en circulation</span>
-          <span class="field-value">{{PREMIERE_CIRCULATION}}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">Kilométrage au compteur</span>
-          <span class="field-value">{{KILOMETRAGE}}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- =================== CESSION =================== -->
-  <div class="section">
-    <div class="section-title">4 — Cession du véhicule</div>
-    <div class="section-body">
-      <div class="field-row">
-        <div class="field">
-          <span class="field-label">Date de cession</span>
-          <span class="field-value">{{DATE_CESSION}}</span>
-        </div>
-        <div class="field short">
-          <span class="field-label">Heure</span>
-          <span class="field-value">{{HEURE_CESSION}}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">Lieu</span>
-          <span class="field-value">{{LIEU_CESSION}}</span>
-        </div>
-      </div>
-      <div class="checkbox-row">
-        <div class="checkbox-item">
-          <span class="checkbox-box">{{ETAT_VENDU_EN_LETAT}}</span>
-          Véhicule vendu en l'état (pour pièces détachées ou destruction)
-        </div>
-        <div class="checkbox-item">
-          <span class="checkbox-box">{{ETAT_AVEC_CT}}</span>
-          Véhicule vendu avec contrôle technique en cours de validité
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- =================== SIGNATURES =================== -->
-  <div class="signatures">
-    <div class="sig-box">
-      <div class="sig-title">Signature de l'ancien titulaire (vendeur)</div>
-      <div class="sig-mention">
-        Précédée de la mention « Vendu en l'état le {{DATE_CESSION}} ».
-      </div>
-      <div class="sig-zone">{{signature_vendeur}}</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-title">Signature du nouveau titulaire (acheteur)</div>
-      <div class="sig-mention">
-        Précédée de la mention « Lu et approuvé le {{DATE_CESSION}} ».
-      </div>
-      <div class="sig-zone empty">À signer à la main</div>
-    </div>
-  </div>
-
-  <div class="legal">
-    <strong>Démarche en ligne :</strong> l'ancien titulaire dispose de 15 jours
-    à compter de la cession pour déclarer la vente sur
-    <strong>histovec.interieur.gouv.fr</strong> ou
-    <strong>ants.gouv.fr</strong>.
-    Un exemplaire de cette déclaration doit être remis à l'acquéreur, qui
-    dispose à son tour d'un délai d'un mois pour effectuer la demande de
-    nouvelle carte grise à son nom.
-  </div>
-
-  <div class="footer">
-    Document généré par AutoDocs — Conforme à la trame du formulaire
-    Cerfa 15776*01 (Déclaration de cession d'un véhicule).
+  <div class="doc-foot">
+    <div class="exemplaire">Exemplaire 1 destiné à l'ancien propriétaire</div>
+    <div>cerfa N° 15776*01</div>
   </div>
 
 </div>
+
+<!-- ====================================================== -->
+<!--  EXEMPLAIRE 2 - destiné au nouveau propriétaire        -->
+<!--  Contenu identique à l'exemplaire 1                    -->
+<!-- ====================================================== -->
+<div class="page">
+
+  <div class="doc-head">
+    <div class="titres">
+      <div class="doc-title">Certificat de cession d'un véhicule d'occasion</div>
+      <div class="doc-subtitle">(à remplir par l'ancien propriétaire et le nouveau propriétaire)</div>
+      <div class="doc-legal">Articles R322-4 et R322-9 du code de la route</div>
+    </div>
+    <div class="cerfa-badge">
+      cerfa
+      <small>N° 15776*01</small>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      Le véhicule<span class="sub">— à remplir par l'ancien propriétaire</span>
+    </div>
+    <div class="section-body">
+      <table class="veh-table">
+        <tr><td class="lbl">(A) Numéro d'immatriculation du véhicule</td><td class="val">{{VEHICULE_IMMATRICULATION}}</td></tr>
+        <tr><td class="lbl">(E) Numéro d'identification du véhicule</td><td class="val">{{VEHICULE_VIN}}</td></tr>
+        <tr><td class="lbl">(B) Date de 1<sup>re</sup> immatriculation du véhicule</td><td class="val">{{VEHICULE_DATE_MEC}}</td></tr>
+        <tr><td class="lbl">(D.1) Marque</td><td class="val">{{VEHICULE_MARQUE}}</td></tr>
+        <tr><td class="lbl">(D.2) Type, variante, version</td><td class="val">{{VEHICULE_TYPE}}</td></tr>
+        <tr><td class="lbl">(J.1) Genre national</td><td class="val">{{VEHICULE_GENRE}}</td></tr>
+        <tr><td class="lbl">(D.3) Dénomination commerciale</td><td class="val">{{VEHICULE_MODELE}}</td></tr>
+        <tr><td class="lbl">Kilométrage inscrit au compteur du véhicule</td><td class="val">{{VEHICULE_KILOMETRAGE}}</td></tr>
+      </table>
+
+      <div style="margin-top: 2mm; font-size: 8.5pt;">
+        Présence du certificat d'immatriculation :
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VEHICULE_CI_OUI}}</span>
+        OUI — numéro de formule <strong>{{VEHICULE_NUMERO_FORMULE}}</strong>
+        <small style="color:#555; font-size: 7.5pt;">
+          (figure sur le 1<sup>er</sup> volet du certificat d'immatriculation, format AB-123-CD)
+        </small>
+        ou (I) date du certificat d'immatriculation <strong>{{VEHICULE_DATE_CI}}</strong>
+        <small style="color:#555; font-size: 7.5pt;">
+          (si ancien format d'immatriculation, type 123 AB 45)
+        </small>
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VEHICULE_CI_NON}}</span>
+        NON — Motif d'absence : <strong>{{VEHICULE_MOTIF_ABSENCE_CI}}</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">Ancien propriétaire</div>
+    <div class="section-body">
+      <div class="inline-list">
+        <span><span class="cb">{{VENDEUR_TYPE_PHYSIQUE}}</span> Personne physique</span>
+        <span>Sexe :
+          <span class="cb">{{VENDEUR_SEXE_M}}</span> M
+          <span class="cb" style="margin-left:3mm;">{{VENDEUR_SEXE_F}}</span> F
+        </span>
+        <span><span class="cb">{{VENDEUR_TYPE_MORALE}}</span> Personne morale</span>
+      </div>
+
+      <div class="declare">Je soussigné(e),</div>
+      <div class="row">
+        <div class="field" style="flex: 1 1 65%;">
+          <div class="l">NOM, NOM D'USAGE le cas échéant et PRÉNOM ou RAISON SOCIALE</div>
+          <div class="v">{{VENDEUR_NOM}}</div>
+        </div>
+        <div class="field" style="flex: 1 1 30%;">
+          <div class="l">N° SIRET (le cas échéant)</div>
+          <div class="v">{{VENDEUR_SIREN}}</div>
+        </div>
+      </div>
+
+      <div class="declare" style="margin-top: 1.5mm;">Adresse complète :</div>
+      <div class="row">
+        <div class="field full">
+          <div class="l">N° de la voie · Extension (bis, ter…) · Type de voie · Nom de la voie</div>
+          <div class="v">{{VENDEUR_ADRESSE}}</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex: 1 1 30%;">
+          <div class="l">Code postal</div>
+          <div class="v">{{VENDEUR_CODE_POSTAL}}</div>
+        </div>
+        <div class="field" style="flex: 1 1 65%;">
+          <div class="l">Commune</div>
+          <div class="v">{{VENDEUR_VILLE}}</div>
+        </div>
+      </div>
+
+      <div class="declare" style="margin-top: 1.5mm;">
+        Certifie (veuillez cocher la case correspondante) :
+      </div>
+      <div class="inline-list">
+        <span><span class="cb">{{VENDEUR_CESSION}}</span> céder</span>
+        <span><span class="cb">{{VENDEUR_DESTRUCTION}}</span> céder pour destruction</span>
+      </div>
+      <div style="font-size: 9pt; margin: 1mm 0;">
+        Le <strong>{{CESSION_DATE}}</strong> à <strong>{{CESSION_HEURE}}</strong> h
+        le véhicule désigné ci-dessus.
+      </div>
+
+      <div class="declare" style="margin-top: 1.5mm;">
+        Je certifie en outre (veuillez cocher la case correspondante) :
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VENDEUR_CERT_SITUATION}}</span>
+        Avoir remis au nouveau propriétaire un certificat établi depuis moins
+        de quinze jours par le ministre de l'Intérieur, attestant à sa date
+        d'édition de la situation administrative du véhicule ;
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VENDEUR_CERT_NON_TRANSFO}}</span>
+        Que ce véhicule n'a pas subi de transformation notable susceptible
+        de modifier les indications du certificat de conformité ou de l'actuel
+        certificat d'immatriculation ;
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{VENDEUR_CERT_VHU}}</span>
+        Que ce véhicule est cédé pour destruction à un professionnel de la
+        destruction des véhicules hors d'usage (VHU) portant le n° d'agrément :
+        <strong>{{VENDEUR_VHU_AGREMENT}}</strong>.
+        <small style="color:#555; font-size: 7.5pt;">
+          (Le numéro d'agrément VHU du professionnel acquéreur est obligatoire
+          si le véhicule est une voiture particulière, une camionnette ou un
+          cyclomoteur à trois roues. La liste des professionnels agréés est
+          disponible sur https://immatriculation.ants.gouv.fr).
+        </small>
+      </div>
+
+      <div class="sign-block">
+        <div class="fait">
+          Fait à <strong>{{CESSION_LIEU}}</strong>,
+          le <strong>{{CESSION_DATE}}</strong>
+        </div>
+        <div class="sign-zone">
+          <div class="h">
+            Signature de l'ancien propriétaire,
+            <small>(Pour les sociétés : nom et qualité du signataire et cachet)</small>
+          </div>
+          <div class="pad"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">Nouveau propriétaire</div>
+    <div class="section-body">
+      <div class="inline-list">
+        <span><span class="cb">{{ACHETEUR_TYPE_PHYSIQUE}}</span> Personne physique</span>
+        <span>Sexe :
+          <span class="cb">{{ACHETEUR_SEXE_M}}</span> M
+          <span class="cb" style="margin-left:3mm;">{{ACHETEUR_SEXE_F}}</span> F
+        </span>
+        <span><span class="cb">{{ACHETEUR_TYPE_MORALE}}</span> Personne morale</span>
+      </div>
+
+      <div class="declare">Je soussigné(e),</div>
+      <div class="row">
+        <div class="field" style="flex: 1 1 65%;">
+          <div class="l">NOM, NOM D'USAGE le cas échéant et PRÉNOM ou RAISON SOCIALE</div>
+          <div class="v">{{ACHETEUR_NOM}} {{ACHETEUR_PRENOM}}</div>
+        </div>
+        <div class="field" style="flex: 1 1 30%;">
+          <div class="l">N° SIRET (le cas échéant)</div>
+          <div class="v">{{ACHETEUR_SIRET}}</div>
+        </div>
+      </div>
+
+      <div style="font-size: 9pt; margin: 1.5mm 0 1mm 0;">
+        Né(e) le <strong>{{ACHETEUR_DATE_NAISSANCE}}</strong>
+        à <strong>{{ACHETEUR_LIEU_NAISSANCE}}</strong>
+      </div>
+
+      <div class="declare" style="margin-top: 1mm;">Adresse complète :</div>
+      <div class="row">
+        <div class="field full">
+          <div class="l">N° de la voie · Extension (bis, ter…) · Type de voie · Nom de la voie</div>
+          <div class="v">{{ACHETEUR_ADRESSE}}</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex: 1 1 30%;">
+          <div class="l">Code postal</div>
+          <div class="v">{{ACHETEUR_CODE_POSTAL}}</div>
+        </div>
+        <div class="field" style="flex: 1 1 65%;">
+          <div class="l">Commune</div>
+          <div class="v">{{ACHETEUR_VILLE}}</div>
+        </div>
+      </div>
+
+      <div class="declare" style="margin-top: 1.5mm;">
+        Certifie (veuillez cocher la case correspondante) :
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{ACHETEUR_CERT_ACQUERIR}}</span>
+        Acquérir le véhicule désigné ci-dessus aux dates et heures indiquées
+        par l'ancien propriétaire ;
+      </div>
+      <div class="cb-line">
+        <span class="cb">{{ACHETEUR_CERT_INFO}}</span>
+        Avoir été informé de la situation administrative du véhicule.
+      </div>
+
+      <div class="sign-block">
+        <div class="fait">
+          Fait à <strong>{{CESSION_LIEU}}</strong>,
+          le <strong>{{CESSION_DATE}}</strong>
+        </div>
+        <div class="sign-zone">
+          <div class="h">
+            Signature du nouveau propriétaire,
+            <small>(Pour les sociétés : nom et qualité du signataire et cachet)</small>
+          </div>
+          <div class="pad"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opposition">
+    Je m'oppose à la réutilisation de mes données personnelles à des fins
+    de prospection commerciale.
+  </div>
+
+  <div class="doc-foot">
+    <div class="exemplaire">Exemplaire 2 destiné au nouveau propriétaire</div>
+    <div>cerfa N° 15776*01</div>
+  </div>
+
+</div>
+
 </body>
 </html>

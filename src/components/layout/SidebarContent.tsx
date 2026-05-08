@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard, SlidersHorizontal } from "lucide-react";
+import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard, SlidersHorizontal, FileText, Building2 } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts } from "@/utils/drafts";
 import { loadConcession, getConcessionInitials } from "@/utils/concession";
@@ -12,7 +12,9 @@ export const sidebarNavConfig = [
   { title: "Dashboard", path: "/app", icon: LayoutDashboard },
   { title: "Nouveau bon", path: "/nouveau-bon", icon: Plus },
   { title: "Historique", path: "/historique", icon: ClipboardList },
+  { title: "CERFA", path: "/cerfa", icon: FileText },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
+  { title: "Ma concession", path: "/profil-concession", icon: Building2 },
   { title: "Abonnement", path: "/abonnement", icon: CreditCard },
   { title: "Modification des champs", path: "/preferences", icon: SlidersHorizontal },
   { title: "Profil", path: "/parametres", icon: Settings },

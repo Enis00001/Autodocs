@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, FileEdit, X, Trash2, Download, FileText, Loader2 } from "lucide-react";
+import { Search, FileEdit, X, Trash2, Download } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts, deleteDraft } from "@/utils/drafts";
 import { isDraftFormComplete } from "@/utils/bonFormCompletion";
@@ -8,8 +8,6 @@ import SignatureStatusBadge from "@/components/SignatureStatusBadge";
 import { cn } from "@/lib/utils";
 import TopBar from "@/components/layout/TopBar";
 import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
-import { generateCERFA } from "@/utils/generateCERFA";
-import { toast } from "@/hooks/use-toast";
 
 const clientLabel = (d: BonDraftData) =>
   [d.clientPrenom, d.clientNom].filter(Boolean).join(" ").trim() || "—";
@@ -21,20 +19,11 @@ const vehiculeLabel = (d: BonDraftData) => {
   return vals.slice(0, 2).join(" · ") || "—";
 };
 
-/**
- * Un brouillon est éligible à la génération du CERFA de cession dès qu'il a
- * été signé par le vendeur OU que le lien de signature client a été envoyé
- * par email (statut « signé / envoyé » au sens fonctionnel).
- */
-const isCerfaEligible = (d: BonDraftData) =>
-  Boolean(d.signed || d.clientSignedAt || d.signatureRequestToken);
-
 const Historique = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
   const [filterDate, setFilterDate] = useState("");
   const [q, setQ] = useState("");
   const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
-  const [generatingCerfaId, setGeneratingCerfaId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -130,8 +119,6 @@ const Historique = () => {
                   filteredDrafts.map((d) => {
                     const complet = isDraftFormComplete(d as unknown as Record<string, unknown>);
                     const isDownloading = downloadingDraftId === d.id;
-                    const isGeneratingCerfa = generatingCerfaId === d.id;
-                    const cerfaAvailable = isCerfaEligible(d);
                     return (
                       <tr key={d.id} className="row-hover border-b border-border/50 last:border-0">
                         <td className="py-3 font-medium text-foreground">{clientLabel(d)}</td>
@@ -198,49 +185,6 @@ const Historique = () => {
                                 {isDownloading ? "Téléchargement..." : "Télécharger"}
                               </span>
                             </button>
-                            {cerfaAvailable && (
-                              <button
-                                type="button"
-                                className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
-                                onClick={async () => {
-                                  try {
-                                    setGeneratingCerfaId(d.id);
-                                    await generateCERFA(d, { download: true });
-                                    toast({
-                                      title: "CERFA généré",
-                                      description:
-                                        "Le PDF de déclaration de cession (CERFA 15776*01) a été téléchargé.",
-                                    });
-                                  } catch (err) {
-                                    console.error("[historique] génération CERFA:", err);
-                                    toast({
-                                      title: "Échec de la génération du CERFA",
-                                      description:
-                                        err instanceof Error
-                                          ? err.message
-                                          : "Impossible de générer le CERFA.",
-                                      variant: "destructive",
-                                    });
-                                  } finally {
-                                    setGeneratingCerfaId((curr) =>
-                                      curr === d.id ? null : curr,
-                                    );
-                                  }
-                                }}
-                                disabled={isGeneratingCerfa}
-                                aria-label="Générer le CERFA 15776*01"
-                                title="Générer la déclaration de cession (CERFA 15776*01)"
-                              >
-                                {isGeneratingCerfa ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <FileText className="h-3.5 w-3.5" />
-                                )}
-                                <span className="hidden md:inline">
-                                  {isGeneratingCerfa ? "CERFA..." : "CERFA"}
-                                </span>
-                              </button>
-                            )}
                             <button
                               type="button"
                               className="btn-danger cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
