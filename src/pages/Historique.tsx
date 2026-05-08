@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, FileEdit, X, Trash2 } from "lucide-react";
+import { Search, FileEdit, X, Trash2, Download } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts, deleteDraft } from "@/utils/drafts";
 import { isDraftFormComplete } from "@/utils/bonFormCompletion";
 import SignatureStatusBadge from "@/components/SignatureStatusBadge";
 import { cn } from "@/lib/utils";
 import TopBar from "@/components/layout/TopBar";
+import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
 
 const clientLabel = (d: BonDraftData) =>
   [d.clientPrenom, d.clientNom].filter(Boolean).join(" ").trim() || "—";
@@ -22,6 +23,7 @@ const Historique = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
   const [filterDate, setFilterDate] = useState("");
   const [q, setQ] = useState("");
+  const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -116,6 +118,7 @@ const Historique = () => {
                 ) : (
                   filteredDrafts.map((d) => {
                     const complet = isDraftFormComplete(d as unknown as Record<string, unknown>);
+                    const isDownloading = downloadingDraftId === d.id;
                     return (
                       <tr key={d.id} className="row-hover border-b border-border/50 last:border-0">
                         <td className="py-3 font-medium text-foreground">{clientLabel(d)}</td>
@@ -153,6 +156,34 @@ const Historique = () => {
                             >
                               <FileEdit className="h-3.5 w-3.5" />
                               <span className="hidden md:inline">Ouvrir</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
+                              onClick={async () => {
+                                try {
+                                  setDownloadingDraftId(d.id);
+                                  await generatePDF(buildPdfFormDataFromDraft(d), { download: true });
+                                } catch (err) {
+                                  console.error("[historique] téléchargement PDF:", err);
+                                  window.alert(
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Impossible de télécharger le PDF.",
+                                  );
+                                } finally {
+                                  setDownloadingDraftId((curr) =>
+                                    curr === d.id ? null : curr,
+                                  );
+                                }
+                              }}
+                              disabled={isDownloading}
+                              aria-label="Télécharger le PDF"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              <span className="hidden md:inline">
+                                {isDownloading ? "Téléchargement..." : "Télécharger"}
+                              </span>
                             </button>
                             <button
                               type="button"

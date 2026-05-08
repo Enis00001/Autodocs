@@ -1,3 +1,5 @@
+import type { BonDraftData } from "@/utils/drafts";
+
 export function downloadBase64Pdf(base64: string, filename: string) {
   const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   const blob = new Blob([bytes], { type: "application/pdf" });
@@ -35,6 +37,34 @@ export type SendPdfEmailResult = {
     expiresAt: string;
   };
 };
+
+export function buildPdfFormDataFromDraft(draft: BonDraftData): Record<string, string> {
+  return {
+    clientNom: draft.clientNom ?? "",
+    clientPrenom: draft.clientPrenom ?? "",
+    clientDateNaissance: draft.clientDateNaissance ?? "",
+    clientNumeroCni: draft.clientNumeroCni ?? "",
+    clientAdresse: draft.clientAdresse ?? "",
+    clientEmail: draft.clientEmail ?? "",
+    stock_donnees: JSON.stringify(draft.stockDonnees ?? {}),
+    stock_colonnes: JSON.stringify(draft.stockColonnes ?? []),
+    repriseActive: draft.repriseActive ? "oui" : "non",
+    reprise_plaque: draft.reprisePlaque ?? "",
+    reprise_marque: draft.repriseMarque ?? "",
+    reprise_modele: draft.repriseModele ?? "",
+    reprise_vin: draft.repriseVin ?? "",
+    reprise_premiere_circulation: draft.reprisePremiereCirculation ?? "",
+    reprise_valeur: draft.repriseValeur ?? "",
+    reprise_duree_mois: draft.repriseDureeMois ?? "",
+    vehiculePrix: draft.vehiculePrix ?? "",
+    modePaiement: draft.modePaiement ?? "comptant",
+    acompte: draft.acompte ?? "",
+    vehiculeRemise: draft.vehiculeRemise ?? "",
+    vehiculeDateLivraison: draft.vehiculeDateLivraison ?? "",
+    custom_fields_values: JSON.stringify(draft.customFieldsValues ?? {}),
+    custom_fields_defs: "[]",
+  };
+}
 
 type GeneratePdfOptions = {
   /**

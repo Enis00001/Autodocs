@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FileText,
+  Download,
   Car,
   FolderOpen,
   Plus,
@@ -16,6 +17,7 @@ import { loadStockVehicules } from "@/utils/stockVehicules";
 import { isDraftFormComplete } from "@/utils/bonFormCompletion";
 import SignatureStatusBadge from "@/components/SignatureStatusBadge";
 import { cn } from "@/lib/utils";
+import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
 
 const isCurrentMonth = (iso: string) => {
   const d = new Date(iso);
@@ -34,6 +36,7 @@ const Dashboard = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
   const [stockDispo, setStockDispo] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -205,6 +208,7 @@ const Dashboard = () => {
                   <tbody>
                     {drafts.map((d) => {
                       const complet = isDraftFormComplete(d as unknown as Record<string, unknown>);
+                      const isDownloading = downloadingDraftId === d.id;
                       return (
                         <tr key={d.id} className="row-hover border-b border-border/50 last:border-0">
                           <td className="py-3 font-medium text-foreground">
@@ -249,6 +253,34 @@ const Dashboard = () => {
                               >
                                 <FileEdit className="h-3.5 w-3.5" />
                                 <span className="hidden md:inline">Ouvrir</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
+                                onClick={async () => {
+                                  try {
+                                    setDownloadingDraftId(d.id);
+                                    await generatePDF(buildPdfFormDataFromDraft(d), { download: true });
+                                  } catch (err) {
+                                    console.error("[dashboard] téléchargement PDF:", err);
+                                    window.alert(
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Impossible de télécharger le PDF.",
+                                    );
+                                  } finally {
+                                    setDownloadingDraftId((curr) =>
+                                      curr === d.id ? null : curr,
+                                    );
+                                  }
+                                }}
+                                disabled={isDownloading}
+                                aria-label="Télécharger le PDF"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                                <span className="hidden md:inline">
+                                  {isDownloading ? "Téléchargement..." : "Télécharger"}
+                                </span>
                               </button>
                               <button
                                 type="button"
