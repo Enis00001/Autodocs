@@ -665,7 +665,7 @@ async function handleSendEmail(
   const signUrl = signatureToken ? `${appUrl}/signer/${signatureToken}` : null;
 
   const resend = new Resend(apiKey);
-  const from = process.env.RESEND_FROM_EMAIL || "AutoDocs <noreply@autodocs.services>";
+  const from = "AutoDocs <noreply@autodocs.services>";
   const subject = `Votre bon de commande — ${vehiculeModele}`;
   const greeting = `Bonjour ${escapeHtml(clientPrenom)} ${escapeHtml(clientNom)},`.replace(
     /\s+,$/,
@@ -885,7 +885,7 @@ async function handleCompleteSignature(data: Record<string, unknown>, res: Verce
   }
 
   const resend = new Resend(apiKey);
-  const from = process.env.RESEND_FROM_EMAIL || "AutoDocs <noreply@autodocs.services>";
+  const from = "AutoDocs <noreply@autodocs.services>";
   const clientEmail = String(request.client_email ?? "").trim();
   const clientNom = String(request.client_nom ?? "").trim();
   const clientPrenom = String(request.client_prenom ?? "").trim();
@@ -1041,7 +1041,7 @@ async function handleResendSignatureEmail(
   }
 
   const resend = new Resend(apiKey);
-  const from = process.env.RESEND_FROM_EMAIL || "AutoDocs <noreply@autodocs.services>";
+  const from = "AutoDocs <noreply@autodocs.services>";
   const appUrl = getPublicAppUrl(req);
   const signUrl = `${appUrl}/signer/${token}`;
 
