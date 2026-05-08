@@ -880,7 +880,7 @@ async function handleCompleteSignature(data: Record<string, unknown>, res: Verce
       ok: true,
       signedAt,
       pdfBase64: signedPdfBase64,
-      emails: { client: false, vendeur: false },
+      emails: { client: false, vendeur: false, concession: false },
     });
   }
 
@@ -924,7 +924,7 @@ async function handleCompleteSignature(data: Record<string, unknown>, res: Verce
     </div>
   `;
 
-  const emailResults = { client: false, vendeur: false };
+  const emailResults = { client: false, vendeur: false, concession: false };
 
   try {
     const { error: clientErr } = await resend.emails.send({
@@ -954,6 +954,134 @@ async function handleCompleteSignature(data: Record<string, unknown>, res: Verce
     } catch (err) {
       console.error("[actions/complete-signature] email vendeur exception:", err);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  //  Envoi à la concession (compte AUTH propriétaire du brouillon)
+  //
+  //  Indépendant de `vendeur_email` (champ texte parfois absent dans la
+  //  signature_request). On résout l'email côté serveur via :
+  //      brouillon_id → brouillons.user_id → auth.users.email.
+  //
+  //  Ce bloc est isolé dans son propre try/catch : si l'envoi échoue, on
+  //  loggue mais on ne fait pas échouer la requête (la signature est
+  //  déjà persistée et le client a déjà été notifié).
+  // ---------------------------------------------------------------------------
+  try {
+    let concessionUserId: string | null = null;
+
+    if (request.brouillon_id) {
+      const { data: brouillon, error: brouillonErr } = await admin
+        .from("brouillons")
+        .select("user_id")
+        .eq("id", request.brouillon_id)
+        .maybeSingle();
+      if (brouillonErr) {
+        console.warn(
+          "[actions/complete-signature] brouillon read for concession email:",
+          brouillonErr,
+        );
+      } else if (brouillon?.user_id) {
+        concessionUserId = brouillon.user_id as string;
+      }
+    }
+
+    // Fallback : signature_requests.user_id (rempli au moment du send-email).
+    if (!concessionUserId && request.user_id) {
+      concessionUserId = request.user_id as string;
+    }
+
+    if (!concessionUserId) {
+      console.warn(
+        "[actions/complete-signature] aucun user_id concession trouvé — email concession ignoré",
+      );
+    } else {
+      const { data: userData, error: userErr } =
+        await admin.auth.admin.getUserById(concessionUserId);
+      const concessionEmail = String(userData?.user?.email ?? "").trim();
+
+      if (userErr) {
+        console.warn(
+          "[actions/complete-signature] auth.admin.getUserById:",
+          userErr.message,
+        );
+      } else if (!concessionEmail) {
+        console.warn(
+          "[actions/complete-signature] email concession introuvable pour user_id:",
+          concessionUserId,
+        );
+      } else if (
+        emailResults.vendeur &&
+        vendeurEmail.toLowerCase() === concessionEmail.toLowerCase()
+      ) {
+        // Doublon : déjà envoyé via vendeurEmail (même adresse). On considère
+        // l'email concession comme "envoyé" et on persiste le timestamp.
+        emailResults.concession = true;
+        try {
+          await admin
+            .from("signature_requests")
+            .update({ email_concession_sent_at: new Date().toISOString() })
+            .eq("token", token);
+        } catch (markErr) {
+          console.warn(
+            "[actions/complete-signature] update email_concession_sent_at (dedup):",
+            markErr,
+          );
+        }
+      } else {
+        const concessionSubject = `✅ Bon de commande signé — ${fullClientName || "Client"}`;
+        const signedDateLabel = new Date(signedAt).toLocaleString("fr-FR", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const concessionHtml = `
+          <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #1a1a2e; line-height: 1.55; max-width: 600px;">
+            <p>Bonjour,</p>
+            <p>Le client <strong>${escapeHtml(fullClientName)}</strong> vient de signer
+              électroniquement le bon de commande pour le véhicule
+              <strong>${escapeHtml(vehiculeModele)}</strong>
+              le <strong>${escapeHtml(signedDateLabel)}</strong>.</p>
+            <p>Vous trouverez en pièce jointe le <strong>PDF final</strong> comportant
+              les deux signatures (vendeur + client). Conservez ce document : il fait
+              foi entre votre concession et le client.</p>
+            <p>— L'équipe AutoDocs</p>
+          </div>
+        `;
+
+        const { error: concessionErr } = await resend.emails.send({
+          from,
+          to: concessionEmail,
+          subject: concessionSubject,
+          html: concessionHtml,
+          attachments,
+        });
+
+        if (concessionErr) {
+          console.error(
+            "[actions/complete-signature] email concession error:",
+            concessionErr,
+          );
+        } else {
+          emailResults.concession = true;
+          try {
+            await admin
+              .from("signature_requests")
+              .update({ email_concession_sent_at: new Date().toISOString() })
+              .eq("token", token);
+          } catch (markErr) {
+            console.warn(
+              "[actions/complete-signature] update email_concession_sent_at:",
+              markErr,
+            );
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[actions/complete-signature] email concession exception:", err);
   }
 
   return res.status(200).json({

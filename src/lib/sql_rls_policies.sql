@@ -156,24 +156,29 @@ CREATE POLICY "user_own_preferences" ON preferences_formulaire
 --    donc les API exposent les données via service-role + token UUID v4.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS signature_requests (
-  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  token              text UNIQUE NOT NULL,
-  brouillon_id       text,
-  user_id            uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  client_email       text NOT NULL,
-  client_nom         text,
-  client_prenom      text,
-  vendeur_email      text,
-  vendeur_nom        text,
-  vehicule_modele    text,
-  pdf_base64         text NOT NULL,
-  form_data          jsonb NOT NULL DEFAULT '{}'::jsonb,
-  signature_vendeur  text,
-  signature_client   text,
-  signed_at          timestamptz,
-  expires_at         timestamptz NOT NULL DEFAULT (now() + interval '7 days'),
-  created_at         timestamptz NOT NULL DEFAULT now()
+  id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  token                       text UNIQUE NOT NULL,
+  brouillon_id                text,
+  user_id                     uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  client_email                text NOT NULL,
+  client_nom                  text,
+  client_prenom               text,
+  vendeur_email               text,
+  vendeur_nom                 text,
+  vehicule_modele             text,
+  pdf_base64                  text NOT NULL,
+  form_data                   jsonb NOT NULL DEFAULT '{}'::jsonb,
+  signature_vendeur           text,
+  signature_client            text,
+  signed_at                   timestamptz,
+  expires_at                  timestamptz NOT NULL DEFAULT (now() + interval '7 days'),
+  created_at                  timestamptz NOT NULL DEFAULT now(),
+  email_concession_sent_at    timestamptz
 );
+
+-- Migration idempotente pour les bases déjà créées avant cette colonne.
+ALTER TABLE signature_requests
+  ADD COLUMN IF NOT EXISTS email_concession_sent_at timestamptz;
 
 CREATE INDEX IF NOT EXISTS idx_signature_requests_brouillon_id
   ON signature_requests (brouillon_id);
