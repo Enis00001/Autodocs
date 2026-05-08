@@ -1,5 +1,19 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getSupabaseAdmin } from "./_lib/supabase-admin";
+
+/* ==================================================================
+ *  Supabase admin inliné (ex api/_lib/supabase-admin.ts)
+ *  Inliné pour éviter ERR_MODULE_NOT_FOUND sur Vercel ESM serverless.
+ * ================================================================== */
+
+async function getSupabaseAdmin() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || null;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error("Configuration Supabase incomplète côté serveur (URL ou SERVICE_ROLE_KEY).");
+  }
+  const { createClient } = await import("@supabase/supabase-js");
+  return createClient(url, key);
+}
 
 /**
  * GET /api/get-signature-request?token=...
