@@ -20,6 +20,7 @@ import NotFound from "./pages/NotFound";
 import LoginPage from "./pages/Login";
 import InscriptionPage from "./pages/Inscription";
 import ConfirmationEmailPage from "./pages/ConfirmationEmail";
+import ResetPasswordPage from "./pages/ResetPassword";
 import SignerDocument from "./pages/SignerDocument";
 import { supabase } from "./lib/supabase";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -190,6 +191,7 @@ const App = () => {
                   effectiveSession ? <Navigate to="/app" replace /> : <ConfirmationEmailPage />
                 }
               />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
 
               <Route
                 element={

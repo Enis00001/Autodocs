@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 import { getSignupEmailRedirectTo } from "@/lib/auth";
@@ -15,15 +15,28 @@ const readPlanParam = (
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
   const [resending, setResending] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
 
   const plan = readPlanParam(searchParams);
   const inscriptionHref = plan ? `/inscription?plan=${plan}` : "/inscription";
+
+  useEffect(() => {
+    const state = location.state as { flashMessage?: string } | null;
+    if (!state?.flashMessage) return;
+    toast({ title: state.flashMessage });
+    navigate(location.pathname + location.search, { replace: true });
+  }, [location.pathname, location.search, location.state, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +83,22 @@ const LoginPage = () => {
       return;
     }
     toast({ title: "Email de confirmation renvoyé ✓" });
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError(null);
+    setForgotSuccess(false);
+    setForgotLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setForgotLoading(false);
+    if (error) {
+      setForgotError("Aucun compte trouvé avec cet email.");
+      return;
+    }
+    setForgotSuccess(true);
   };
 
   return (
@@ -126,6 +155,50 @@ const LoginPage = () => {
             {loading ? "Connexion..." : "Se connecter"}
           </button>
         </form>
+
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowForgotPassword((prev) => !prev);
+              setForgotError(null);
+              setForgotSuccess(false);
+            }}
+            className="text-sm text-primary hover:underline cursor-pointer bg-transparent border-0 p-0"
+          >
+            Mot de passe oublié ?
+          </button>
+        </div>
+
+        {showForgotPassword && (
+          <div className="mt-3 rounded-lg border border-border/60 p-3">
+            <form className="space-y-3" onSubmit={handleResetPassword}>
+              <div className="flex flex-col gap-1.5">
+                <label className="field-label">Email</label>
+                <input
+                  type="email"
+                  className="field-input"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={forgotLoading}
+                className="w-full px-4 py-2.5 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {forgotLoading ? "Envoi..." : "Envoyer le lien de réinitialisation"}
+              </button>
+            </form>
+            {forgotSuccess && (
+              <p className="mt-3 text-sm text-emerald-400">
+                Lien envoyé ! Vérifiez votre boîte mail.
+              </p>
+            )}
+            {forgotError && <p className="mt-3 text-sm text-destructive">{forgotError}</p>}
+          </div>
+        )}
 
         <div className="mt-4 text-sm text-muted-foreground text-center">
           Première connexion ?{" "}
