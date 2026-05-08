@@ -100,9 +100,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: "Non autorisé" });
   }
 
-  const quota = await checkAndConsumeQuota(userId);
-  if (!quota.ok) {
-    return res.status(quota.status).json(quota.body);
+  const shouldBypassQuota =
+    process.env.NODE_ENV === "development" || process.env.BYPASS_QUOTA === "true";
+
+  if (!shouldBypassQuota) {
+    const quota = await checkAndConsumeQuota(userId);
+    if (!quota.ok) {
+      return res.status(quota.status).json(quota.body);
+    }
   }
 
   let body: Record<string, unknown>;
@@ -121,15 +126,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "formData requis" });
   }
 
-  const html = buildHtml(formData);
-
   try {
+    const html = buildHtml(formData);
     const pdfBuffer = await renderPdfFromHtml(html);
     const pdfBase64 = pdfBuffer.toString("base64");
     return res.status(200).json({ pdfBase64 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[generate-pdf] Error:", message);
+    console.error("[generate-pdf] Error during HTML/PDF generation:", err);
     return res.status(500).json({ error: message || "Erreur lors de la génération du PDF" });
   }
 }
