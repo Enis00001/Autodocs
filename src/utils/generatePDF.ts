@@ -119,9 +119,12 @@ export async function embedSignatureInPdf(payload: {
   signatureClientBase64?: string;
 }): Promise<{ pdfBase64: string }> {
   const { apiFetch } = await import("@/lib/apiClient");
-  const response = await apiFetch("/api/embed-signature", {
+  const response = await apiFetch("/api/actions", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      action: "embed-signature",
+      ...payload,
+    }),
   });
 
   if (!response.ok) {
@@ -148,9 +151,12 @@ export async function resendSignatureEmail(payload: {
   token?: string;
 }): Promise<{ ok: true; token: string; signUrl: string; expiresAt: string }> {
   const { apiFetch } = await import("@/lib/apiClient");
-  const response = await apiFetch("/api/resend-signature-email", {
+  const response = await apiFetch("/api/actions", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      action: "resend-signature-email",
+      ...payload,
+    }),
   });
   if (!response.ok) {
     const errBody = (await response.json().catch(() => ({}))) as { error?: string };
@@ -166,9 +172,12 @@ export async function resendSignatureEmail(payload: {
 
 export async function sendPdfByEmail(payload: SendPdfEmailPayload): Promise<SendPdfEmailResult> {
   const { apiFetch } = await import("@/lib/apiClient");
-  const response = await apiFetch("/api/send-pdf-email", {
+  const response = await apiFetch("/api/actions", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      action: "send-email",
+      ...payload,
+    }),
   });
 
   if (!response.ok) {

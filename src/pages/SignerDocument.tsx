@@ -104,10 +104,14 @@ const SignerDocument = () => {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const response = await fetch("/api/complete-signature", {
+      const response = await fetch("/api/actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, signatureBase64 }),
+        body: JSON.stringify({
+          action: "complete-signature",
+          token,
+          signatureBase64,
+        }),
       });
       const json = (await response.json().catch(() => ({}))) as {
         error?: string;
