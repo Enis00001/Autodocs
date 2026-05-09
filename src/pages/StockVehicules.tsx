@@ -137,6 +137,22 @@ function getImmatriculation(v: StockVehicule): string {
   return "";
 }
 
+function getDonneesValue(
+  donnees: Record<string, string>,
+  candidates: string[],
+): string {
+  for (const c of candidates) {
+    const val = donnees[c];
+    if (val && val.trim()) return val.trim();
+  }
+  const normalizedCandidates = candidates.map((c) => normalize(c));
+  for (const [k, val] of Object.entries(donnees)) {
+    if (!val || !val.trim()) continue;
+    if (normalizedCandidates.includes(normalize(k))) return val.trim();
+  }
+  return "";
+}
+
 function vehiculeMatchesQuery(v: StockVehicule, q: string): boolean {
   if (!q) return true;
   const tokens = q.split(/\s+/).filter(Boolean);
@@ -923,10 +939,28 @@ const VehiculeRow = ({
   const annee =
     vehicule.annee !== null
       ? String(vehicule.annee)
-      : vehicule.donnees["Année"] ?? vehicule.donnees["Annee"] ?? "—";
-  const km = formatKm(vehicule.kilometrage, vehicule.donnees["Kilométrage"] ?? vehicule.donnees["Km"]);
+      : getDonneesValue(vehicule.donnees, ["Année", "Annee", "annee", "ANNÉE"]) || "—";
+  const km = formatKm(
+    vehicule.kilometrage,
+    getDonneesValue(vehicule.donnees, [
+      "Kilométrage",
+      "Kilometrage",
+      "kilometrage",
+      "Km",
+      "KM",
+      "km",
+    ]),
+  );
   const carb =
-    vehicule.carburant?.trim() || vehicule.donnees["Carburant"] || "—";
+    vehicule.carburant?.trim() ||
+    getDonneesValue(vehicule.donnees, [
+      "Carburant",
+      "carburant",
+      "Énergie",
+      "Energie",
+      "energie",
+    ]) ||
+    "—";
   const prix = formatPrix(vehicule.prix, vehicule.donnees["Prix"]);
 
   return (
