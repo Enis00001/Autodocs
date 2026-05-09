@@ -134,12 +134,8 @@ const VehiculeVente = ({
   // minimal pour réutiliser `vehiculeDisplayLabel`.
   const selectedLabel = hasStockVehicule
     ? vehiculeDisplayLabel({
-        id: form.vehiculeStockId,
-        concession_id: null,
         donnees: form.stockDonnees,
         colonnes_pdf: form.stockColonnes,
-        disponible: true,
-        created_at: "",
       })
     : "";
   const vehiculeCustomFields = getCustomFieldsBySection(prefs, "vehicule");

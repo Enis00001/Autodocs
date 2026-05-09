@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { User, Car, Wallet, CreditCard } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import ProfilClient from "@/components/nouveau-bon/ProfilClient";
@@ -18,6 +18,7 @@ import {
 } from "@/utils/drafts";
 import { supabase } from "@/lib/supabase";
 import { isFieldEnabled, isStockColumnVisible, type FormFieldPrefs } from "@/utils/formPreferences";
+import { getVehicule, vehiculePrixForBon } from "@/utils/stockVehicules";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -101,6 +102,7 @@ function buildPdfFormData(
 
 const NouveauBon = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const params = useParams<{ id: string }>();
   const [formState, setFormState] = useState<DraftFormState>(defaultFormState);
   const [vendeurEmail, setVendeurEmail] = useState<string>("");
@@ -144,6 +146,50 @@ const NouveauBon = () => {
       cancelled = true;
     };
   }, [params.id]);
+
+  // Pré-remplissage depuis le stock : `/nouveau-bon?vehicleId=<uuid>`. On ne
+  // déclenche que pour un nouveau bon (pas en mode édition d'un brouillon
+  // existant), pour ne pas écraser le contenu chargé. Une fois le véhicule
+  // injecté, on nettoie la query string pour éviter de re-injecter à chaque
+  // navigation interne.
+  useEffect(() => {
+    if (params.id) return;
+    const search = new URLSearchParams(location.search);
+    const vehicleId = search.get("vehicleId");
+    if (!vehicleId) return;
+
+    let cancelled = false;
+    (async () => {
+      const v = await getVehicule(vehicleId);
+      if (cancelled) return;
+      if (!v) {
+        toast({
+          title: "Véhicule introuvable",
+          description: "Le véhicule sélectionné n'existe plus dans le stock.",
+          variant: "destructive",
+        });
+        navigate("/nouveau-bon", { replace: true });
+        return;
+      }
+      const guessedPrix = vehiculePrixForBon(v);
+      setFormState((prev) => ({
+        ...prev,
+        vehiculeStockId: v.id,
+        stockDonnees: { ...v.donnees },
+        stockColonnes: [...v.colonnes_pdf],
+        vehiculePrix: prev.vehiculePrix || guessedPrix,
+      }));
+      // Nettoie l'URL pour éviter une nouvelle injection à un re-render.
+      navigate("/nouveau-bon", { replace: true });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // On ne dépend volontairement que de location.search/params.id : la fonction
+    // navigate est stable et l'effet ne doit s'exécuter qu'au montage initial
+    // ou si la query string change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search, params.id]);
 
   const updateForm = useCallback((patch: Partial<DraftFormState>) => {
     setFormState((prev) => ({ ...prev, ...patch }));
