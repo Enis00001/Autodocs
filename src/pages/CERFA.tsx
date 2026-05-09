@@ -95,10 +95,18 @@ const FIELD_PATTERNS: Record<string, RegExp[]> = {
   marque: [/^marque$/i, /\bmarque\b/i, /\bbrand\b/i, /\bmake\b/i],
   modele: [/^mod[eè]le$/i, /\bmod[eè]le\b/i, /\bmodel\b/i, /\bd[eé]nomination\b/i],
   type: [/^type$/i, /\btype\b/i, /\bvariante\b/i, /\bversion\b/i],
-  immatriculation: [/immatriculation/i, /\bplaque\b/i, /\bplate\b/i],
+  immatriculation: [
+    /immatriculation/i,
+    /\bimmat\b/i,
+    /\bimmatriculation\b/i,
+    /\bplaque\b/i,
+    /\bplate\b/i,
+  ],
   vin: [/\bvin\b/i, /ch[âa]ssis/i, /serial/i, /num[ée]ro de s[ée]rie/i],
   dateMec: [
     /1[èe]?re? ?(?:mise )?(?:en )?circulation/i,
+    /1 ?ere? ?m\.?e\.?c\.?/i,
+    /premiere? ?m\.?e\.?c\.?/i,
     /\bmec\b/i,
     /\bmise en circulation\b/i,
   ],
@@ -109,6 +117,10 @@ function normalizeKey(key: string): string {
   return key
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase()
     .trim();
 }
 
