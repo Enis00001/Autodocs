@@ -5,111 +5,11 @@ import puppeteer from "puppeteer-core";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
-
-/* ==================================================================
- *  Supabase admin / auth helpers (ex api/_lib/supabase-admin.ts)
- *  Inlinés pour éviter ERR_MODULE_NOT_FOUND sur Vercel ESM serverless.
- * ================================================================== */
-
-const FALLBACK_APP_URL = "https://autodocs-eight.vercel.app";
-
-function getSupabaseUrl(): string | null {
-  return process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || null;
-}
-
-function getSupabaseAnonKey(): string | null {
-  return process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || null;
-}
-
-async function getSupabaseAdmin() {
-  const url = getSupabaseUrl();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  // #region agent log
-  fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "d22e1f",
-    },
-    body: JSON.stringify({
-      sessionId: "d22e1f",
-      runId: "admin-precheck",
-      hypothesisId: "H1",
-      location: "api/actions.ts:getSupabaseAdmin",
-      message: "Supabase admin env precheck",
-      data: {
-        hasSupabaseUrl: Boolean(url),
-        hasServiceRoleKey: Boolean(key),
-        hasViteSupabaseUrl: Boolean(process.env.VITE_SUPABASE_URL),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-  if (!url || !key) {
-    // #region agent log
-    fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "d22e1f",
-      },
-      body: JSON.stringify({
-        sessionId: "d22e1f",
-        runId: "admin-missing-env",
-        hypothesisId: "H1",
-        location: "api/actions.ts:getSupabaseAdmin",
-        message: "Supabase admin env missing",
-        data: {
-          hasSupabaseUrl: Boolean(url),
-          hasServiceRoleKey: Boolean(key),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    throw new Error("Configuration Supabase incomplète côté serveur (URL ou SERVICE_ROLE_KEY).");
-  }
-  const { createClient } = await import("@supabase/supabase-js");
-  return createClient(url, key);
-}
-
-async function getAuthUserId(req: VercelRequest): Promise<string | null> {
-  const header = req.headers.authorization;
-  const token = typeof header === "string" ? header.replace(/^Bearer\s+/i, "").trim() : "";
-  if (!token) return null;
-
-  const url = getSupabaseUrl();
-  const anon = getSupabaseAnonKey();
-  if (!url || !anon) return null;
-
-  const { createClient } = await import("@supabase/supabase-js");
-  const supabase = createClient(url, anon);
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user) return null;
-  return data.user.id;
-}
-
-function getPublicAppUrl(req?: VercelRequest): string {
-  const explicit = process.env.PUBLIC_APP_URL?.trim();
-  if (explicit) return explicit.replace(/\/+$/, "");
-
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-  if (vercelUrl) {
-    return vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`;
-  }
-
-  if (req) {
-    const host =
-      (req.headers["x-forwarded-host"] as string | undefined) ??
-      (req.headers.host as string | undefined);
-    const proto =
-      (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
-    if (host) return `${proto}://${host}`;
-  }
-
-  return FALLBACK_APP_URL;
-}
+import {
+  getAuthUserId,
+  getPublicAppUrl,
+  getSupabaseAdmin,
+} from "./_lib/supabase-admin.js";
 
 /* ==================================================================
  *  Bon-template inliné (ex api/_lib/bon-template.ts)

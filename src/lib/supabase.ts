@@ -16,6 +16,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     storageKey: "autodocs-auth",
   },
+  // On n'utilise jamais le Realtime dans AutoDocs : le client tente sinon
+  // d'ouvrir une WebSocket vers `wss://<projet>.supabase.co/realtime/v1`
+  // et boucle sur `ping/waitForSuccessfulPing` → "TypeError: Failed to fetch"
+  // visible dans la console à chaque action (notamment lors de l'import
+  // CSV/Excel depuis StockVehicules). `eventsPerSecond: -1` désactive
+  // complètement le canal.
+  realtime: {
+    params: { eventsPerSecond: -1 },
+  },
 });
 
 export async function getAccessToken(): Promise<string | null> {

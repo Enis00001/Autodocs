@@ -1,8 +1,64 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import type { AuthError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/hooks/use-toast";
 import { getSignupEmailRedirectTo } from "@/lib/auth";
+
+/**
+ * Transforme une erreur `supabase.auth.signUp` en message utilisateur
+ * actionnable. La cause la plus fréquente en prod est `Error sending
+ * confirmation email` : le SMTP custom (Resend) est mal configuré OU
+ * Supabase utilise son SMTP gratuit dont la limite (3 emails/heure
+ * hors localhost) est atteinte.
+ */
+function describeSignupError(error: AuthError | { message: string; status?: number }): {
+  title: string;
+  description: string;
+} {
+  const raw = (error.message || "").toLowerCase();
+  const status = "status" in error ? error.status : undefined;
+
+  if (raw.includes("confirmation") && raw.includes("email")) {
+    return {
+      title: "Envoi de l'email de confirmation impossible",
+      description:
+        "Le serveur SMTP n'a pas pu envoyer l'email. Vérifiez la configuration Resend dans Supabase → Authentication → SMTP Settings (host: smtp.resend.com, port: 465, user: resend, password: votre RESEND_API_KEY) et que le domaine d'expédition est validé sur Resend.",
+    };
+  }
+  if (raw.includes("send") && raw.includes("email")) {
+    return {
+      title: "Envoi d'email impossible",
+      description:
+        "Supabase n'a pas pu envoyer l'email (SMTP custom non configuré ou quota atteint — limite 3 emails/h sans SMTP custom). Configurez Resend dans Supabase → Authentication → SMTP Settings.",
+    };
+  }
+  if (raw.includes("user already registered") || raw.includes("already exists")) {
+    return {
+      title: "Adresse déjà utilisée",
+      description:
+        "Un compte existe déjà avec cet email. Connectez-vous ou utilisez 'Mot de passe oublié'.",
+    };
+  }
+  if (raw.includes("password")) {
+    return {
+      title: "Mot de passe refusé",
+      description: error.message,
+    };
+  }
+  if (raw.includes("rate limit") || status === 429) {
+    return {
+      title: "Trop de tentatives",
+      description:
+        "Vous avez dépassé la limite d'inscriptions. Patientez quelques minutes avant de réessayer.",
+    };
+  }
+
+  return {
+    title: "Inscription impossible",
+    description: error.message || "Erreur inconnue côté Supabase Auth.",
+  };
+}
 
 const InscriptionPage = () => {
   const navigate = useNavigate();
@@ -21,11 +77,24 @@ const InscriptionPage = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) {
-      toast({ title: "Erreur", description: "Les mots de passe ne correspondent pas." });
+      toast({
+        title: "Erreur",
+        description: "Les mots de passe ne correspondent pas.",
+        variant: "destructive",
+      });
       return;
     }
+    if (password.length < 6) {
+      toast({
+        title: "Mot de passe trop court",
+        description: "Le mot de passe doit contenir au moins 6 caractères.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
@@ -36,8 +105,32 @@ const InscriptionPage = () => {
       },
     });
     setLoading(false);
+
     if (error) {
-      toast({ title: "Inscription impossible", description: error.message });
+      // On loggue toujours l'erreur brute pour aider au debug (status, code, etc.)
+      console.error("[Inscription] supabase.auth.signUp error:", {
+        message: error.message,
+        status: error.status,
+        name: error.name,
+      });
+      const friendly = describeSignupError(error);
+      toast({
+        title: friendly.title,
+        description: friendly.description,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Cas particulier : signUp peut renvoyer une réponse OK mais sans user
+    // (très rare — confirmation déjà existante). On affiche un message sûr.
+    if (!data?.user) {
+      toast({
+        title: "Compte non créé",
+        description:
+          "Réponse inattendue de Supabase. Réessayez ou contactez le support.",
+        variant: "destructive",
+      });
       return;
     }
 
