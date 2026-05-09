@@ -8,7 +8,50 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 async function getSupabaseAdmin() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || null;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // #region agent log
+  fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "d22e1f",
+    },
+    body: JSON.stringify({
+      sessionId: "d22e1f",
+      runId: "signature-admin-precheck",
+      hypothesisId: "H2",
+      location: "api/get-signature-request.ts:getSupabaseAdmin",
+      message: "Signature request admin env precheck",
+      data: {
+        hasSupabaseUrl: Boolean(url),
+        hasServiceRoleKey: Boolean(key),
+        usesViteFallbackUrl: !process.env.SUPABASE_URL && Boolean(process.env.VITE_SUPABASE_URL),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   if (!url || !key) {
+    // #region agent log
+    fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "d22e1f",
+      },
+      body: JSON.stringify({
+        sessionId: "d22e1f",
+        runId: "signature-admin-missing-env",
+        hypothesisId: "H2",
+        location: "api/get-signature-request.ts:getSupabaseAdmin",
+        message: "Signature request admin env missing",
+        data: {
+          hasSupabaseUrl: Boolean(url),
+          hasServiceRoleKey: Boolean(key),
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     throw new Error("Configuration Supabase incomplète côté serveur (URL ou SERVICE_ROLE_KEY).");
   }
   const { createClient } = await import("@supabase/supabase-js");

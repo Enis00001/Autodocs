@@ -236,6 +236,30 @@ export async function importVehicules(
   vehicules: StockVehiculeInput[],
 ): Promise<StockVehicule[]> {
   if (!concessionId || vehicules.length === 0) return [];
+  const { data: sessionData } = await supabase.auth.getSession();
+  // #region agent log
+  fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Debug-Session-Id": "d22e1f",
+    },
+    body: JSON.stringify({
+      sessionId: "d22e1f",
+      runId: "import-pre",
+      hypothesisId: "H4",
+      location: "src/utils/stockVehicules.ts:importVehicules",
+      message: "Import stock_vehicules start",
+      data: {
+        concessionIdPresent: Boolean(concessionId),
+        vehiculesCount: vehicules.length,
+        hasSession: Boolean(sessionData.session),
+        hasAccessToken: Boolean(sessionData.session?.access_token),
+      },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   const payload = vehicules.map((v) => {
     const statut: StatutVehicule = v.statut ?? (v.disponible === false ? "vendu" : "disponible");
     return {
@@ -251,6 +275,29 @@ export async function importVehicules(
     .insert(payload)
     .select(STOCK_COLUMNS);
   if (error) {
+    // #region agent log
+    fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "d22e1f",
+      },
+      body: JSON.stringify({
+        sessionId: "d22e1f",
+        runId: "import-error",
+        hypothesisId: "H4",
+        location: "src/utils/stockVehicules.ts:importVehicules",
+        message: "Import stock_vehicules failed",
+        data: {
+          code: error.code ?? null,
+          name: error.name ?? null,
+          message: error.message ?? null,
+          details: error.details ?? null,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     console.error("importVehicules:", error);
     throw error;
   }

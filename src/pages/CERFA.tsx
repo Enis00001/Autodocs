@@ -105,8 +105,9 @@ const FIELD_PATTERNS: Record<string, RegExp[]> = {
   vin: [/\bvin\b/i, /ch[âa]ssis/i, /serial/i, /num[ée]ro de s[ée]rie/i],
   dateMec: [
     /1[èe]?re? ?(?:mise )?(?:en )?circulation/i,
-    /1 ?ere? ?m\.?e\.?c\.?/i,
+    /1 ?ere? ?m[\s.]?e[\s.]?c\b/i,
     /premiere? ?m\.?e\.?c\.?/i,
+    /premiere? ?m[\s.]?e[\s.]?c\b/i,
     /\bmec\b/i,
     /\bmise en circulation\b/i,
   ],
