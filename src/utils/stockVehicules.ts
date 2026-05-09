@@ -116,6 +116,16 @@ function toNumberOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function toIntLooseOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? Math.trunc(value) : null;
+  // Tolère "120 000", "120000 km", etc.
+  const digits = String(value).replace(/[^\d-]/g, "");
+  if (!digits) return null;
+  const n = parseInt(digits, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 type LegacyStockRow = {
   id?: unknown;
   concession_id?: unknown;
@@ -248,12 +258,21 @@ export async function importVehicules(
 
   const payload = vehicules.map((v) => {
     const statut: StatutVehicule = v.statut ?? (v.disponible === false ? "vendu" : "disponible");
+    const typed = extractTypedFieldsFromDonnees(v.donnees ?? {});
     return {
       concession_id: concessionId,
       donnees: v.donnees ?? {},
       colonnes_pdf: v.colonnes_pdf ?? [],
       disponible: statut === "disponible",
       statut,
+      marque: typed.marque || null,
+      modele: typed.modele || null,
+      annee: typed.annee,
+      kilometrage: typed.kilometrage,
+      carburant: typed.carburant || null,
+      prix: typed.prix,
+      vin: typed.vin || null,
+      premiere_circulation: typed.premiereCirculation || null,
     };
   });
   const { data, error } = await supabase
@@ -467,6 +486,50 @@ export function vehiculePrixForBon(v: StockVehicule): string {
     return String(v.prix);
   }
   return guessPrixFromDonnees(v.donnees);
+}
+
+function extractTypedFieldsFromDonnees(donnees: Record<string, string>): {
+  marque: string;
+  modele: string;
+  annee: number | null;
+  kilometrage: number | null;
+  carburant: string;
+  prix: number | null;
+  vin: string;
+  premiereCirculation: string;
+} {
+  const marque = findFromDonnees(donnees, ["Marque", "marque", "MARQUE"]);
+  const modele = findFromDonnees(donnees, ["Modèle", "Modele", "modele", "MODELE", "Véhicule"]);
+  const anneeRaw = findFromDonnees(donnees, ["Année", "Annee", "année", "annee", "ANNEE"]);
+  const kilometrageRaw = findFromDonnees(donnees, [
+    "Kilométrage",
+    "Kilometrage",
+    "kilometrage",
+    "Km",
+    "KM",
+    "km",
+  ]);
+  const carburant = findFromDonnees(donnees, [
+    "Carburant",
+    "carburant",
+    "Énergie",
+    "Energie",
+    "energie",
+  ]);
+  const prix = toNumberOrNull(guessPrixFromDonnees(donnees));
+  const vin = findFromDonnees(donnees, KEY_HINTS.vin);
+  const premiereCirculation = findFromDonnees(donnees, KEY_HINTS.premiereCirculation);
+
+  return {
+    marque,
+    modele,
+    annee: toIntLooseOrNull(anneeRaw),
+    kilometrage: toIntLooseOrNull(kilometrageRaw),
+    carburant,
+    prix,
+    vin,
+    premiereCirculation,
+  };
 }
 
 /* ------------------------- Form input <-> Vehicule ------------------------ */
