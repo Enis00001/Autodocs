@@ -647,6 +647,14 @@ type SendRelancesBody = {
   concession_id?: string;
 };
 
+type SaveRelancesConfigBody = {
+  concession_id?: string;
+  actif?: unknown;
+  delai_premier_rappel?: unknown;
+  delai_deuxieme_rappel?: unknown;
+  message_personnalise?: unknown;
+};
+
 function parseRequestBody(req: VercelRequest): Record<string, unknown> | null {
   if (typeof req.body === "string") {
     try {
@@ -1338,6 +1346,85 @@ async function handleResendSignatureEmail(
     signUrl,
     expiresAt,
   });
+}
+
+async function handleSaveRelancesConfig(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const userId = await getAuthUserId(req);
+  if (!userId) {
+    return res.status(401).json({ error: "Non autorise" });
+  }
+
+  const body = data as SaveRelancesConfigBody;
+  const admin = await getSupabaseAdmin();
+  const activeConcessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!activeConcessionId) {
+    return res.status(403).json({ error: "Aucune concession active pour ce compte." });
+  }
+
+  const bodyCid = String(body.concession_id ?? "").trim();
+  if (bodyCid && bodyCid !== activeConcessionId) {
+    return res.status(403).json({ error: "Concession invalide." });
+  }
+
+  if (!(await assertIsAdminOfConcession(admin, userId, activeConcessionId))) {
+    return res.status(403).json({ error: "Reserve aux administrateurs de la concession." });
+  }
+
+  const actif = Boolean(body.actif);
+  const delai_premier_rappel = Math.max(0, Number(body.delai_premier_rappel ?? 3));
+  const delai_deuxieme_rappel = Math.max(0, Number(body.delai_deuxieme_rappel ?? 7));
+  const message_personnalise =
+    typeof body.message_personnalise === "string" && body.message_personnalise.trim() !== ""
+      ? body.message_personnalise.trim()
+      : null;
+
+  const { data: existing, error: selErr } = await admin
+    .from("relances_config")
+    .select("id")
+    .eq("concession_id", activeConcessionId)
+    .maybeSingle();
+
+  if (selErr) {
+    console.error("[actions/save-relances-config] select:", selErr);
+    return res.status(500).json({ error: selErr.message ?? "Erreur lecture relances." });
+  }
+
+  const updatedAt = new Date().toISOString();
+
+  if (existing?.id) {
+    const { error: upErr } = await admin
+      .from("relances_config")
+      .update({
+        actif,
+        delai_premier_rappel,
+        delai_deuxieme_rappel,
+        message_personnalise,
+        updated_at: updatedAt,
+      })
+      .eq("concession_id", activeConcessionId);
+    if (upErr) {
+      console.error("[actions/save-relances-config] update:", upErr);
+      return res.status(500).json({ error: upErr.message ?? "Erreur mise a jour relances." });
+    }
+  } else {
+    const { error: insErr } = await admin.from("relances_config").insert({
+      concession_id: activeConcessionId,
+      actif,
+      delai_premier_rappel,
+      delai_deuxieme_rappel,
+      message_personnalise,
+    });
+    if (insErr) {
+      console.error("[actions/save-relances-config] insert:", insErr);
+      return res.status(500).json({ error: insErr.message ?? "Erreur creation relances." });
+    }
+  }
+
+  return res.status(200).json({ ok: true });
 }
 
 async function handleSendRelances(
@@ -2583,6 +2670,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleResendSignatureEmail(req, data, res);
     case "send-relances":
       return handleSendRelances(req, data, res);
+    case "save-relances-config":
+      return handleSaveRelancesConfig(req, data, res);
     case "fill-cerfa":
       return handleFillCerfa(req, data, res);
     case "generate-facture":
