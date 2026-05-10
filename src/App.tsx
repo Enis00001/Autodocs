@@ -10,6 +10,7 @@ import AppLayout from "./components/layout/AppLayout";
 import NouveauBon from "./pages/NouveauBon";
 import Dashboard from "./pages/Dashboard";
 import Historique from "./pages/Historique";
+import Brouillons from "./pages/Brouillons";
 import TemplatesPage from "./pages/Templates";
 import VehicleFieldsPage from "./pages/VehicleFields";
 import StockVehicules from "./pages/StockVehicules";
@@ -214,6 +215,7 @@ const App = () => {
                 <Route path="/nouveau-bon" element={<NouveauBon />} />
                 <Route path="/nouveau-bon/:id" element={<NouveauBon />} />
                 <Route path="/historique" element={<Historique />} />
+                <Route path="/brouillons" element={<Brouillons />} />
                 <Route path="/cerfa" element={<CERFA />} />
                 <Route path="/templates" element={<TemplatesPage />} />
                 <Route path="/infos-vehicule" element={<VehicleFieldsPage />} />

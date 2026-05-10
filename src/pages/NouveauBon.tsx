@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { User, Car, Wallet, CreditCard, CheckCircle2, Loader2 } from "lucide-react";
+import { User, Car, Wallet, CreditCard, CheckCircle2, Loader2, Receipt } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import ProfilClient from "@/components/nouveau-bon/ProfilClient";
 import ScanCni from "@/components/nouveau-bon/ScanCni";
@@ -29,6 +29,9 @@ import {
   createClient,
   findClientExactNomPrenom,
 } from "@/utils/clients";
+import FactureGenerateModal from "@/components/FactureGenerateModal";
+import { getFactureByBrouillonId } from "@/utils/factures";
+import { downloadBase64Pdf } from "@/utils/generatePDF";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -195,6 +198,17 @@ const NouveauBon = () => {
   const [closureSoldSaving, setClosureSoldSaving] = useState(false);
   const [closureCrmUi, setClosureCrmUi] = useState<ClosureCrmUi>("idle");
 
+  /** Facture — modal et état carte dans la popup de clôture */
+  const [closureFactureModalOpen, setClosureFactureModalOpen] = useState(false);
+  const [closureFactureDraft, setClosureFactureDraft] = useState<BonDraftData | null>(
+    null,
+  );
+  const [closureFactureOpening, setClosureFactureOpening] = useState(false);
+  const [closureFactureDone, setClosureFactureDone] = useState<{
+    numero_facture: string;
+    pdfBase64: string;
+  } | null>(null);
+
   const { formPrefs } = usePreferencesFormulaire();
 
   useEffect(() => {
@@ -240,6 +254,10 @@ const NouveauBon = () => {
     setClosureSoldDone(false);
     setClosureSoldSaving(false);
     setClosureCrmUi("idle");
+    setClosureFactureModalOpen(false);
+    setClosureFactureDraft(null);
+    setClosureFactureDone(null);
+    setClosureFactureOpening(false);
   }, [params.id]);
 
   const handleSuccessfulModalClosed = useCallback(() => {
@@ -251,8 +269,66 @@ const NouveauBon = () => {
     setClosureCrmUi(fs.clientId ? "linked_snapshot" : "idle");
     setClosureSoldDone(false);
     setClosureSoldSaving(false);
+    setClosureFactureDone(null);
+    setClosureFactureModalOpen(false);
+    setClosureFactureDraft(null);
     setClosureModalOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (!closureModalOpen || !closurePayload?.draftSnapshot.id?.trim()) {
+      setClosureFactureDone(null);
+      return;
+    }
+    const bid = closurePayload.draftSnapshot.id.trim();
+    let cancelled = false;
+    void getFactureByBrouillonId(bid).then((f) => {
+      if (cancelled || !f?.pdf_base64) return;
+      setClosureFactureDone({
+        numero_facture: f.numero_facture,
+        pdfBase64: f.pdf_base64,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [closureModalOpen, closurePayload?.draftSnapshot.id]);
+
+  const handleClosureOpenFactureModal = useCallback(async () => {
+    const id = closurePayload?.draftSnapshot.id?.trim();
+    if (!id) {
+      toast({
+        title: "Brouillon introuvable",
+        description: "Enregistrez le bon avant de générer une facture.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setClosureFactureOpening(true);
+    try {
+      const d = await getDraft(id);
+      if (!d) {
+        toast({
+          title: "Brouillon introuvable",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!d.clientSignedAt) {
+        toast({
+          title: "Signature client requise",
+          description:
+            "La facture peut être émise une fois le bon signé par le client.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setClosureFactureDraft(d);
+      setClosureFactureModalOpen(true);
+    } finally {
+      setClosureFactureOpening(false);
+    }
+  }, [closurePayload]);
 
   useEffect(() => {
     if (!closureModalOpen || !closurePayload) return;
@@ -495,6 +571,10 @@ const NouveauBon = () => {
     setClosureSoldDone(false);
     setClosureSoldSaving(false);
     setClosureVehicleLoading(false);
+    setClosureFactureModalOpen(false);
+    setClosureFactureDraft(null);
+    setClosureFactureDone(null);
+    setClosureFactureOpening(false);
     setFormState({ ...defaultFormState });
     setAutoFilledClientFields([]);
     navigate("/nouveau-bon", { replace: true });
@@ -642,7 +722,7 @@ const NouveauBon = () => {
         <>
           <div className="pointer-events-none fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm" aria-hidden />
           <div
-            className="fixed inset-x-4 bottom-auto top-1/2 z-[10001] mx-auto max-h-[90vh] max-w-lg -translate-y-1/2 overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#1A1D27] p-6 shadow-2xl pointer-events-auto md:inset-x-auto md:left-1/2 md:w-full md:-translate-x-1/2"
+            className="fixed inset-x-4 bottom-auto top-1/2 z-[10001] mx-auto max-h-[90vh] max-w-4xl -translate-y-1/2 overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#1A1D27] p-6 shadow-2xl pointer-events-auto md:inset-x-auto md:left-1/2 md:w-full md:-translate-x-1/2"
             role="dialog"
             aria-modal="true"
             aria-labelledby="closure-modal-title"
@@ -657,7 +737,7 @@ const NouveauBon = () => {
               🎉 Bon de commande finalisé&nbsp;!
             </p>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <div className="flex flex-col rounded-xl border border-border/80 bg-card/50 p-4">
                 <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                   🚗 Marquer comme vendu
@@ -750,6 +830,64 @@ const NouveauBon = () => {
                   )}
                 </button>
               </div>
+
+              <div className="flex flex-col rounded-xl border border-border/80 bg-card/50 p-4">
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  🧾 Générer la facture
+                </div>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Créer la facture de vente pour ce bon de commande
+                </p>
+                {closureFactureDone ? (
+                  <div className="mt-auto flex flex-col gap-2">
+                    <div
+                      className={cn(
+                        "inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-display text-sm font-bold ring-1",
+                        "cursor-default bg-success/20 text-success ring-success/40",
+                      )}
+                    >
+                      <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                      ✓ Facture générée
+                    </div>
+                    <button
+                      type="button"
+                      className="text-center text-[13px] font-semibold text-primary underline-offset-4 hover:underline cursor-pointer"
+                      onClick={() =>
+                        downloadBase64Pdf(
+                          closureFactureDone.pdfBase64,
+                          `facture-${closureFactureDone.numero_facture}.pdf`,
+                        )
+                      }
+                    >
+                      Télécharger à nouveau
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={
+                      closureFactureOpening ||
+                      !closurePayload.draftSnapshot.id?.trim()
+                    }
+                    onClick={() => void handleClosureOpenFactureModal()}
+                    className={cn(
+                      "mt-auto inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-display text-sm font-bold transition-all btn-primary cursor-pointer border-0 disabled:cursor-not-allowed disabled:opacity-50",
+                    )}
+                  >
+                    {closureFactureOpening ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        Ouverture…
+                      </>
+                    ) : (
+                      <>
+                        <Receipt className="h-4 w-4 shrink-0" aria-hidden />
+                        Générer la facture
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="mt-6 flex justify-center border-t border-border/60 pt-4">
@@ -760,6 +898,22 @@ const NouveauBon = () => {
           </div>
         </>
       ) : null}
+
+      <FactureGenerateModal
+        open={closureFactureModalOpen && !!closureFactureDraft}
+        draft={closureFactureDraft}
+        preset="closure"
+        onClose={() => {
+          setClosureFactureModalOpen(false);
+          setClosureFactureDraft(null);
+        }}
+        onSuccess={(data) => {
+          setClosureFactureDone({
+            numero_facture: data.numero_facture,
+            pdfBase64: data.pdfBase64,
+          });
+        }}
+      />
     </>
   );
 };

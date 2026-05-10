@@ -7,6 +7,12 @@ import { toast } from "@/hooks/use-toast";
 
 type PrestationLine = { libelle: string; prix_ht: string };
 
+export type FactureModalSuccessPayload = {
+  numero_facture: string;
+  pdfBase64: string;
+  factureId?: string;
+};
+
 function draftDateToInput(raw: string): string {
   const s = String(raw ?? "").trim();
   if (!s) return "";
@@ -18,19 +24,35 @@ function draftDateToInput(raw: string): string {
   return "";
 }
 
+function todayIsoDate(): string {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+
 function parseEuro(raw: string): number {
   const n = parseFloat(String(raw ?? "").replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 }
 
+export type FactureGenerateModalPreset = "standard" | "closure";
+
 type Props = {
   open: boolean;
   draft: BonDraftData | null;
   onClose: () => void;
-  onSuccess?: () => void;
+  /** Appelé après génération réussie (PDF téléchargé). Envoie le PDF pour un second téléchargement éventuel. */
+  onSuccess?: (data: FactureModalSuccessPayload) => void;
+  /** `closure` : date livraison = aujourd'hui, acompte/reprise à 0 par défaut, libellé du bouton adapté. */
+  preset?: FactureGenerateModalPreset;
 };
 
-const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
+const FactureGenerateModal = ({
+  open,
+  draft,
+  onClose,
+  onSuccess,
+  preset = "standard",
+}: Props) => {
   const [dateLivraison, setDateLivraison] = useState("");
   const [acompte, setAcompte] = useState("");
   const [repriseMontant, setRepriseMontant] = useState("");
@@ -45,17 +67,24 @@ const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
 
   useEffect(() => {
     if (!open || !draft) return;
-    setDateLivraison(draftDateToInput(draft.vehiculeDateLivraison ?? ""));
-    setAcompte(String(draft.acompte ?? "").trim());
-    setRepriseMontant(String(draft.repriseValeur ?? "").trim());
-    setRepriseDesc("");
+    if (preset === "closure") {
+      setDateLivraison(todayIsoDate());
+      setAcompte("0");
+      setRepriseMontant("0");
+      setRepriseDesc("");
+    } else {
+      setDateLivraison(draftDateToInput(draft.vehiculeDateLivraison ?? ""));
+      setAcompte(String(draft.acompte ?? "").trim());
+      setRepriseMontant(String(draft.repriseValeur ?? "").trim());
+      setRepriseDesc("");
+    }
     setGarantieActive(false);
     setGarantieMois("12");
     setKmNonGaranti(false);
     setNotes("");
     setPrestations([]);
     setError(null);
-  }, [open, draft]);
+  }, [open, draft, preset]);
 
   useEffect(() => {
     if (!open) return;
@@ -67,6 +96,8 @@ const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
   }, [open, onClose]);
 
   if (!open || !draft) return null;
+
+  const isClosure = preset === "closure";
 
   const addPrestation = () =>
     setPrestations((p) => [...p, { libelle: "", prix_ht: "" }]);
@@ -89,15 +120,17 @@ const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
     setError(null);
 
     const prestPayload: { libelle: string; prix_ht: number }[] = [];
-    for (const row of prestations) {
-      const lib = row.libelle.trim();
-      const ht = parseEuro(row.prix_ht);
-      if (!lib && ht <= 0) continue;
-      if (!lib || ht <= 0) {
-        setError("Chaque prestation doit avoir un libellé et un prix HT valide.");
-        return;
+    if (!isClosure) {
+      for (const row of prestations) {
+        const lib = row.libelle.trim();
+        const ht = parseEuro(row.prix_ht);
+        if (!lib && ht <= 0) continue;
+        if (!lib || ht <= 0) {
+          setError("Chaque prestation doit avoir un libellé et un prix HT valide.");
+          return;
+        }
+        prestPayload.push({ libelle: lib, prix_ht: ht });
       }
-      prestPayload.push({ libelle: lib, prix_ht: ht });
     }
 
     const payload: GenerateFacturePayload = {
@@ -108,9 +141,9 @@ const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
       reprise_vehicule_description: repriseDesc.trim() || undefined,
       garantie_commerciale_active: garantieActive,
       garantie_commerciale_mois: garantieActive ? parseInt(garantieMois, 10) || 0 : 0,
-      kilometrage_non_garanti: kmNonGaranti,
+      kilometrage_non_garanti: isClosure ? false : kmNonGaranti,
       prestations_supplementaires:
-        prestPayload.length > 0 ? prestPayload : undefined,
+        !isClosure && prestPayload.length > 0 ? prestPayload : undefined,
       notes: notes.trim() || undefined,
     };
 
@@ -131,30 +164,37 @@ const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
           ? `La facture ${result.numero_facture ?? ""} existe déjà — PDF téléchargé.`
           : `Facture ${result.numero_facture ?? ""} enregistrée.`,
       });
-      onSuccess?.();
+      onSuccess?.({
+        numero_facture: result.numero_facture ?? "",
+        pdfBase64: result.pdfBase64,
+        factureId: result.factureId,
+      });
       onClose();
     } finally {
       setSubmitting(false);
     }
   };
 
+  const submitLabel = isClosure ? "Générer et télécharger" : "Générer le PDF";
+
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
         aria-label="Fermer"
         onClick={onClose}
       />
-      <div className="relative z-[81] max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-card border border-border bg-card p-5 shadow-xl">
+      <div className="relative z-[10003] max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-card border border-border bg-card p-5 shadow-xl">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-base font-bold text-foreground">
               Générer la facture
             </h2>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              Bon signé — vérifiez les montants avant validation. Les données
-              véhicule proviennent du brouillon.
+              {isClosure
+                ? "Vérifiez les montants et options avant de créer la facture PDF (données véhicule et client issues du bon)."
+                : "Bon signé — vérifiez les montants avant validation. Les données véhicule proviennent du brouillon."}
             </p>
           </div>
           <button
@@ -200,7 +240,7 @@ const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label className="field-label" htmlFor="fact-reprise">
-                Reprise déduite — montant (€)
+                Reprise véhicule déduite (€)
               </label>
               <input
                 id="fact-reprise"
@@ -253,70 +293,74 @@ const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
             ) : null}
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium">
-            <input
-              type="checkbox"
-              checked={kmNonGaranti}
-              onChange={(e) => setKmNonGaranti(e.target.checked)}
-              className="rounded border-border"
-            />
-            Kilométrage non garanti (mention sur la facture)
-          </label>
+          {!isClosure ? (
+            <>
+              <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium">
+                <input
+                  type="checkbox"
+                  checked={kmNonGaranti}
+                  onChange={(e) => setKmNonGaranti(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Kilométrage non garanti (mention sur la facture)
+              </label>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="field-label">Prestations supplémentaires (HT)</span>
-              <button
-                type="button"
-                className="btn-secondary cursor-pointer gap-1 px-2 py-1 text-xs"
-                onClick={addPrestation}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Ajouter
-              </button>
-            </div>
-            {prestations.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground">Aucune prestation.</p>
-            ) : (
               <div className="space-y-2">
-                {prestations.map((row, i) => (
-                  <div key={i} className="flex gap-2">
-                    <input
-                      type="text"
-                      className="field-input flex-1"
-                      placeholder="Libellé"
-                      value={row.libelle}
-                      onChange={(e) =>
-                        updatePrestation(i, "libelle", e.target.value)
-                      }
-                    />
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className="field-input w-[100px]"
-                      placeholder="HT"
-                      value={row.prix_ht}
-                      onChange={(e) =>
-                        updatePrestation(i, "prix_ht", e.target.value)
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="btn-danger shrink-0 px-2 cursor-pointer"
-                      onClick={() => removePrestation(i)}
-                      aria-label="Supprimer la ligne"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="field-label">Prestations supplémentaires (HT)</span>
+                  <button
+                    type="button"
+                    className="btn-secondary cursor-pointer gap-1 px-2 py-1 text-xs"
+                    onClick={addPrestation}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Ajouter
+                  </button>
+                </div>
+                {prestations.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground">Aucune prestation.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {prestations.map((row, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input
+                          type="text"
+                          className="field-input flex-1"
+                          placeholder="Libellé"
+                          value={row.libelle}
+                          onChange={(e) =>
+                            updatePrestation(i, "libelle", e.target.value)
+                          }
+                        />
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          className="field-input w-[100px]"
+                          placeholder="HT"
+                          value={row.prix_ht}
+                          onChange={(e) =>
+                            updatePrestation(i, "prix_ht", e.target.value)
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="btn-danger shrink-0 px-2 cursor-pointer"
+                          onClick={() => removePrestation(i)}
+                          aria-label="Supprimer la ligne"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            )}
-          </div>
+            </>
+          ) : null}
 
           <div className="flex flex-col gap-1.5">
             <label className="field-label" htmlFor="fact-notes">
-              Notes (bas de facture)
+              Notes libres (bas de facture)
             </label>
             <textarea
               id="fact-notes"
@@ -348,7 +392,7 @@ const FactureGenerateModal = ({ open, draft, onClose, onSuccess }: Props) => {
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : null}
-              Générer le PDF
+              {submitLabel}
             </button>
           </div>
         </form>

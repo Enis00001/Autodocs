@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard, SlidersHorizontal, FileText, Building2, Users } from "lucide-react";
+import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard, SlidersHorizontal, FileText, Building2, Users, FolderOpen } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts } from "@/utils/drafts";
 import { loadConcession, getConcessionInitials } from "@/utils/concession";
@@ -12,6 +12,7 @@ export const sidebarNavConfig = [
   { title: "Dashboard", path: "/app", icon: LayoutDashboard },
   { title: "Nouveau bon", path: "/nouveau-bon", icon: Plus },
   { title: "Historique", path: "/historique", icon: ClipboardList },
+  { title: "Brouillons", path: "/brouillons", icon: FolderOpen },
   { title: "CERFA", path: "/cerfa", icon: FileText },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
   { title: "Clients", path: "/clients", icon: Users },
@@ -106,9 +107,11 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
                 ? location.pathname === "/clients" || location.pathname.startsWith("/clients/")
                 : item.path === "/factures"
                   ? location.pathname === "/factures"
-                  : item.path === "/app"
-                  ? location.pathname === "/app" || location.pathname === "/dashboard"
-                  : location.pathname === item.path;
+                  : item.path === "/brouillons"
+                    ? location.pathname === "/brouillons"
+                    : item.path === "/app"
+                      ? location.pathname === "/app" || location.pathname === "/dashboard"
+                      : location.pathname === item.path;
           return (
             <Link
               key={item.path}
