@@ -116,9 +116,10 @@ export function sliceMonthlyByPeriod(
 export async function loadDashboardStats(period: DashboardPeriod = "month"): Promise<DashboardStats> {
   const uid = await getCurrentUserId();
   const now = new Date();
-  const historyStart = getHistoryStart(period, now).toISOString();
+  void period;
+  const historyStart = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString();
   const empty: DashboardStats = {
-    monthly: buildLastTwelveMonths(now).slice(-getMonthsForPeriod(period) * 2),
+    monthly: buildLastTwelveMonths(now),
     stockAvailableTotal: 0,
     stockSoldTotal: 0,
     draftsTotal: 0,
@@ -129,7 +130,7 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
   };
   if (!uid) return empty;
 
-  const monthly = buildLastTwelveMonths(now).slice(-getMonthsForPeriod(period) * 2);
+  const monthly = buildLastTwelveMonths(now);
   const byKey = new Map(monthly.map((item) => [item.key, item]));
 
   const [facturesRes, stockSoldRes, stockRes, draftsRes] = await Promise.all([

@@ -42,6 +42,26 @@ import {
   sliceMonthlyByPeriod,
 } from "@/utils/stats";
 
+type DashboardStatsResult = Awaited<ReturnType<typeof loadDashboardStats>>;
+
+type DashboardCacheEntry = {
+  period: DashboardPeriod;
+  timestamp: number;
+  drafts: BonDraftData[];
+  stats: DashboardStatsResult;
+  recentSales: RecentSaleRow[];
+};
+
+const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+let dashboardCache: DashboardCacheEntry | null = null;
+
+function getCachedDashboard(period: DashboardPeriod): DashboardCacheEntry | null {
+  if (!dashboardCache) return null;
+  const isFresh = Date.now() - dashboardCache.timestamp < DASHBOARD_CACHE_TTL_MS;
+  if (!isFresh || dashboardCache.period !== period) return null;
+  return dashboardCache;
+}
+
 const isCurrentMonth = (iso: string) => {
   const d = new Date(iso);
   const now = new Date();
@@ -56,20 +76,31 @@ function vehiculeLabel(d: BonDraftData): string {
 }
 
 const Dashboard = () => {
-  const [drafts, setDrafts] = useState<BonDraftData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState<DashboardPeriod>("month");
+  const initialCache = getCachedDashboard("month");
+  const [drafts, setDrafts] = useState<BonDraftData[]>(initialCache?.drafts ?? []);
+  const [loading, setLoading] = useState(!initialCache);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
-  const [period, setPeriod] = useState<DashboardPeriod>("month");
-  const [stats, setStats] = useState<Awaited<ReturnType<typeof loadDashboardStats>> | null>(null);
-  const [recentSales, setRecentSales] = useState<RecentSaleRow[]>([]);
+  const [stats, setStats] = useState<DashboardStatsResult | null>(initialCache?.stats ?? null);
+  const [recentSales, setRecentSales] = useState<RecentSaleRow[]>(initialCache?.recentSales ?? []);
   const navigate = useNavigate();
 
   useEffect(() => {
+    const cached = refreshKey === 0 ? getCachedDashboard(period) : null;
+    if (cached) {
+      setDrafts(cached.drafts);
+      setStats(cached.stats);
+      setRecentSales(cached.recentSales);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
-      setLoading(true);
+      setLoading(!stats);
       setError(null);
       try {
         const [d, s, sales] = await Promise.all([
@@ -81,6 +112,13 @@ const Dashboard = () => {
         setDrafts(d);
         setStats(s);
         setRecentSales(sales);
+        dashboardCache = {
+          period,
+          timestamp: Date.now(),
+          drafts: d,
+          stats: s,
+          recentSales: sales,
+        };
       } catch (err) {
         if (cancelled) return;
         console.error("[dashboard] chargement stats:", err);
@@ -96,7 +134,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [period, refreshKey]);
+  }, [period, refreshKey, stats]);
 
   const handleRetry = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -220,6 +258,12 @@ const Dashboard = () => {
   const latestDrafts = [...drafts]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .slice(0, 5);
+  const chartMonthly = statsReady.monthly.map((row) => ({
+    ...row,
+    mois: row.label,
+    ca: row.revenue,
+    ventes: row.sales,
+  }));
 
   return (
     <>
@@ -371,7 +415,7 @@ const Dashboard = () => {
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
-                    data={monthlyForPeriod}
+                    data={chartMonthly}
                     margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
                   >
                     <defs>
@@ -384,7 +428,7 @@ const Dashboard = () => {
                       strokeDasharray="3 3"
                       stroke="rgba(148, 163, 184, 0.15)"
                     />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                     <YAxis
                       tick={{ fontSize: 11 }}
                       tickFormatter={(value: number) =>
@@ -403,11 +447,11 @@ const Dashboard = () => {
                     />
                     <Area
                       type="monotone"
-                      dataKey="revenue"
+                      dataKey="ca"
                       stroke="#3B82F6"
                       strokeWidth={2.5}
                       fill="url(#revenueGradient)"
-                      dot={{ r: 3, fill: "#3B82F6", strokeWidth: 0 }}
+                      dot={{ r: 4, fill: "#3B82F6", strokeWidth: 0 }}
                       activeDot={{ r: 6 }}
                     />
                   </AreaChart>
@@ -444,14 +488,15 @@ const Dashboard = () => {
                 <div className="w-full">
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart
-                      data={monthlyForPeriod}
+                      data={chartMonthly}
                       margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                      barSize={40}
                     >
                       <CartesianGrid
                         strokeDasharray="3 3"
                         stroke="rgba(148, 163, 184, 0.15)"
                       />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
                       <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                       <Tooltip
                         formatter={(value: number) => [
@@ -461,7 +506,7 @@ const Dashboard = () => {
                         labelFormatter={(label) => `Mois : ${label}`}
                         separator=""
                       />
-                      <Bar dataKey="sales" fill="#10B981" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="ventes" fill="#10B981" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
