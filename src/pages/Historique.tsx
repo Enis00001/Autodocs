@@ -8,6 +8,8 @@ import {
   Download,
   UserPlus,
   UserCircle,
+  Receipt,
+  FileCheck,
 } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts, deleteDraft } from "@/utils/drafts";
@@ -25,7 +27,9 @@ import {
 } from "@/utils/clients";
 import { cn } from "@/lib/utils";
 import TopBar from "@/components/layout/TopBar";
-import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
+import { buildPdfFormDataFromDraft, generatePDF, downloadBase64Pdf } from "@/utils/generatePDF";
+import FactureGenerateModal from "@/components/FactureGenerateModal";
+import { getFactures, getFactureById } from "@/utils/factures";
 
 const clientLabel = (d: BonDraftData) =>
   [d.clientPrenom, d.clientNom].filter(Boolean).join(" ").trim() || "—";
@@ -59,12 +63,29 @@ const Historique = () => {
   const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
   const [creatingForDraft, setCreatingForDraft] = useState<BonDraftData | null>(null);
   const [linkingDraftId, setLinkingDraftId] = useState<string | null>(null);
+  const [facturesByBrouillon, setFacturesByBrouillon] = useState<
+    Map<string, { id: string; numero_facture: string }>
+  >(() => new Map());
+  const [factureModalDraft, setFactureModalDraft] = useState<BonDraftData | null>(
+    null,
+  );
+  const [factureLoadingId, setFactureLoadingId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const refresh = async () => {
-    const [d, c] = await Promise.all([loadDrafts(), getClients()]);
+    const [d, c, facts] = await Promise.all([
+      loadDrafts(),
+      getClients(),
+      getFactures(),
+    ]);
     setDrafts(d);
     setClients(c);
+    const m = new Map<string, { id: string; numero_facture: string }>();
+    for (const f of facts) {
+      if (f.brouillon_id)
+        m.set(f.brouillon_id, { id: f.id, numero_facture: f.numero_facture });
+    }
+    setFacturesByBrouillon(m);
   };
 
   useEffect(() => {
@@ -72,11 +93,29 @@ const Historique = () => {
     const onUpdate = () => void refresh();
     window.addEventListener("autodocs_drafts_updated", onUpdate);
     window.addEventListener("autodocs_clients_updated", onUpdate);
+    window.addEventListener("autodocs_factures_updated", onUpdate);
     return () => {
       window.removeEventListener("autodocs_drafts_updated", onUpdate);
       window.removeEventListener("autodocs_clients_updated", onUpdate);
+      window.removeEventListener("autodocs_factures_updated", onUpdate);
     };
   }, []);
+
+  const handleVoirFacture = async (brouillonId: string) => {
+    const meta = facturesByBrouillon.get(brouillonId);
+    if (!meta) return;
+    setFactureLoadingId(brouillonId);
+    try {
+      const full = await getFactureById(meta.id);
+      if (full?.pdf_base64) {
+        downloadBase64Pdf(full.pdf_base64, `facture-${full.numero_facture}.pdf`);
+      } else {
+        window.alert("PDF introuvable pour cette facture.");
+      }
+    } finally {
+      setFactureLoadingId(null);
+    }
+  };
 
   // Map nom+prénom (lowercase) → ClientData, calculé une fois par render.
   const clientsByName = useMemo(() => {
@@ -277,7 +316,31 @@ const Historique = () => {
                           )}
                         </td>
                         <td className="py-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5 md:gap-2">
+                          <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2">
+                            {d.clientSignedAt ? (
+                              facturesByBrouillon.has(d.id) ? (
+                                <button
+                                  type="button"
+                                  className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5 border-primary/30 text-primary"
+                                  onClick={() => void handleVoirFacture(d.id)}
+                                  disabled={factureLoadingId === d.id}
+                                  aria-label="Voir la facture PDF"
+                                >
+                                  <FileCheck className="h-3.5 w-3.5" />
+                                  <span className="hidden lg:inline">Facture</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
+                                  onClick={() => setFactureModalDraft(d)}
+                                  aria-label="Générer la facture"
+                                >
+                                  <Receipt className="h-3.5 w-3.5" />
+                                  <span className="hidden lg:inline">Facture</span>
+                                </button>
+                              )
+                            ) : null}
                             <button
                               type="button"
                               className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
@@ -347,6 +410,13 @@ const Historique = () => {
         submitLabel="Créer et lier au bon"
         onClose={() => setCreatingForDraft(null)}
         onSubmit={handleCreateFromDraft}
+      />
+
+      <FactureGenerateModal
+        open={!!factureModalDraft}
+        draft={factureModalDraft}
+        onClose={() => setFactureModalDraft(null)}
+        onSuccess={() => void refresh()}
       />
     </>
   );

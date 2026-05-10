@@ -13,7 +13,10 @@ export type ProfilConcession = {
   codePostal: string;
   ville: string;
   siren: string;
+  siret: string;
   telephone: string;
+  tvaIntracommunautaire: string;
+  emailContact: string;
 };
 
 export const emptyProfilConcession: ProfilConcession = {
@@ -22,7 +25,10 @@ export const emptyProfilConcession: ProfilConcession = {
   codePostal: "",
   ville: "",
   siren: "",
+  siret: "",
   telephone: "",
+  tvaIntracommunautaire: "",
+  emailContact: "",
 };
 
 type ProfilConcessionRow = {
@@ -33,7 +39,10 @@ type ProfilConcessionRow = {
   code_postal: string | null;
   ville: string | null;
   siren: string | null;
+  siret?: string | null;
   telephone: string | null;
+  tva_intracommunautaire?: string | null;
+  email_contact?: string | null;
   updated_at: string | null;
 };
 
@@ -44,7 +53,10 @@ function rowToProfil(row: ProfilConcessionRow): ProfilConcession {
     codePostal: row.code_postal ?? "",
     ville: row.ville ?? "",
     siren: row.siren ?? "",
+    siret: row.siret ?? "",
     telephone: row.telephone ?? "",
+    tvaIntracommunautaire: row.tva_intracommunautaire ?? "",
+    emailContact: row.email_contact ?? "",
   };
 }
 
@@ -86,7 +98,10 @@ export async function saveProfilConcession(profil: ProfilConcession): Promise<vo
     code_postal: profil.codePostal.trim() || null,
     ville: profil.ville.trim() || null,
     siren: profil.siren.trim() || null,
+    siret: profil.siret.trim() || null,
     telephone: profil.telephone.trim() || null,
+    tva_intracommunautaire: profil.tvaIntracommunautaire.trim() || null,
+    email_contact: profil.emailContact.trim() || null,
     updated_at: new Date().toISOString(),
   };
   const { error } = await supabase

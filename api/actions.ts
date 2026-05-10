@@ -10,6 +10,10 @@ import {
   getPublicAppUrl,
   getSupabaseAdmin,
 } from "./_lib/supabase-admin.js";
+import {
+  buildFactureHtml,
+  type FactureTemplatePayload,
+} from "./_lib/facture-template.js";
 
 /* ==================================================================
  *  Bon-template inliné (ex api/_lib/bon-template.ts)
@@ -223,6 +227,38 @@ function parseNum(s: string): number {
 
 function formatMoney(n: number): string {
   return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function pickStockField(donnees: Record<string, string>, aliases: string[]): string {
+  if (!donnees || typeof donnees !== "object") return "";
+  const lower = aliases.map((a) => a.toLowerCase());
+  for (const alias of lower) {
+    const exact = Object.keys(donnees).find((k) => k.toLowerCase() === alias);
+    if (exact) {
+      const v = String(donnees[exact] ?? "").trim();
+      if (v) return v;
+    }
+  }
+  for (const alias of lower) {
+    const partial = Object.keys(donnees).find((k) => k.toLowerCase().includes(alias));
+    if (partial) {
+      const v = String(donnees[partial] ?? "").trim();
+      if (v) return v;
+    }
+  }
+  return "";
+}
+
+function isoDateToFr(iso: string | undefined | null): string {
+  const s = String(iso ?? "").trim();
+  if (!s) return "—";
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (ymd) return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
+  return s;
 }
 
 function stripBlock(html: string, startMarker: string, endMarker: string): string {
@@ -1542,6 +1578,353 @@ async function handleFillCerfa(
 
   return res.status(200).json({
     pdf_base64: Buffer.from(outBytes).toString("base64"),
+  });
+}
+
+async function handleGenerateFacture(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const userId = await getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Non autorise" });
+
+  const brouillonId = String(data.brouillon_id ?? "").trim();
+  if (!brouillonId) return res.status(400).json({ error: "brouillon_id requis" });
+
+  const admin = await getSupabaseAdmin();
+
+  const { data: existingDup } = await admin
+    .from("factures")
+    .select("id, numero_facture, pdf_base64")
+    .eq("concession_id", userId)
+    .eq("brouillon_id", brouillonId)
+    .maybeSingle();
+
+  if (existingDup) {
+    return res.status(200).json({
+      ok: true,
+      duplicate: true,
+      factureId: existingDup.id,
+      numero_facture: existingDup.numero_facture,
+      pdfBase64: existingDup.pdf_base64 ?? "",
+    });
+  }
+
+  const { data: row, error: brErr } = await admin
+    .from("brouillons")
+    .select("*")
+    .eq("id", brouillonId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (brErr) {
+    console.error("[generate-facture] brouillon:", brErr);
+    return res.status(500).json({ error: "Erreur lecture brouillon" });
+  }
+  if (!row || typeof row !== "object") {
+    return res.status(404).json({ error: "Brouillon introuvable" });
+  }
+
+  const br = row as Record<string, unknown>;
+  const kvRaw =
+    br.vehicle_field_values && typeof br.vehicle_field_values === "object"
+      ? (br.vehicle_field_values as Record<string, unknown>)
+      : {};
+  const kvStr: Record<string, string> = {};
+  for (const [k, v] of Object.entries(kvRaw)) kvStr[k] = String(v ?? "");
+
+  if (!kvStr.client_signed_at?.trim()) {
+    return res.status(400).json({
+      error:
+        "Le bon doit etre signe par le client avant la generation de la facture.",
+    });
+  }
+
+  const stockDonnees = parseStringDict(kvRaw.stock_donnees);
+  const prix = parseNum(String(br.vehicule_prix ?? ""));
+  const remise = parseNum(String(br.vehicule_remise ?? ""));
+  const repriseBon = parseNum(String(kvStr.reprise_valeur ?? ""));
+  const vehicleNetTtc = Math.max(0, round2(prix - remise - repriseBon));
+
+  const tvaTaux = Math.min(100, Math.max(0, parseNum(String(data.tva_taux ?? "20")) || 20));
+
+  const prestationsRaw = Array.isArray(data.prestations_supplementaires)
+    ? data.prestations_supplementaires
+    : [];
+  const prestations: { libelle: string; prix_ht: number }[] = [];
+  for (const p of prestationsRaw) {
+    if (!p || typeof p !== "object") continue;
+    const po = p as Record<string, unknown>;
+    const libelle = String(po.libelle ?? "").trim();
+    const prixHt = round2(parseNum(String(po.prix_ht ?? "0")));
+    if (!libelle || prixHt <= 0) continue;
+    prestations.push({ libelle, prix_ht: prixHt });
+  }
+
+  const sumPrestHt = round2(prestations.reduce((s, pr) => s + pr.prix_ht, 0));
+  const vehHt = round2(vehicleNetTtc / (1 + tvaTaux / 100));
+  const prestTtc = round2(sumPrestHt * (1 + tvaTaux / 100));
+  const prixHtTotal = round2(vehHt + sumPrestHt);
+  const prixTtcTotal = round2(vehicleNetTtc + prestTtc);
+  const tvaMontant = round2(prixTtcTotal - prixHtTotal);
+
+  const acompte = round2(parseNum(String(data.acompte ?? br.acompte ?? "0")));
+  const repriseMontantFacture = round2(
+    parseNum(String(data.reprise_montant ?? kvStr.reprise_valeur ?? "0")),
+  );
+  const resteAPayer = round2(Math.max(0, prixTtcTotal - acompte - repriseMontantFacture));
+
+  const dateLivraisonRaw = String(
+    data.date_livraison ?? br.vehicule_date_livraison ?? "",
+  ).trim();
+  const dateLivraison = dateLivraisonRaw || null;
+
+  const garantieActive =
+    data.garantie_commerciale_active === true ||
+    data.garantie_commerciale_active === "true";
+  const garantieMois = Math.max(
+    0,
+    Math.round(parseNum(String(data.garantie_commerciale_mois ?? "0"))),
+  );
+  const mentionGarantie =
+    garantieActive && garantieMois > 0
+      ? `Le véhicule est vendu avec une garantie commerciale de ${garantieMois} mois, aux exclusions et limitations prévues au bon de commande et aux conditions générales de vente le cas échéant.`
+      : "Le véhicule est vendu dans l'état où il se trouve au jour de la livraison (vente « en l'état »), sans garantie commerciale complémentaire sauf disposition conventionnelle écrite jointe.";
+
+  const kmNonGaranti =
+    data.kilometrage_non_garanti === true ||
+    data.kilometrage_non_garanti === "true";
+
+  const notes = String(data.notes ?? "").trim();
+
+  const { data: profil } = await admin
+    .from("profil_concession")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const prof = profil as Record<string, unknown> | null;
+
+  const { data: authUser } = await admin.auth.admin.getUserById(userId);
+  const authEmail = String(authUser?.user?.email ?? "").trim();
+
+  const concessionNom = String(prof?.nom_concession ?? "").trim() || "Concession";
+  const concessionAdresse = [
+    String(prof?.adresse ?? "").trim(),
+    [String(prof?.code_postal ?? "").trim(), String(prof?.ville ?? "").trim()]
+      .filter(Boolean)
+      .join(" "),
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  const concessionSiret = String(prof?.siret ?? prof?.siren ?? "").trim();
+  const concessionTel = String(prof?.telephone ?? "").trim();
+  const concessionEmail = String(prof?.email_contact ?? authEmail ?? "").trim();
+  const concessionTva = String(prof?.tva_intracommunautaire ?? "").trim();
+
+  let clientTel = "";
+  let clientEmailDb = String(kvStr.client_email ?? "").trim();
+  const clientIdRow =
+    br.client_id === null || br.client_id === undefined
+      ? null
+      : String(br.client_id);
+
+  if (clientIdRow) {
+    const { data: cl } = await admin
+      .from("clients")
+      .select("telephone, email")
+      .eq("id", clientIdRow)
+      .eq("concession_id", userId)
+      .maybeSingle();
+    if (cl && typeof cl === "object") {
+      const cli = cl as Record<string, unknown>;
+      clientTel = String(cli.telephone ?? "").trim();
+      if (!clientEmailDb) clientEmailDb = String(cli.email ?? "").trim();
+    }
+  }
+
+  const vehMarque = pickStockField(stockDonnees, ["marque", "brand"]);
+  const vehModele = pickStockField(stockDonnees, ["modele", "modèle", "model"]);
+  const vehVersion = pickStockField(stockDonnees, ["version", "finition"]);
+  const vehType = pickStockField(stockDonnees, ["type", "genre", "carrosserie"]);
+  const vehPremCirc = pickStockField(stockDonnees, [
+    "mise en circulation",
+    "premiere mise en circulation",
+    "date mec",
+    "mec",
+  ]);
+  const vehKm = pickStockField(stockDonnees, [
+    "kilometrage",
+    "kilométrage",
+    "km",
+    "compteur",
+  ]);
+  const vehVin = pickStockField(stockDonnees, ["vin", "chassis", "châssis", "serie"]);
+  const vehImmat = pickStockField(stockDonnees, ["immatriculation", "plaque", "immat"]);
+  const vehCouleur = pickStockField(stockDonnees, ["couleur", "color"]);
+  const vehEnergie = pickStockField(stockDonnees, [
+    "energie",
+    "énergie",
+    "carburant",
+    "motorisation",
+  ]);
+
+  const repriseDesc =
+    String(data.reprise_vehicule_description ?? "").trim() ||
+    [
+      [kvStr.reprise_marque, kvStr.reprise_modele].filter(Boolean).join(" "),
+      kvStr.reprise_plaque ? `Plaque ${kvStr.reprise_plaque}` : "",
+    ]
+      .filter(Boolean)
+      .join(" — ");
+
+  const today = new Date();
+  const dateFactureIso = today.toISOString().slice(0, 10);
+
+  const year = today.getFullYear();
+  const prefix = `FAC-${year}-`;
+  const { data: nums, error: numErr } = await admin
+    .from("factures")
+    .select("numero_facture")
+    .eq("concession_id", userId)
+    .like("numero_facture", `${prefix}%`);
+
+  if (numErr) {
+    console.error("[generate-facture] numerotation:", numErr);
+    return res.status(500).json({ error: "Erreur numerotation facture" });
+  }
+
+  let maxSeq = 0;
+  for (const n of nums ?? []) {
+    const nr = n as { numero_facture?: string };
+    const num = String(nr.numero_facture ?? "");
+    const m = /^FAC-(\d{4})-(\d+)$/.exec(num);
+    if (m && Number(m[1]) === year) maxSeq = Math.max(maxSeq, parseInt(m[2], 10));
+  }
+
+  const numeroFacture = `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
+
+  const templatePayload: FactureTemplatePayload = {
+    numero_facture: numeroFacture,
+    date_facture_label: isoDateToFr(dateFactureIso),
+    date_livraison_label: dateLivraison ? isoDateToFr(dateLivraison) : "—",
+    concession_nom: concessionNom,
+    concession_siret: concessionSiret || "—",
+    concession_adresse: concessionAdresse || "—",
+    concession_telephone: concessionTel || "—",
+    concession_email: concessionEmail || "—",
+    concession_tva_intra: concessionTva || "—",
+    client_nom: String(br.client_nom ?? "").trim() || "—",
+    client_prenom: String(br.client_prenom ?? "").trim() || "—",
+    client_adresse: String(br.client_adresse ?? "").trim() || "—",
+    client_email: clientEmailDb || "—",
+    client_telephone: clientTel || "—",
+    vehicule_marque: vehMarque || "—",
+    vehicule_modele: vehModele || "—",
+    vehicule_version: vehVersion || "—",
+    vehicule_type: vehType || "—",
+    vehicule_premiere_circulation: vehPremCirc || "—",
+    vehicule_kilometrage: vehKm || "—",
+    vehicule_km_non_garanti: kmNonGaranti,
+    vehicule_vin: vehVin || "—",
+    vehicule_immatriculation: vehImmat || "—",
+    vehicule_couleur: vehCouleur || "—",
+    vehicule_energie: vehEnergie || "—",
+    prestations,
+    prix_ht_vehicule_label: formatMoney(vehHt),
+    prix_ht_prestations_label: formatMoney(sumPrestHt),
+    prix_ht_total_label: formatMoney(prixHtTotal),
+    tva_taux_label: formatMoney(tvaTaux),
+    tva_montant_label: formatMoney(tvaMontant),
+    prix_ttc_label: formatMoney(prixTtcTotal),
+    acompte_label: formatMoney(acompte),
+    reprise_montant_label: formatMoney(repriseMontantFacture),
+    reprise_description: repriseDesc,
+    reste_a_payer_label: formatMoney(resteAPayer),
+    mention_garantie_vente: mentionGarantie,
+    notes,
+  };
+
+  let html: string;
+  try {
+    html = buildFactureHtml(templatePayload);
+  } catch (err) {
+    console.error("[generate-facture] template:", err);
+    return res.status(500).json({ error: "Erreur template facture" });
+  }
+
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await renderPdfFromHtml(html);
+  } catch (err) {
+    console.error("[generate-facture] pdf:", err);
+    return res.status(500).json({ error: "Erreur generation PDF" });
+  }
+
+  const pdfBase64 = pdfBuffer.toString("base64");
+
+  const insertRow = {
+    concession_id: userId,
+    brouillon_id: brouillonId,
+    client_id: clientIdRow,
+    numero_facture: numeroFacture,
+    date_facture: dateFactureIso,
+    date_livraison: dateLivraison,
+    concession_nom: concessionNom,
+    concession_siret: concessionSiret || null,
+    concession_adresse: concessionAdresse || null,
+    concession_telephone: concessionTel || null,
+    concession_email: concessionEmail || null,
+    concession_tva_intracommunautaire: concessionTva || null,
+    client_nom: String(br.client_nom ?? ""),
+    client_prenom: String(br.client_prenom ?? ""),
+    client_adresse: String(br.client_adresse ?? ""),
+    client_email: clientEmailDb || null,
+    client_telephone: clientTel || null,
+    vehicule_marque: vehMarque || null,
+    vehicule_modele: vehModele || null,
+    vehicule_version: vehVersion || null,
+    vehicule_annee: vehPremCirc || null,
+    vehicule_kilometrage: kmNonGaranti ? "Non garanti" : vehKm || null,
+    vehicule_vin: vehVin || null,
+    vehicule_immatriculation: vehImmat || null,
+    vehicule_couleur: vehCouleur || null,
+    vehicule_energie: vehEnergie || null,
+    prix_ht: prixHtTotal,
+    tva_taux: tvaTaux,
+    tva_montant: tvaMontant,
+    prix_ttc: prixTtcTotal,
+    acompte,
+    reste_a_payer: resteAPayer,
+    reprise_vehicule_description: repriseDesc || null,
+    reprise_montant: repriseMontantFacture,
+    prestations_supplementaires: prestations,
+    statut: "emise",
+    notes: notes || null,
+    pdf_base64: pdfBase64,
+  };
+
+  const { data: inserted, error: insErr } = await admin
+    .from("factures")
+    .insert(insertRow)
+    .select("id")
+    .single();
+
+  if (insErr) {
+    console.error("[generate-facture] insert:", insErr);
+    return res
+      .status(500)
+      .json({ error: insErr.message || "Erreur enregistrement facture" });
+  }
+
+  return res.status(200).json({
+    ok: true,
+    duplicate: false,
+    factureId: inserted?.id,
+    numero_facture: numeroFacture,
+    pdfBase64: pdfBase64,
   });
 }
 

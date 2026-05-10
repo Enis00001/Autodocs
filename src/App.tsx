@@ -15,6 +15,7 @@ import VehicleFieldsPage from "./pages/VehicleFields";
 import StockVehicules from "./pages/StockVehicules";
 import Clients from "./pages/Clients";
 import ClientDetail from "./pages/ClientDetail";
+import Factures from "./pages/Factures";
 import Parametres from "./pages/Parametres";
 import Preferences from "./pages/Preferences";
 import Abonnement from "./pages/Abonnement";
@@ -219,6 +220,7 @@ const App = () => {
                 <Route path="/stock-vehicules" element={<StockVehicules />} />
                 <Route path="/clients" element={<Clients />} />
                 <Route path="/clients/:id" element={<ClientDetail />} />
+                <Route path="/factures" element={<Factures />} />
                 <Route path="/parametres" element={<Parametres />} />
                 <Route path="/preferences" element={<Preferences />} />
                 <Route path="/profil-concession" element={<ProfilConcession />} />

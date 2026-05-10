@@ -11,6 +11,8 @@ import {
   Inbox,
   CheckCircle2,
   Clock,
+  Download,
+  Loader2,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import ClientFormModal from "@/components/ClientFormModal";
@@ -24,6 +26,8 @@ import {
   updateClient,
 } from "@/utils/clients";
 import { cn } from "@/lib/utils";
+import { getFacturesByClient, type FactureRecord } from "@/utils/factures";
+import { downloadBase64Pdf } from "@/utils/generatePDF";
 
 const formatDate = (iso: string | null | undefined) => {
   if (!iso) return "—";
@@ -90,6 +94,9 @@ const ClientDetail = () => {
   const [notFound, setNotFound] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [factures, setFactures] = useState<FactureRecord[]>([]);
+  const [facturesLoading, setFacturesLoading] = useState(false);
+  const [factureDlId, setFactureDlId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +115,13 @@ const ClientDetail = () => {
         } else {
           setClient(c);
           setBons(list);
+          setFacturesLoading(true);
+          try {
+            const f = await getFacturesByClient(id);
+            if (!cancelled) setFactures(f);
+          } finally {
+            if (!cancelled) setFacturesLoading(false);
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -116,6 +130,21 @@ const ClientDetail = () => {
     return () => {
       cancelled = true;
     };
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    const onFactures = async () => {
+      setFacturesLoading(true);
+      try {
+        const f = await getFacturesByClient(id);
+        setFactures(f);
+      } finally {
+        setFacturesLoading(false);
+      }
+    };
+    window.addEventListener("autodocs_factures_updated", onFactures);
+    return () => window.removeEventListener("autodocs_factures_updated", onFactures);
   }, [id]);
 
   const handleSave = async (input: ClientUpsertData) => {
@@ -259,6 +288,91 @@ const ClientDetail = () => {
                 </button>
               </div>
             </div>
+          </div>
+
+          <div className="card-autodocs">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-display text-sm font-bold text-foreground">
+                Factures
+              </h3>
+              {factures.length > 0 ? (
+                <span className="text-[11px] text-muted-foreground">
+                  {factures.length} facture{factures.length > 1 ? "s" : ""}
+                </span>
+              ) : null}
+            </div>
+
+            {facturesLoading ? (
+              <div className="flex justify-center py-8 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : factures.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Aucune facture liée à ce client.
+              </p>
+            ) : (
+              <div className="-mx-5 overflow-x-auto px-5 md:mx-0 md:px-0">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="pb-3 font-medium">N°</th>
+                      <th className="pb-3 font-medium">Date</th>
+                      <th className="hidden pb-3 font-medium md:table-cell">Montant TTC</th>
+                      <th className="pb-3 text-right font-medium">PDF</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {factures.map((f) => (
+                      <tr
+                        key={f.id}
+                        className="border-b border-border/50 last:border-0"
+                      >
+                        <td className="py-3 font-medium text-foreground">
+                          {f.numero_facture}
+                        </td>
+                        <td className="whitespace-nowrap py-3 text-muted-foreground">
+                          {formatDate(f.date_facture)}
+                        </td>
+                        <td className="hidden py-3 text-muted-foreground md:table-cell">
+                          {f.prix_ttc != null
+                            ? `${Number(f.prix_ttc).toLocaleString("fr-FR", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })} €`
+                            : "—"}
+                        </td>
+                        <td className="py-3 text-right">
+                          <button
+                            type="button"
+                            className="btn-secondary cursor-pointer gap-1 px-2 py-1.5 text-xs"
+                            disabled={!f.pdf_base64 || factureDlId === f.id}
+                            onClick={() => {
+                              if (!f.pdf_base64) return;
+                              setFactureDlId(f.id);
+                              try {
+                                downloadBase64Pdf(
+                                  f.pdf_base64,
+                                  `facture-${f.numero_facture}.pdf`,
+                                );
+                              } finally {
+                                setFactureDlId(null);
+                              }
+                            }}
+                          >
+                            {factureDlId === f.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Download className="h-3.5 w-3.5" />
+                            )}
+                            Télécharger
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="card-autodocs">

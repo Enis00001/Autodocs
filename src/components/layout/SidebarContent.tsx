@@ -15,6 +15,7 @@ export const sidebarNavConfig = [
   { title: "CERFA", path: "/cerfa", icon: FileText },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
   { title: "Clients", path: "/clients", icon: Users },
+  { title: "Factures", path: "/factures", icon: FileText },
   { title: "Ma concession", path: "/profil-concession", icon: Building2 },
   { title: "Abonnement", path: "/abonnement", icon: CreditCard },
   { title: "Modification des champs", path: "/preferences", icon: SlidersHorizontal },
@@ -103,7 +104,9 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
               ? location.pathname === "/nouveau-bon" || location.pathname.startsWith("/nouveau-bon/")
               : item.path === "/clients"
                 ? location.pathname === "/clients" || location.pathname.startsWith("/clients/")
-                : item.path === "/app"
+                : item.path === "/factures"
+                  ? location.pathname === "/factures"
+                  : item.path === "/app"
                   ? location.pathname === "/app" || location.pathname === "/dashboard"
                   : location.pathname === item.path;
           return (

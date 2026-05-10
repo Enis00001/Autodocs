@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Building2, MapPin, Hash, Phone, Loader2, Save } from "lucide-react";
+import { Building2, MapPin, Hash, Phone, Loader2, Save, Mail } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -52,7 +52,7 @@ const ProfilConcession = () => {
     <>
       <TopBar
         title="Ma concession"
-        subtitle="Informations utilisées pour pré-remplir le CERFA et les bons de commande"
+        subtitle="CERFA, bons de commande et factures (identité légale)"
       />
       <div className="page-shell">
         <div className="page-content space-y-5 max-w-3xl">
@@ -146,6 +146,48 @@ const ProfilConcession = () => {
                   </div>
 
                   <div className="flex flex-col gap-1.5">
+                    <label className="field-label">SIRET</label>
+                    <div className="relative">
+                      <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="text"
+                        value={profil.siret}
+                        onChange={(e) => update("siret", e.target.value)}
+                        placeholder="123 456 789 00012"
+                        className="field-input pl-10"
+                        inputMode="numeric"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">N° TVA intracommunautaire</label>
+                    <input
+                      type="text"
+                      value={profil.tvaIntracommunautaire}
+                      onChange={(e) => update("tvaIntracommunautaire", e.target.value)}
+                      placeholder="FR XX XXX XXX XXX"
+                      className="field-input"
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">Email affiché sur factures</label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="email"
+                        value={profil.emailContact}
+                        onChange={(e) => update("emailContact", e.target.value)}
+                        placeholder="contact@ma-concession.fr"
+                        className="field-input pl-10"
+                        autoComplete="email"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
                     <label className="field-label">Téléphone</label>
                     <div className="relative">
                       <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -178,8 +220,8 @@ const ProfilConcession = () => {
               </div>
 
               <div className="card-autodocs text-sm text-muted-foreground">
-                Ces informations sont utilisées pour pré-remplir la section
-                « Ancien propriétaire » du certificat de cession (CERFA 15776*01).
+                Ces informations sont utilisées pour pré-remplir le CERFA 15776*01,
+                les bons de commande et les factures PDF (SIRET, TVA, coordonnées).
                 Elles restent privées et ne sont visibles que par vous.
               </div>
             </>
