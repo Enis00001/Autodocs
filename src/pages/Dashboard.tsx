@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Download,
   Car,
-  FolderOpen,
+  Package,
   Plus,
   FileEdit,
   Trash2,
@@ -11,6 +11,9 @@ import {
   ChartNoAxesCombined,
   BadgeEuro,
   ClipboardList,
+  AlertTriangle,
+  RefreshCw,
+  ArrowRight,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { BonDraftData, loadDrafts, deleteDraft } from "@/utils/drafts";
@@ -19,24 +22,28 @@ import SignatureStatusBadge from "@/components/SignatureStatusBadge";
 import { cn } from "@/lib/utils";
 import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
   LineChart,
-  Pie,
+  Line,
+  BarChart,
+  Bar,
   PieChart,
-  ResponsiveContainer,
-  Tooltip,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Area,
+  AreaChart,
 } from "recharts";
 import {
   DashboardPeriod,
   getMonthsForPeriod,
   loadDashboardStats,
+  loadRecentSales,
+  RecentSaleRow,
   sliceMonthlyByPeriod,
 } from "@/utils/stats";
 
@@ -56,20 +63,37 @@ function vehiculeLabel(d: BonDraftData): string {
 const Dashboard = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
   const [period, setPeriod] = useState<DashboardPeriod>("month");
   const [stats, setStats] = useState<Awaited<ReturnType<typeof loadDashboardStats>> | null>(null);
+  const [recentSales, setRecentSales] = useState<RecentSaleRow[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setError(null);
       try {
-        const [d, s] = await Promise.all([loadDrafts(), loadDashboardStats()]);
+        const [d, s, sales] = await Promise.all([
+          loadDrafts(),
+          loadDashboardStats(),
+          loadRecentSales(5),
+        ]);
         if (cancelled) return;
         setDrafts(d);
         setStats(s);
+        setRecentSales(sales);
+      } catch (err) {
+        if (cancelled) return;
+        console.error("[dashboard] chargement stats:", err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Impossible de charger les statistiques.",
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -77,6 +101,10 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
+  }, [reloadKey]);
+
+  const handleRetry = useCallback(() => {
+    setReloadKey((k) => k + 1);
   }, []);
 
   const bonsCeMois = drafts.filter((d) => isCurrentMonth(d.createdAt)).length;
@@ -165,10 +193,10 @@ const Dashboard = () => {
       value: `${statsReady.stockAvailableTotal}`,
       sub: `${currentSales} vendus sur ${periodLabels[period].toLowerCase()}`,
       trendClass: "text-muted-foreground",
-      icon: FolderOpen,
-      className: "border-cyan-500/25 bg-cyan-500/5 text-cyan-300",
-      iconBox: "bg-cyan-500/20 text-cyan-300",
-      numberClass: "text-cyan-300",
+      icon: Package,
+      className: "border-orange-500/25 bg-orange-500/5 text-orange-400",
+      iconBox: "bg-orange-500/20 text-orange-400",
+      numberClass: "stat-number-warning",
     },
     {
       label: "Bons en attente",
@@ -176,9 +204,9 @@ const Dashboard = () => {
       sub: `${currentSigned} signes sur ${periodLabels[period].toLowerCase()} (${pendingDelta.text})`,
       trendClass: pendingDelta.positive ? "text-destructive" : "text-success",
       icon: ClipboardList,
-      className: "border-amber-500/25 bg-amber-500/5 text-amber-400",
-      iconBox: "bg-amber-500/20 text-amber-400",
-      numberClass: "stat-number-warning",
+      className: "border-violet-500/25 bg-violet-500/5 text-violet-400",
+      iconBox: "bg-violet-500/20 text-violet-400",
+      numberClass: "stat-number-violet",
     },
   ] as const;
 
@@ -247,6 +275,30 @@ const Dashboard = () => {
             </div>
           </div>
 
+          {error && !loading && (
+            <div className="card-autodocs flex flex-col items-start gap-3 border border-destructive/30 bg-destructive/5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-input bg-destructive/15 text-destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Impossible de charger les statistiques
+                  </p>
+                  <p className="text-xs text-muted-foreground">{error}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary cursor-pointer gap-1.5 text-xs"
+                onClick={handleRetry}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Réessayer
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 md:gap-4">
             {kpiCards.map((s) => (
               <div
@@ -287,36 +339,125 @@ const Dashboard = () => {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div className="card-autodocs xl:col-span-2">
+          <div className="card-autodocs">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-display text-sm font-bold text-foreground">
+                Chiffre d'affaires
+              </h3>
+              <span className="text-[11px] text-muted-foreground">
+                {periodLabels[period]}
+              </span>
+            </div>
+            {loading ? (
+              <div className="skeleton h-72 w-full rounded-input" />
+            ) : currentRevenue === 0 ? (
+              <div className="flex h-72 flex-col items-center justify-center text-center">
+                <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <ChartNoAxesCombined className="h-7 w-7" />
+                </div>
+                <p className="font-display text-base font-bold text-foreground">
+                  Aucune donnée pour cette période
+                </p>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  Changez la période pour voir plus d'historique.
+                </p>
+              </div>
+            ) : (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={monthlyForPeriod}
+                    margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.45} />
+                        <stop offset="100%" stopColor="#3B82F6" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(148, 163, 184, 0.15)"
+                    />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(value: number) =>
+                        new Intl.NumberFormat("fr-FR", {
+                          notation: "compact",
+                          maximumFractionDigits: 1,
+                        }).format(Number(value))
+                      }
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [
+                        formatCurrency(Number(value)),
+                        "CA",
+                      ]}
+                      labelFormatter={(label) => `Mois : ${label}`}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#3B82F6"
+                      strokeWidth={2.5}
+                      fill="url(#revenueGradient)"
+                      dot={{ r: 3, fill: "#3B82F6", strokeWidth: 0 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="card-autodocs">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="font-display text-sm font-bold text-foreground">
-                  Evolution du chiffre d'affaires
+                  Ventes mensuelles
                 </h3>
-                <span className="text-[11px] text-muted-foreground">12 derniers mois</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {periodLabels[period]}
+                </span>
               </div>
               {loading ? (
                 <div className="skeleton h-72 w-full rounded-input" />
+              ) : currentSales === 0 ? (
+                <div className="flex h-72 flex-col items-center justify-center text-center">
+                  <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <ChartNoAxesCombined className="h-7 w-7" />
+                  </div>
+                  <p className="font-display text-base font-bold text-foreground">
+                    Aucune donnée pour cette période
+                  </p>
+                  <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                    Changez la période pour voir plus d'historique.
+                  </p>
+                </div>
               ) : (
                 <div className="h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={monthlyForPeriod}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
-                      <XAxis dataKey="label" />
-                      <YAxis />
+                    <BarChart
+                      data={monthlyForPeriod}
+                      margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="rgba(148, 163, 184, 0.15)"
+                      />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                       <Tooltip
-                        formatter={(value: number) => formatCurrency(Number(value))}
-                        labelFormatter={(label) => `Mois: ${label}`}
+                        formatter={(value: number) => [
+                          `${Number(value)} véhicule${Number(value) > 1 ? "s" : ""} vendu${Number(value) > 1 ? "s" : ""}`,
+                          "",
+                        ]}
+                        labelFormatter={(label) => `Mois : ${label}`}
+                        separator=""
                       />
-                      <Line
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="#6366f1"
-                        strokeWidth={3}
-                        dot={{ r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </LineChart>
+                      <Bar dataKey="sales" fill="#10B981" radius={[6, 6, 0, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               )}
@@ -325,69 +466,157 @@ const Dashboard = () => {
             <div className="card-autodocs">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="font-display text-sm font-bold text-foreground">
-                  Bons signes vs attente
+                  État des bons de commande
                 </h3>
-                <span className="text-[11px] text-muted-foreground">{periodLabels[period]}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {periodLabels[period]}
+                </span>
               </div>
               {loading ? (
                 <div className="skeleton h-72 w-full rounded-input" />
+              ) : currentSigned === 0 && currentPending === 0 ? (
+                <div className="flex h-72 flex-col items-center justify-center text-center">
+                  <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <ClipboardList className="h-7 w-7" />
+                  </div>
+                  <p className="font-display text-base font-bold text-foreground">
+                    Aucune donnée pour cette période
+                  </p>
+                  <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                    Changez la période pour voir plus d'historique.
+                  </p>
+                </div>
               ) : (
-                <div className="h-72 w-full">
+                <div className="relative h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
                         data={pieData}
                         dataKey="value"
                         nameKey="name"
-                        innerRadius={55}
-                        outerRadius={85}
+                        innerRadius={60}
+                        outerRadius={90}
                         paddingAngle={2}
+                        stroke="none"
                       >
                         {pieData.map((entry) => (
                           <Cell key={entry.name} fill={entry.color} />
                         ))}
                       </Pie>
-                      <Tooltip />
-                      <Legend />
+                      <Tooltip
+                        formatter={(value: number, name: string) => [
+                          `${Number(value)} bon${Number(value) > 1 ? "s" : ""}`,
+                          name,
+                        ]}
+                      />
+                      <Legend
+                        verticalAlign="bottom"
+                        iconType="circle"
+                        formatter={(value, entry) => {
+                          const payload = entry?.payload as
+                            | { value?: number }
+                            | undefined;
+                          return (
+                            <span className="text-xs text-muted-foreground">
+                              {value} ({payload?.value ?? 0})
+                            </span>
+                          );
+                        }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center -translate-y-4">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Total
+                    </span>
+                    <span className="font-display text-2xl font-bold text-foreground">
+                      {currentSigned + currentPending}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
           <div className="card-autodocs">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-display text-sm font-bold text-foreground">
-                Ventes de vehicules par mois
-              </h3>
-              <span className="text-[11px] text-muted-foreground">12 derniers mois</span>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-sm font-bold text-foreground">
+                Dernières ventes
+              </h2>
+              <button
+                type="button"
+                onClick={() => navigate("/stock-vehicules")}
+                className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-primary hover:text-primary/80"
+              >
+                Voir tout
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
             </div>
+
             {loading ? (
-              <div className="skeleton h-72 w-full rounded-input" />
-            ) : noDataForPeriod ? (
-              <div className="flex h-72 flex-col items-center justify-center text-center">
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="skeleton h-10 w-full rounded-input" />
+                ))}
+              </div>
+            ) : recentSales.length === 0 ? (
+              <div className="flex flex-col items-center py-8 text-center">
                 <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <ChartNoAxesCombined className="h-7 w-7" />
+                  <Car className="h-7 w-7" />
                 </div>
                 <p className="font-display text-base font-bold text-foreground">
-                  Aucune vente pour cette periode
+                  Aucune vente pour le moment
                 </p>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                  Changez la periode pour voir plus d'historique.
+                  Vos prochaines ventes apparaîtront ici dès qu'une facture
+                  aura été émise.
                 </p>
               </div>
             ) : (
-              <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyForPeriod}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
-                    <XAxis dataKey="label" />
-                    <YAxis allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="sales" fill="#22c55e" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="-mx-5 overflow-x-auto px-5 md:mx-0 md:px-0">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="pb-3 font-medium">Véhicule</th>
+                      <th className="pb-3 font-medium">Client</th>
+                      <th className="hidden pb-3 font-medium md:table-cell">Date</th>
+                      <th className="pb-3 text-right font-medium">Prix TTC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentSales.map((sale) => (
+                      <tr
+                        key={sale.id}
+                        className="row-hover border-b border-border/50 last:border-0"
+                      >
+                        <td
+                          className="max-w-[180px] truncate py-3 font-medium text-foreground md:max-w-none"
+                          title={sale.vehicule}
+                        >
+                          {sale.vehicule}
+                        </td>
+                        <td
+                          className="max-w-[140px] truncate py-3 text-muted-foreground md:max-w-none"
+                          title={sale.client}
+                        >
+                          {sale.client}
+                        </td>
+                        <td className="hidden whitespace-nowrap py-3 text-muted-foreground md:table-cell">
+                          {sale.createdAt
+                            ? new Date(sale.createdAt).toLocaleDateString("fr-FR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              })
+                            : "—"}
+                        </td>
+                        <td className="py-3 text-right font-semibold text-foreground tabular-nums">
+                          {formatCurrency(sale.prixTtc)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

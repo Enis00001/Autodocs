@@ -50,11 +50,12 @@ function buildLastTwelveMonths(now: Date): MonthlyStatPoint[] {
   const points: MonthlyStatPoint[] = [];
   for (let i = 11; i >= 0; i -= 1) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const yy = String(d.getFullYear()).slice(-2);
     points.push({
       key: getMonthKey(d),
       month: d.getMonth(),
       year: d.getFullYear(),
-      label: MONTHS_FR[d.getMonth()],
+      label: `${MONTHS_FR[d.getMonth()]} ${yy}`,
       revenue: 0,
       sales: 0,
       draftsSigned: 0,
@@ -180,4 +181,55 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
     draftsSignedTotal,
     draftsPendingTotal,
   };
+}
+
+export type RecentSaleRow = {
+  id: string;
+  createdAt: string;
+  vehicule: string;
+  client: string;
+  prixTtc: number;
+};
+
+/**
+ * 5 dernières ventes (factures émises) par la concession connectée.
+ * On s'appuie sur la table `factures` car elle contient déjà client +
+ * véhicule + prix dans le même enregistrement (pas de jointure nécessaire).
+ * RLS : `concession_id = auth.uid()`.
+ */
+export async function loadRecentSales(limit = 5): Promise<RecentSaleRow[]> {
+  const uid = await getCurrentUserId();
+  if (!uid) return [];
+
+  const { data, error } = await supabase
+    .from("factures")
+    .select(
+      "id, created_at, prix_ttc, client_nom, client_prenom, vehicule_marque, vehicule_modele, vehicule_version",
+    )
+    .eq("concession_id", uid)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("loadRecentSales:", error);
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => {
+    const vehiculeParts = [row.vehicule_marque, row.vehicule_modele, row.vehicule_version]
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean);
+    const clientParts = [row.client_prenom, row.client_nom]
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean);
+    const prix =
+      typeof row.prix_ttc === "number" ? row.prix_ttc : Number(row.prix_ttc ?? 0);
+    return {
+      id: String(row.id),
+      createdAt: typeof row.created_at === "string" ? row.created_at : "",
+      vehicule: vehiculeParts.join(" ") || "—",
+      client: clientParts.join(" ") || "—",
+      prixTtc: Number.isFinite(prix) ? prix : 0,
+    };
+  });
 }

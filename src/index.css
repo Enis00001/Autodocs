@@ -136,6 +136,12 @@
     -webkit-text-fill-color: transparent;
   }
 
+  .stat-number-violet {
+    background: linear-gradient(135deg, #8b5cf6, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
   .card-autodocs {
     @apply rounded-card border border-border/70 bg-card p-5 shadow-card;
     transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
