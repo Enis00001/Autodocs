@@ -431,21 +431,6 @@ const ProfilConcession = () => {
 
   const handleSaveRelances = async () => {
     if (!concessionId) {
-      // #region agent log
-      fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "3aa0e6" },
-        body: JSON.stringify({
-          sessionId: "3aa0e6",
-          runId: "post-fix",
-          hypothesisId: "H1",
-          location: "src/pages/ProfilConcession.tsx:handleSaveRelances",
-          message: "Abort save: concessionId missing",
-          data: { concessionIdPresent: false },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       toast({
         title: "Configuration impossible",
         description: "Concession introuvable pour ce compte.",
@@ -479,26 +464,6 @@ const ProfilConcession = () => {
       );
       const message_personnalise = relancesConfig.message_personnalise.trim() || null;
 
-      // #region agent log
-      fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "3aa0e6" },
-        body: JSON.stringify({
-          sessionId: "3aa0e6",
-          runId: "post-fix",
-          hypothesisId: "FIX",
-          location: "src/pages/ProfilConcession.tsx:handleSaveRelances",
-          message: "Calling API save-relances-config (service role server-side)",
-          data: {
-            concessionId,
-            sessionUserIdPrefix: session.user.id.slice(0, 8),
-            hasSession: true,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-
       const response = await apiFetch("/api/actions", {
         method: "POST",
         body: JSON.stringify({
@@ -515,42 +480,8 @@ const ProfilConcession = () => {
         throw new Error(body.error || "Sauvegarde impossible.");
       }
 
-      // #region agent log
-      fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "3aa0e6" },
-        body: JSON.stringify({
-          sessionId: "3aa0e6",
-          runId: "post-fix",
-          hypothesisId: "FIX",
-          location: "src/pages/ProfilConcession.tsx:handleSaveRelances",
-          message: "save-relances-config API success",
-          data: { httpStatus: response.status, ok: Boolean(body.ok) },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-
       toast({ title: "Relances automatiques sauvegardées ✓" });
     } catch (err) {
-      // #region agent log
-      fetch("http://127.0.0.1:7340/ingest/040176fc-875f-4473-8368-07f3b5d8ca7d", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "3aa0e6" },
-        body: JSON.stringify({
-          sessionId: "3aa0e6",
-          runId: "post-fix",
-          hypothesisId: "FIX",
-          location: "src/pages/ProfilConcession.tsx:handleSaveRelances",
-          message: "save-relances-config failed",
-          data: {
-            concessionId,
-            errorMessage: err instanceof Error ? err.message : String(err),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       toast({
         title: "Sauvegarde impossible",
         description: err instanceof Error ? err.message : "Une erreur est survenue.",
