@@ -153,6 +153,16 @@ const ProfilConcession = () => {
   useEffect(() => {
     let mounted = true;
     (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        if (mounted) {
+          setRelancesConfig(DEFAULT_RELANCES_CONFIG);
+          setLoadingRelances(false);
+        }
+        return;
+      }
       if (!concessionId) {
         if (mounted) {
           setRelancesConfig(DEFAULT_RELANCES_CONFIG);
@@ -166,6 +176,9 @@ const ProfilConcession = () => {
         .select("actif, delai_premier_rappel, delai_deuxieme_rappel, message_personnalise")
         .eq("concession_id", concessionId)
         .maybeSingle();
+
+      console.log("Config relances chargée:", data, error);
+
       if (!mounted) return;
       if (error) {
         console.error("[profil-concession] load relances_config:", error);
@@ -452,6 +465,9 @@ const ProfilConcession = () => {
         });
         return;
       }
+
+      const userId = session.user?.id;
+      console.log("userId sauvegarde:", userId);
 
       const actif = relancesConfig.actif;
       const delai_premier_rappel = Math.max(

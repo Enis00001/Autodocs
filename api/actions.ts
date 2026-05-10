@@ -1438,6 +1438,8 @@ async function handleSendRelances(
   }
 
   const body = data as SendRelancesBody;
+  console.log("send-relances body:", body);
+
   const concessionFilter = String(body.concession_id ?? "").trim() || null;
 
   const admin = await getSupabaseAdmin();
@@ -1464,29 +1466,171 @@ async function handleSendRelances(
   const now = new Date();
   let sent = 0;
 
+  type RelanceSrRow = {
+    id: string;
+    token?: string | null;
+    expires_at?: string | null;
+    brouillon_id?: string | null;
+    client_email?: string | null;
+    client_nom?: string | null;
+    client_prenom?: string | null;
+    form_data?: unknown;
+  };
+
+  const sendRelanceMailForRow = async (
+    sr: RelanceSrRow,
+    configRow: (typeof configs)[number],
+    numero: 1 | 2,
+  ): Promise<boolean> => {
+    const token = String(sr.token ?? "").trim();
+    if (!token) return false;
+
+    let brouillonForm: Record<string, unknown> = {};
+    if (sr.brouillon_id) {
+      const { data: brouillon, error: brOneErr } = await admin
+        .from("brouillons")
+        .select("form_data")
+        .eq("id", sr.brouillon_id)
+        .maybeSingle();
+      if (brOneErr) {
+        console.warn("[actions/send-relances] brouillon form_data:", brOneErr);
+      }
+      if (brouillon?.form_data && typeof brouillon.form_data === "object") {
+        brouillonForm = brouillon.form_data as Record<string, unknown>;
+      }
+    }
+
+    const srForm =
+      sr.form_data && typeof sr.form_data === "object"
+        ? (sr.form_data as Record<string, unknown>)
+        : {};
+    const formData = { ...brouillonForm, ...srForm };
+
+    const clientEmail =
+      String(sr.client_email ?? "").trim() ||
+      String(formData.email ?? "").trim() ||
+      String(formData.clientEmail ?? "").trim() ||
+      String(formData.emailClient ?? "").trim() ||
+      String(formData.client_email ?? "").trim();
+
+    const clientNom =
+      String(sr.client_nom ?? "").trim() ||
+      String(formData.nom ?? "").trim() ||
+      String(formData.clientNom ?? "").trim() ||
+      String(formData.client_nom ?? "").trim() ||
+      "Client";
+
+    const clientPrenom =
+      String(sr.client_prenom ?? "").trim() ||
+      String(formData.prenom ?? "").trim() ||
+      String(formData.clientPrenom ?? "").trim() ||
+      String(formData.client_prenom ?? "").trim() ||
+      "";
+
+    console.log("Client trouvé:", { clientEmail, clientNom, clientPrenom });
+
+    if (!clientEmail || !isValidEmail(clientEmail)) {
+      console.log("Pas d'email pour brouillon:", sr.brouillon_id);
+      return false;
+    }
+
+    const signatureUrl = `${appUrl}/signer/${token}`;
+    try {
+      const { error: mailErr } = await resend.emails.send({
+        from: "AutoDocs <noreply@autodocs.services>",
+        to: clientEmail,
+        subject: "Rappel : votre bon de commande attend votre signature",
+        html: buildRelanceEmailHTML({
+          clientNom,
+          clientPrenom,
+          signatureUrl,
+          expiresAt: sr.expires_at,
+          messagePersonnalise: String(configRow.message_personnalise ?? ""),
+          numeroRelance: numero,
+        }),
+      });
+      if (mailErr) {
+        console.error(
+          numero === 1
+            ? "[actions/send-relances] relance1 email:"
+            : "[actions/send-relances] relance2 email:",
+          mailErr,
+        );
+        return false;
+      }
+      const markField =
+        numero === 1
+          ? { relance_1_sent_at: now.toISOString() }
+          : { relance_2_sent_at: now.toISOString() };
+      const { error: markErr } = await admin
+        .from("signature_requests")
+        .update(markField)
+        .eq("id", sr.id);
+      if (markErr) {
+        console.error(
+          numero === 1
+            ? "[actions/send-relances] relance1 mark:"
+            : "[actions/send-relances] relance2 mark:",
+          markErr,
+        );
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error(
+        numero === 1
+          ? "[actions/send-relances] relance1 exception:"
+          : "[actions/send-relances] relance2 exception:",
+        err,
+      );
+      return false;
+    }
+  };
+
   for (const config of configs) {
     const concessionId = String(config.concession_id ?? "").trim();
     if (!concessionId) continue;
 
+    console.log("config trouvée:", config);
+
     const premierDelai = Number(config.delai_premier_rappel ?? 3);
     const deuxiemeDelai = Number(config.delai_deuxieme_rappel ?? 7);
 
-    const thresholdRelance1 = new Date(
-      now.getTime() - Math.max(0, premierDelai) * 24 * 60 * 60 * 1000,
-    ).toISOString();
-    const thresholdRelance2 = new Date(
-      now.getTime() - Math.max(0, deuxiemeDelai) * 24 * 60 * 60 * 1000,
-    ).toISOString();
+    const { data: brouillons, error: brouillonsErr } = await admin
+      .from("brouillons")
+      .select("id")
+      .eq("concession_id", concessionId);
+
+    if (brouillonsErr) {
+      console.error("[actions/send-relances] brouillons read:", brouillonsErr);
+      continue;
+    }
+
+    const brouillonIds = (brouillons ?? [])
+      .map((b) => String((b as { id?: string }).id ?? "").trim())
+      .filter(Boolean);
+    console.log("brouillonIds:", brouillonIds);
+
+    if (brouillonIds.length === 0) {
+      console.log("[actions/send-relances] Aucun brouillon pour concession:", concessionId);
+      continue;
+    }
+
+    const delaiMs1 = Math.max(0, premierDelai) * 24 * 60 * 60 * 1000;
+    const dateLimit1 = new Date(now.getTime() - delaiMs1).toISOString();
 
     const { data: aRelancer1, error: r1Err } = await admin
       .from("signature_requests")
       .select(
-        "id, token, expires_at, client_email, client_nom, client_prenom, form_data, created_at, brouillons(form_data)",
+        "id, token, expires_at, brouillon_id, client_email, client_nom, client_prenom, form_data, created_at",
       )
-      .eq("concession_id", concessionId)
+      .in("brouillon_id", brouillonIds)
       .is("signed_at", null)
       .is("relance_1_sent_at", null)
-      .lte("created_at", thresholdRelance1);
+      .lte("created_at", dateLimit1);
+
+    console.log("dateLimit:", dateLimit1);
+    console.log("bons éligibles relance 1:", aRelancer1);
 
     if (r1Err) {
       console.error("[actions/send-relances] relance1 read:", r1Err);
@@ -1494,73 +1638,25 @@ async function handleSendRelances(
     }
 
     for (const sr of aRelancer1 ?? []) {
-      const token = String(sr.token ?? "").trim();
-      if (!token) continue;
-      const formData =
-        sr.form_data && typeof sr.form_data === "object"
-          ? (sr.form_data as Record<string, unknown>)
-          : sr.brouillons?.form_data && typeof sr.brouillons.form_data === "object"
-          ? (sr.brouillons.form_data as Record<string, unknown>)
-          : {};
-
-      const clientEmail =
-        String(sr.client_email ?? "").trim() ||
-        String(formData.email ?? "").trim() ||
-        String(formData.clientEmail ?? "").trim();
-      const clientNom =
-        String(sr.client_nom ?? "").trim() ||
-        String(formData.nom ?? "").trim() ||
-        String(formData.clientNom ?? "").trim() ||
-        "Client";
-      const clientPrenom =
-        String(sr.client_prenom ?? "").trim() ||
-        String(formData.prenom ?? "").trim() ||
-        String(formData.clientPrenom ?? "").trim();
-      if (!clientEmail || !isValidEmail(clientEmail)) continue;
-
-      const signatureUrl = `${appUrl}/signer/${token}`;
-      try {
-        const { error: mailErr } = await resend.emails.send({
-          from: "AutoDocs <noreply@autodocs.services>",
-          to: clientEmail,
-          subject: "Rappel : votre bon de commande attend votre signature",
-          html: buildRelanceEmailHTML({
-            clientNom,
-            clientPrenom,
-            signatureUrl,
-            expiresAt: sr.expires_at,
-            messagePersonnalise: String(config.message_personnalise ?? ""),
-            numeroRelance: 1,
-          }),
-        });
-        if (mailErr) {
-          console.error("[actions/send-relances] relance1 email:", mailErr);
-          continue;
-        }
-        const { error: markErr } = await admin
-          .from("signature_requests")
-          .update({ relance_1_sent_at: now.toISOString() })
-          .eq("id", sr.id);
-        if (markErr) {
-          console.error("[actions/send-relances] relance1 mark:", markErr);
-          continue;
-        }
-        sent += 1;
-      } catch (err) {
-        console.error("[actions/send-relances] relance1 exception:", err);
-      }
+      if (await sendRelanceMailForRow(sr as RelanceSrRow, config, 1)) sent += 1;
     }
+
+    const delaiMs2 = Math.max(0, deuxiemeDelai) * 24 * 60 * 60 * 1000;
+    const dateLimit2 = new Date(now.getTime() - delaiMs2).toISOString();
 
     const { data: aRelancer2, error: r2Err } = await admin
       .from("signature_requests")
       .select(
-        "id, token, expires_at, client_email, client_nom, client_prenom, form_data, created_at, brouillons(form_data)",
+        "id, token, expires_at, brouillon_id, client_email, client_nom, client_prenom, form_data, created_at",
       )
-      .eq("concession_id", concessionId)
+      .in("brouillon_id", brouillonIds)
       .is("signed_at", null)
       .not("relance_1_sent_at", "is", null)
       .is("relance_2_sent_at", null)
-      .lte("created_at", thresholdRelance2);
+      .lte("created_at", dateLimit2);
+
+    console.log("dateLimit (relance 2):", dateLimit2);
+    console.log("bons éligibles relance 2:", aRelancer2);
 
     if (r2Err) {
       console.error("[actions/send-relances] relance2 read:", r2Err);
@@ -1568,61 +1664,7 @@ async function handleSendRelances(
     }
 
     for (const sr of aRelancer2 ?? []) {
-      const token = String(sr.token ?? "").trim();
-      if (!token) continue;
-      const formData =
-        sr.form_data && typeof sr.form_data === "object"
-          ? (sr.form_data as Record<string, unknown>)
-          : sr.brouillons?.form_data && typeof sr.brouillons.form_data === "object"
-          ? (sr.brouillons.form_data as Record<string, unknown>)
-          : {};
-
-      const clientEmail =
-        String(sr.client_email ?? "").trim() ||
-        String(formData.email ?? "").trim() ||
-        String(formData.clientEmail ?? "").trim();
-      const clientNom =
-        String(sr.client_nom ?? "").trim() ||
-        String(formData.nom ?? "").trim() ||
-        String(formData.clientNom ?? "").trim() ||
-        "Client";
-      const clientPrenom =
-        String(sr.client_prenom ?? "").trim() ||
-        String(formData.prenom ?? "").trim() ||
-        String(formData.clientPrenom ?? "").trim();
-      if (!clientEmail || !isValidEmail(clientEmail)) continue;
-
-      const signatureUrl = `${appUrl}/signer/${token}`;
-      try {
-        const { error: mailErr } = await resend.emails.send({
-          from: "AutoDocs <noreply@autodocs.services>",
-          to: clientEmail,
-          subject: "Rappel : votre bon de commande attend votre signature",
-          html: buildRelanceEmailHTML({
-            clientNom,
-            clientPrenom,
-            signatureUrl,
-            expiresAt: sr.expires_at,
-            messagePersonnalise: String(config.message_personnalise ?? ""),
-            numeroRelance: 2,
-          }),
-        });
-        if (mailErr) {
-          console.error("[actions/send-relances] relance2 email:", mailErr);
-          continue;
-        }
-        const { error: markErr } = await admin
-          .from("signature_requests")
-          .update({ relance_2_sent_at: now.toISOString() })
-          .eq("id", sr.id);
-        if (markErr) {
-          console.error("[actions/send-relances] relance2 mark:", markErr);
-          continue;
-        }
-        sent += 1;
-      } catch (err) {
-        console.error("[actions/send-relances] relance2 exception:", err);
-      }
+      if (await sendRelanceMailForRow(sr as RelanceSrRow, config, 2)) sent += 1;
     }
   }
 
@@ -2351,6 +2393,153 @@ async function handleGenerateFacture(
   });
 }
 
+type SendFactureEmailBody = {
+  facture_id?: string;
+  client_email?: string;
+  client_nom?: string;
+  client_prenom?: string;
+  pdf_base64?: string;
+  numero_facture?: string;
+};
+
+/**
+ * Envoie la facture PDF par email au client et trace l'envoi côté Supabase.
+ *
+ * Sécurité : la facture est rechargée via supabaseAdmin en filtrant sur
+ * la concession active de l'utilisateur authentifié — un commercial ne
+ * peut donc pas envoyer la facture d'une autre concession même en
+ * forgeant `facture_id` côté client.
+ *
+ * Tolérant : `pdf_base64`, `client_email`, `client_nom`, `client_prenom`
+ * et `numero_facture` peuvent être omis dans le body — le handler
+ * complète automatiquement à partir de la ligne `factures` chargée.
+ */
+async function handleSendFactureEmail(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "RESEND_API_KEY manquante." });
+  }
+
+  const userId = await getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Non autorisé" });
+
+  const body = data as SendFactureEmailBody;
+  const factureId = String(body.facture_id ?? "").trim();
+  if (!factureId) return res.status(400).json({ error: "facture_id requis" });
+
+  const admin = await getSupabaseAdmin();
+  const concessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!concessionId) {
+    return res.status(403).json({ error: "Aucune concession active pour ce compte." });
+  }
+
+  // Recharge la facture pour vérifier l'appartenance à la concession et
+  // compléter les champs manquants côté serveur.
+  const { data: factureRow, error: factureErr } = await admin
+    .from("factures")
+    .select(
+      "id, concession_id, client_email, client_nom, client_prenom, numero_facture, pdf_base64",
+    )
+    .eq("id", factureId)
+    .eq("concession_id", concessionId)
+    .maybeSingle();
+
+  if (factureErr) {
+    console.error("[actions/send-facture-email] read:", factureErr);
+    return res.status(500).json({ error: "Erreur de lecture facture." });
+  }
+  if (!factureRow) {
+    return res.status(404).json({ error: "Facture introuvable." });
+  }
+
+  const facture = factureRow as Record<string, unknown>;
+  const clientEmail =
+    (String(body.client_email ?? "").trim() ||
+      String(facture.client_email ?? "").trim());
+  const clientNom =
+    (String(body.client_nom ?? "").trim() ||
+      String(facture.client_nom ?? "").trim());
+  const clientPrenom =
+    (String(body.client_prenom ?? "").trim() ||
+      String(facture.client_prenom ?? "").trim());
+  const numeroFacture =
+    (String(body.numero_facture ?? "").trim() ||
+      String(facture.numero_facture ?? "").trim());
+  const pdfBase64 =
+    (String(body.pdf_base64 ?? "").trim() ||
+      String(facture.pdf_base64 ?? "").trim());
+
+  if (!clientEmail) {
+    return res.status(400).json({ error: "Email client manquant" });
+  }
+  if (!isValidEmail(clientEmail)) {
+    return res.status(400).json({ error: "Email client invalide" });
+  }
+  if (!pdfBase64) {
+    return res.status(400).json({ error: "PDF facture indisponible" });
+  }
+
+  const resend = new Resend(apiKey);
+  const safeNum = numeroFacture || "facture";
+
+  try {
+    const { error: mailErr } = await resend.emails.send({
+      from: "AutoDocs <noreply@autodocs.services>",
+      to: clientEmail,
+      subject: `Votre facture ${safeNum} — AutoDocs`,
+      html: `
+        <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #1a1a2e; line-height: 1.55; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #2c3e8f; margin-bottom: 16px;">Votre facture</h2>
+          <p>Bonjour ${escapeHtml(clientPrenom)} ${escapeHtml(clientNom)},</p>
+          <p>Veuillez trouver ci-joint votre facture
+            <strong>${escapeHtml(safeNum)}</strong>.</p>
+          <p>Merci pour votre confiance.</p>
+          <p>Cordialement,<br/>L'équipe AutoDocs</p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: `facture-${safeNum}.pdf`,
+          content: pdfBase64,
+        },
+      ],
+    });
+
+    if (mailErr) {
+      console.error("[actions/send-facture-email] resend:", mailErr);
+      return res
+        .status(500)
+        .json({ error: mailErr.message || "Échec d'envoi email" });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Échec d'envoi email";
+    console.error("[actions/send-facture-email] exception:", err);
+    return res.status(500).json({ error: message });
+  }
+
+  const sentAt = new Date().toISOString();
+  const { error: updErr } = await admin
+    .from("factures")
+    .update({ email_envoye_at: sentAt })
+    .eq("id", factureId)
+    .eq("concession_id", concessionId);
+
+  if (updErr) {
+    // L'email est parti : on logue mais on ne fait pas échouer la requête.
+    console.warn("[actions/send-facture-email] update email_envoye_at:", updErr);
+  }
+
+  return res.status(200).json({
+    ok: true,
+    success: true,
+    email_envoye_at: sentAt,
+  });
+}
+
 async function handleLookupInvitation(
   data: Record<string, unknown>,
   res: VercelResponse,
@@ -2676,6 +2865,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleFillCerfa(req, data, res);
     case "generate-facture":
       return handleGenerateFacture(req, data, res);
+    case "send-facture-email":
+      return handleSendFactureEmail(req, data, res);
     case "lookup-invitation":
       return handleLookupInvitation(data, res);
     case "invite-membre":

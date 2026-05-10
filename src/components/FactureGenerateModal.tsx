@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
-import { X, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { X, Loader2, Mail } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
-import { generateFacture, type GenerateFacturePayload } from "@/utils/factures";
+import {
+  generateFacture,
+  sendFactureEmail,
+  type GenerateFacturePayload,
+} from "@/utils/factures";
 import { downloadBase64Pdf } from "@/utils/generatePDF";
 import { toast } from "@/hooks/use-toast";
 
@@ -40,12 +44,27 @@ const FactureGenerateModal = ({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sendEmail, setSendEmail] = useState(false);
+
+  /**
+   * Email résolu : priorité aux overrides (formulaire NouveauBon, valeurs
+   * « live ») puis au brouillon rechargé depuis la DB. Recalculé à chaque
+   * ouverture pour refléter les éventuelles modifications.
+   */
+  const resolvedEmail = useMemo(() => {
+    const ov = invoiceContact ?? {};
+    return (
+      (ov.client_email?.trim() || "") ||
+      (draft?.clientEmail?.trim() || "")
+    );
+  }, [draft, invoiceContact]);
 
   useEffect(() => {
     if (!open || !draft) return;
     setNotes("");
     setError(null);
-  }, [open, draft]);
+    setSendEmail(Boolean(resolvedEmail));
+  }, [open, draft, resolvedEmail]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +123,36 @@ const FactureGenerateModal = ({
           ? `La facture ${result.numero_facture ?? ""} existe déjà — PDF téléchargé.`
           : `Facture ${result.numero_facture ?? ""} enregistrée.`,
       });
+
+      // Envoi email post-génération si l'utilisateur l'a coché ET qu'on a
+      // un email + un factureId (pdf déjà fourni → évite une lecture DB
+      // côté serveur).
+      if (sendEmail && email && result.factureId) {
+        try {
+          const emailRes = await sendFactureEmail({
+            facture_id: result.factureId,
+            client_email: email,
+            client_nom: draft.clientNom?.trim() || "",
+            client_prenom: draft.clientPrenom?.trim() || "",
+            numero_facture: result.numero_facture ?? "",
+            pdf_base64: result.pdfBase64,
+          });
+          if (emailRes.ok) {
+            toast({ title: "Facture envoyée ✓", description: `Email envoyé à ${email}.` });
+          } else {
+            toast({
+              title: "Envoi email échoué",
+              description: emailRes.error ?? "L'email n'a pas pu être envoyé.",
+              variant: "destructive",
+            });
+          }
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "Échec de l'envoi par email.";
+          toast({ title: "Envoi email échoué", description: message, variant: "destructive" });
+        }
+      }
+
       onSuccess?.({
         numero_facture: result.numero_facture ?? "",
         pdfBase64: result.pdfBase64,
@@ -161,6 +210,29 @@ const FactureGenerateModal = ({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Informations pour le bas de facture…"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-muted/30 p-3">
+            <label className="flex items-start gap-2.5 text-[13px] font-medium text-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 cursor-pointer accent-primary"
+                checked={sendEmail}
+                onChange={(e) => setSendEmail(e.target.checked)}
+                disabled={!resolvedEmail || submitting}
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="inline-flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  Envoyer la facture par email au client
+                </span>
+                <span className="text-[12px] font-normal text-muted-foreground">
+                  {resolvedEmail
+                    ? <>L'email sera envoyé à <strong className="text-foreground/90">{resolvedEmail}</strong>.</>
+                    : "Aucun email client renseigné — case désactivée."}
+                </span>
+              </span>
+            </label>
           </div>
 
           {error ? (

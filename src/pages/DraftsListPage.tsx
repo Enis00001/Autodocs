@@ -10,6 +10,9 @@ import {
   UserCircle,
   Receipt,
   FileCheck,
+  Mail,
+  MailCheck,
+  Loader2,
 } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts, deleteDraft } from "@/utils/drafts";
@@ -29,7 +32,7 @@ import { cn } from "@/lib/utils";
 import TopBar from "@/components/layout/TopBar";
 import { buildPdfFormDataFromDraft, generatePDF, downloadBase64Pdf } from "@/utils/generatePDF";
 import FactureGenerateModal from "@/components/FactureGenerateModal";
-import { getFactures, getFactureById } from "@/utils/factures";
+import { getFactures, getFactureById, sendFactureEmail } from "@/utils/factures";
 import { toast } from "@/hooks/use-toast";
 
 const clientLabel = (d: BonDraftData) =>
@@ -67,13 +70,20 @@ const DraftsListPage = ({
   const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
   const [creatingForDraft, setCreatingForDraft] = useState<BonDraftData | null>(null);
   const [linkingDraftId, setLinkingDraftId] = useState<string | null>(null);
+  type FactureRowMeta = {
+    id: string;
+    numero_facture: string;
+    client_email: string | null;
+    email_envoye_at: string | null;
+  };
   const [facturesByBrouillon, setFacturesByBrouillon] = useState<
-    Map<string, { id: string; numero_facture: string }>
+    Map<string, FactureRowMeta>
   >(() => new Map());
   const [factureModalDraft, setFactureModalDraft] = useState<BonDraftData | null>(
     null,
   );
   const [factureLoadingId, setFactureLoadingId] = useState<string | null>(null);
+  const [emailSendingId, setEmailSendingId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const refresh = async () => {
@@ -84,10 +94,15 @@ const DraftsListPage = ({
     ]);
     setDrafts(d);
     setClients(c);
-    const m = new Map<string, { id: string; numero_facture: string }>();
+    const m = new Map<string, FactureRowMeta>();
     for (const f of facts) {
       if (f.brouillon_id)
-        m.set(f.brouillon_id, { id: f.id, numero_facture: f.numero_facture });
+        m.set(f.brouillon_id, {
+          id: f.id,
+          numero_facture: f.numero_facture,
+          client_email: f.client_email,
+          email_envoye_at: f.email_envoye_at,
+        });
     }
     setFacturesByBrouillon(m);
   };
@@ -118,6 +133,50 @@ const DraftsListPage = ({
       }
     } finally {
       setFactureLoadingId(null);
+    }
+  };
+
+  const handleEnvoyerFacture = async (d: BonDraftData) => {
+    const meta = facturesByBrouillon.get(d.id);
+    if (!meta) return;
+    const email = (meta.client_email ?? d.clientEmail ?? "").trim();
+    if (!email) {
+      toast({
+        title: "Pas d'email client",
+        description: "Renseignez l'email du client avant d'envoyer la facture.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!window.confirm(`Envoyer la facture à ${email} ?`)) return;
+    setEmailSendingId(d.id);
+    try {
+      const res = await sendFactureEmail({
+        facture_id: meta.id,
+        client_email: email,
+        client_nom: d.clientNom?.trim() || "",
+        client_prenom: d.clientPrenom?.trim() || "",
+        numero_facture: meta.numero_facture,
+      });
+      if (res.ok) {
+        toast({ title: "Facture envoyée ✓", description: `Email envoyé à ${email}.` });
+        await refresh();
+      } else {
+        toast({
+          title: "Envoi échoué",
+          description: res.error ?? "Impossible d'envoyer l'email.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Envoi échoué",
+        description:
+          err instanceof Error ? err.message : "Impossible d'envoyer l'email.",
+        variant: "destructive",
+      });
+    } finally {
+      setEmailSendingId(null);
     }
   };
 
@@ -318,30 +377,85 @@ const DraftsListPage = ({
                         </td>
                         <td className="py-3 text-right">
                           <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2">
-                            {facturesByBrouillon.has(d.id) ? (
-                              <button
-                                type="button"
-                                className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5 border-primary/30 text-primary"
-                                onClick={() => void handleVoirFacture(d.id)}
-                                disabled={factureLoadingId === d.id}
-                                aria-label="Voir la facture PDF"
-                                title="Voir la facture"
-                              >
-                                <FileCheck className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">Voir la facture</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
-                                onClick={() => setFactureModalDraft(d)}
-                                aria-label="Générer la facture"
-                                title="Générer la facture"
-                              >
-                                <Receipt className="h-3.5 w-3.5" />
-                                <span className="hidden sm:inline">Générer la facture</span>
-                              </button>
-                            )}
+                            {(() => {
+                              const factureMeta = facturesByBrouillon.get(d.id);
+                              if (!factureMeta) {
+                                return (
+                                  <button
+                                    type="button"
+                                    className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
+                                    onClick={() => setFactureModalDraft(d)}
+                                    aria-label="Générer la facture"
+                                    title="Générer la facture"
+                                  >
+                                    <Receipt className="h-3.5 w-3.5" />
+                                    <span className="hidden sm:inline">Générer la facture</span>
+                                  </button>
+                                );
+                              }
+                              const email = (factureMeta.client_email ?? d.clientEmail ?? "").trim();
+                              const sentAt = factureMeta.email_envoye_at;
+                              const sending = emailSendingId === d.id;
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5 border-primary/30 text-primary"
+                                    onClick={() => void handleVoirFacture(d.id)}
+                                    disabled={factureLoadingId === d.id}
+                                    aria-label="Voir la facture PDF"
+                                    title="Voir la facture"
+                                  >
+                                    <FileCheck className="h-3.5 w-3.5" />
+                                    <span className="hidden sm:inline">Voir la facture</span>
+                                  </button>
+                                  {sentAt ? (
+                                    <button
+                                      type="button"
+                                      className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5 border-success/40 text-success hover:bg-success/10"
+                                      onClick={() => void handleEnvoyerFacture(d)}
+                                      disabled={sending || !email}
+                                      aria-label="Renvoyer la facture par email"
+                                      title={`Envoyée le ${new Date(sentAt).toLocaleString("fr-FR")}`}
+                                    >
+                                      {sending ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <MailCheck className="h-3.5 w-3.5" />
+                                      )}
+                                      <span className="hidden sm:inline">✓ Envoyé</span>
+                                    </button>
+                                  ) : email ? (
+                                    <button
+                                      type="button"
+                                      className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
+                                      onClick={() => void handleEnvoyerFacture(d)}
+                                      disabled={sending}
+                                      aria-label="Envoyer la facture par email"
+                                      title={`Envoyer la facture à ${email}`}
+                                    >
+                                      {sending ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Mail className="h-3.5 w-3.5" />
+                                      )}
+                                      <span className="hidden sm:inline">Envoyer par email</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="btn-secondary cursor-not-allowed gap-1.5 px-2 py-1.5 text-xs md:px-2.5 opacity-50"
+                                      disabled
+                                      aria-label="Pas d'email client renseigné"
+                                      title="Aucun email client renseigné"
+                                    >
+                                      <Mail className="h-3.5 w-3.5" />
+                                      <span className="hidden sm:inline">Pas d'email</span>
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
                             <button
                               type="button"
                               className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"

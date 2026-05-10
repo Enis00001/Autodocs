@@ -44,6 +44,12 @@ export type FactureRecord = {
   statut: FactureStatut;
   notes: string | null;
   pdf_base64: string | null;
+  /**
+   * Date/heure du dernier envoi par email de la facture au client
+   * (NULL si jamais envoyée). Renseignée par l'action serveur
+   * `send-facture-email` (cf. api/actions.ts).
+   */
+  email_envoye_at: string | null;
   created_at: string;
 };
 
@@ -70,6 +76,9 @@ function notifyFacturesUpdated() {
     window.dispatchEvent(new CustomEvent("autodocs_factures_updated"));
   }
 }
+
+const FACTURE_SELECT_COLS =
+  "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, email_envoye_at, created_at";
 
 export async function generateFacture(
   payload: GenerateFacturePayload,
@@ -101,9 +110,7 @@ export async function getFactures(): Promise<FactureRecord[]> {
   if (!concessionId) return [];
   const { data, error } = await supabase
     .from("factures")
-    .select(
-      "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, created_at",
-    )
+    .select(FACTURE_SELECT_COLS)
     .eq("concession_id", concessionId)
     .order("created_at", { ascending: false });
   if (error) {
@@ -118,9 +125,7 @@ export async function getFactureById(id: string): Promise<FactureRecord | null> 
   if (!concessionId) return null;
   const { data, error } = await supabase
     .from("factures")
-    .select(
-      "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, created_at",
-    )
+    .select(FACTURE_SELECT_COLS)
     .eq("id", id)
     .eq("concession_id", concessionId)
     .maybeSingle();
@@ -138,9 +143,7 @@ export async function getFactureByBrouillonId(
   if (!concessionId) return null;
   const { data, error } = await supabase
     .from("factures")
-    .select(
-      "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, created_at",
-    )
+    .select(FACTURE_SELECT_COLS)
     .eq("brouillon_id", brouillonId)
     .eq("concession_id", concessionId)
     .maybeSingle();
@@ -156,9 +159,7 @@ export async function getFacturesByClient(clientId: string): Promise<FactureReco
   if (!concessionId) return [];
   const { data, error } = await supabase
     .from("factures")
-    .select(
-      "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, created_at",
-    )
+    .select(FACTURE_SELECT_COLS)
     .eq("client_id", clientId)
     .eq("concession_id", concessionId)
     .order("created_at", { ascending: false });
@@ -185,4 +186,53 @@ export async function updateFactureStatut(
     throw new Error(error.message || "Mise à jour impossible.");
   }
   notifyFacturesUpdated();
+}
+
+export type SendFactureEmailPayload = {
+  facture_id: string;
+  client_email: string;
+  client_nom?: string;
+  client_prenom?: string;
+  numero_facture?: string;
+  /** Si fourni, évite une lecture supabase côté serveur. */
+  pdf_base64?: string;
+};
+
+export type SendFactureEmailResult = {
+  ok: boolean;
+  email_envoye_at?: string;
+  error?: string;
+};
+
+/**
+ * Envoie la facture PDF par email au client.
+ *
+ * Le serveur (cf. api/actions.ts → handleSendFactureEmail) :
+ *   1. Vérifie l'appartenance de la facture à la concession active.
+ *   2. Envoie l'email via Resend avec le PDF en pièce jointe.
+ *   3. Persiste `email_envoye_at = now()` sur la ligne `factures`.
+ *
+ * Notifie ensuite l'app via `autodocs_factures_updated` pour rafraîchir
+ * la liste (badge « ✓ Envoyé »).
+ */
+export async function sendFactureEmail(
+  payload: SendFactureEmailPayload,
+): Promise<SendFactureEmailResult> {
+  const res = await apiFetch("/api/actions", {
+    method: "POST",
+    body: JSON.stringify({ action: "send-facture-email", ...payload }),
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: typeof body.error === "string" ? body.error : "Envoi impossible",
+    };
+  }
+  notifyFacturesUpdated();
+  return {
+    ok: true,
+    email_envoye_at:
+      typeof body.email_envoye_at === "string" ? body.email_envoye_at : undefined,
+  };
 }

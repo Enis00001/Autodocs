@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Filter, Loader2, CheckCircle2 } from "lucide-react";
+import { Download, Filter, Loader2, CheckCircle2, Mail, MailCheck } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { cn } from "@/lib/utils";
 import {
   getFactures,
+  sendFactureEmail,
   updateFactureStatut,
   type FactureRecord,
   type FactureStatut,
@@ -27,6 +28,19 @@ function formatDate(iso: string | null | undefined): string {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+  });
+}
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -58,6 +72,7 @@ const Factures = () => {
   const [filterDate, setFilterDate] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [emailSendingId, setEmailSendingId] = useState<string | null>(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -101,6 +116,49 @@ const Factures = () => {
       downloadBase64Pdf(f.pdf_base64, `facture-${f.numero_facture}.pdf`);
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const handleSendEmail = async (f: FactureRecord) => {
+    const email = (f.client_email ?? "").trim();
+    if (!email) {
+      toast({
+        title: "Pas d'email client",
+        description: "Aucun email client n'est renseigné sur cette facture.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!window.confirm(`Envoyer la facture à ${email} ?`)) return;
+    setEmailSendingId(f.id);
+    try {
+      const res = await sendFactureEmail({
+        facture_id: f.id,
+        client_email: email,
+        client_nom: (f.client_nom ?? "").trim(),
+        client_prenom: (f.client_prenom ?? "").trim(),
+        numero_facture: f.numero_facture,
+        pdf_base64: f.pdf_base64 ?? undefined,
+      });
+      if (res.ok) {
+        toast({ title: "Facture envoyée ✓", description: `Email envoyé à ${email}.` });
+        await refresh();
+      } else {
+        toast({
+          title: "Envoi échoué",
+          description: res.error ?? "Impossible d'envoyer l'email.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Envoi échoué",
+        description:
+          err instanceof Error ? err.message : "Impossible d'envoyer l'email.",
+        variant: "destructive",
+      });
+    } finally {
+      setEmailSendingId(null);
     }
   };
 
@@ -206,7 +264,13 @@ const Factures = () => {
                   ) : (
                     filtered.map((f) => {
                       const st = statutBadge(f.statut);
-                      const busy = updatingId === f.id || downloadingId === f.id;
+                      const sendingEmail = emailSendingId === f.id;
+                      const busy =
+                        updatingId === f.id ||
+                        downloadingId === f.id ||
+                        sendingEmail;
+                      const clientEmail = (f.client_email ?? "").trim();
+                      const emailSentAt = f.email_envoye_at;
                       return (
                         <tr
                           key={f.id}
@@ -252,6 +316,50 @@ const Factures = () => {
                                 )}
                                 PDF
                               </button>
+                              {emailSentAt ? (
+                                <button
+                                  type="button"
+                                  className="btn-secondary cursor-pointer gap-1 px-2 py-1.5 text-xs border-success/40 text-success hover:bg-success/10"
+                                  disabled={busy || !clientEmail}
+                                  onClick={() => void handleSendEmail(f)}
+                                  title={`Envoyée le ${formatDateTime(emailSentAt)} — cliquer pour renvoyer`}
+                                  aria-label={`Facture envoyée le ${formatDateTime(emailSentAt)}, cliquer pour renvoyer`}
+                                >
+                                  {sendingEmail ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <MailCheck className="h-3.5 w-3.5" />
+                                  )}
+                                  ✓ Envoyé
+                                </button>
+                              ) : clientEmail ? (
+                                <button
+                                  type="button"
+                                  className="btn-secondary cursor-pointer gap-1 px-2 py-1.5 text-xs"
+                                  disabled={busy}
+                                  onClick={() => void handleSendEmail(f)}
+                                  title={`Envoyer la facture à ${clientEmail}`}
+                                  aria-label={`Envoyer la facture par email à ${clientEmail}`}
+                                >
+                                  {sendingEmail ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Mail className="h-3.5 w-3.5" />
+                                  )}
+                                  📧 Envoyer
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="btn-secondary cursor-not-allowed gap-1 px-2 py-1.5 text-xs opacity-50"
+                                  disabled
+                                  title="Aucun email client renseigné"
+                                  aria-label="Pas d'email client renseigné"
+                                >
+                                  <Mail className="h-3.5 w-3.5" />
+                                  Pas d'email
+                                </button>
+                              )}
                               {f.statut === "emise" ? (
                                 <button
                                   type="button"

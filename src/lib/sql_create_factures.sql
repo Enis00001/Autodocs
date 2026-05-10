@@ -48,11 +48,17 @@ CREATE TABLE IF NOT EXISTS factures (
   statut TEXT NOT NULL DEFAULT 'emise',
   notes TEXT,
   pdf_base64 TEXT,
+  email_envoye_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
 
   CONSTRAINT factures_numero_unique UNIQUE (concession_id, numero_facture),
   CONSTRAINT factures_statut_chk CHECK (statut IN ('emise', 'payee', 'annulee'))
 );
+
+-- Migration idempotente : ajoute la colonne sur les bases existantes
+-- (cf. sql_add_facture_email_envoye_at.sql pour la migration dédiée).
+ALTER TABLE factures
+  ADD COLUMN IF NOT EXISTS email_envoye_at TIMESTAMPTZ;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_factures_one_brouillon
   ON factures (concession_id, brouillon_id)
