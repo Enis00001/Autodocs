@@ -82,7 +82,12 @@ type ParsedFile = {
   rows: Record<string, string>[];
 };
 
-type StatutFilter = "tous" | StatutVehicule;
+/** Filtre liste : vendu = indisponible ou statut explicite « vendu ». */
+function isVenduListe(v: StockVehicule): boolean {
+  return !v.disponible || v.statut === "vendu";
+}
+
+type ListeStockFilter = "tous" | "disponibles" | "vendus";
 
 /* ------------------------------ helpers ------------------------------ */
 
@@ -219,7 +224,7 @@ const StockVehicules = () => {
   const [concessionId, setConcessionId] = useState<string | null>(null);
   const [vehicules, setVehicules] = useState<StockVehicule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<StatutFilter>("tous");
+  const [filter, setFilter] = useState<ListeStockFilter>("tous");
   const [listQuery, setListQuery] = useState("");
 
   // CSV import flow (inchangé).
@@ -275,19 +280,23 @@ const StockVehicules = () => {
   /* ------------------------------ derived ------------------------------ */
 
   const stats = useMemo(() => {
-    const counts: Record<StatutFilter, number> = {
+    let disponibles = 0;
+    let vendus = 0;
+    for (const v of vehicules) {
+      if (isVenduListe(v)) vendus++;
+      else disponibles++;
+    }
+    return {
       tous: vehicules.length,
-      disponible: 0,
-      réservé: 0,
-      vendu: 0,
+      disponibles,
+      vendus,
     };
-    for (const v of vehicules) counts[v.statut]++;
-    return counts;
   }, [vehicules]);
 
   const filteredVehicules = useMemo(() => {
-    let list =
-      filter === "tous" ? vehicules : vehicules.filter((v) => v.statut === filter);
+    let list = vehicules;
+    if (filter === "disponibles") list = list.filter((v) => !isVenduListe(v));
+    else if (filter === "vendus") list = list.filter((v) => isVenduListe(v));
     const q = normalize(listQuery);
     if (q) list = list.filter((v) => vehiculeMatchesQuery(v, q));
     return list;
@@ -661,25 +670,30 @@ const StockVehicules = () => {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[11px] text-muted-foreground">
-                    Filtre : Tous, Disponible, Réservé ou Vendu — les lignes vendues sont grisées dans le tableau.
+                    Afficher : tous les véhicules, uniquement les disponibles, ou les vendus (badge rouge,
+                    ligne grisée).
                   </p>
                   <div className="flex flex-wrap items-center gap-2">
-                  <FilterPill
-                    label="Tous"
-                    count={stats.tous}
-                    active={filter === "tous"}
-                    onClick={() => setFilter("tous")}
-                  />
-                  {STATUTS_VEHICULE.map((s) => (
                     <FilterPill
-                      key={s}
-                      label={STATUT_LABELS[s]}
-                      count={stats[s]}
-                      active={filter === s}
-                      onClick={() => setFilter(s)}
-                      tone={s}
+                      label="Tous"
+                      count={stats.tous}
+                      active={filter === "tous"}
+                      onClick={() => setFilter("tous")}
                     />
-                  ))}
+                    <FilterPill
+                      label="Disponibles"
+                      count={stats.disponibles}
+                      active={filter === "disponibles"}
+                      onClick={() => setFilter("disponibles")}
+                      tone="disponible"
+                    />
+                    <FilterPill
+                      label="Vendus"
+                      count={stats.vendus}
+                      active={filter === "vendus"}
+                      onClick={() => setFilter("vendus")}
+                      tone="vendu"
+                    />
                   </div>
                 </div>
               </div>
@@ -979,27 +993,29 @@ const VehiculeRow = ({
     "—";
   const prix = formatPrix(vehicule.prix, vehicule.donnees["Prix"]);
 
-  const isVendu = vehicule.statut === "vendu";
+  const showVenduBadge = isVenduListe(vehicule);
 
   return (
     <tr
       className={cn(
         "border-t border-border/50 transition-colors",
-        isVendu
+        showVenduBadge
           ? "bg-muted/25 opacity-[0.72] hover:bg-muted/35"
           : "hover:bg-secondary/30",
       )}
     >
       <td className="px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className={cn("font-medium", isVendu ? "text-muted-foreground" : "text-foreground")}>
+          <div
+            className={cn("font-medium", showVenduBadge ? "text-muted-foreground" : "text-foreground")}
+          >
             {title}
           </div>
-          {isVendu && (
+          {showVenduBadge ? (
             <span className="inline-flex shrink-0 rounded-full border border-destructive/50 bg-destructive/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">
               Vendu
             </span>
-          )}
+          ) : null}
         </div>
       </td>
       <td className="px-3 py-3 font-mono text-[12px] uppercase tracking-wider text-foreground">

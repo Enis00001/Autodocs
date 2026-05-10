@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { FileText, Loader2, Zap, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -40,11 +40,11 @@ type GenerateBarProps = {
    */
   onSignatureRequestSent?: (token: string) => void | Promise<void>;
   /**
-   * Déclenché une fois lorsque le flux PDF est terminé avec succès (téléchargement
-   * / signature vendeur / email optionnel). Permet à la page parente d'afficher
-   * des actions rapides (CRM, marquer vendu, etc.).
+   * Appelé lorsque l'utilisateur ferme la popup (Terminé / Fermer / clic overlay)
+   * après un flux terminé avec succès (`isSuccess`). Pas appelé en cas d'erreur
+   * ou de simple abandon avant succès.
    */
-  onFlowSuccess?: () => void;
+  onSuccessfulModalClosed?: () => void;
 };
 
 const MAX_DOTS = 6;
@@ -63,7 +63,7 @@ const GenerateBar = ({
   templateId: _templateId,
   onSigned,
   onSignatureRequestSent,
-  onFlowSuccess,
+  onSuccessfulModalClosed,
 }: GenerateBarProps) => {
   void _templateId;
   const [modalOpen, setModalOpen] = useState(false);
@@ -85,18 +85,16 @@ const GenerateBar = ({
     quota: number;
   }>(null);
 
-  const flowSuccessFiredRef = useRef(false);
-  useEffect(() => {
-    if (isSuccess && !flowSuccessFiredRef.current) {
-      flowSuccessFiredRef.current = true;
+  const closeModal = () => {
+    if (isSuccess) {
       try {
-        onFlowSuccess?.();
+        onSuccessfulModalClosed?.();
       } catch (e) {
-        console.warn("[GenerateBar] onFlowSuccess:", e);
+        console.warn("[GenerateBar] onSuccessfulModalClosed:", e);
       }
     }
-    if (!isSuccess) flowSuccessFiredRef.current = false;
-  }, [isSuccess, onFlowSuccess]);
+    setModalOpen(false);
+  };
 
   const canGenerate = documentsUploaded > 0 || missingFieldsCount < 5;
 
@@ -312,7 +310,7 @@ const GenerateBar = ({
             className="fixed left-0 top-0 z-[9998] h-[100vh] w-[100vw] animate-in fade-in-0 duration-200"
             style={{ background: "rgba(0,0,0,0.5)" }}
             onClick={() => {
-              if (!lockClose) setModalOpen(false);
+              if (!lockClose) closeModal();
             }}
           />
           <div
@@ -480,14 +478,14 @@ const GenerateBar = ({
                   <button
                     type="button"
                     className="btn-primary cursor-pointer border-0 px-4 py-2.5 text-sm"
-                    onClick={() => setModalOpen(false)}
+                    onClick={closeModal}
                   >
                     Terminé
                   </button>
                   <button
                     type="button"
                     className="btn-secondary cursor-pointer px-4 py-2.5 text-sm"
-                    onClick={() => setModalOpen(false)}
+                    onClick={closeModal}
                   >
                     Fermer
                   </button>

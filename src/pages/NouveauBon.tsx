@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { User, Car, Wallet, CreditCard, CheckCircle2, Loader2 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import ProfilClient from "@/components/nouveau-bon/ProfilClient";
@@ -23,14 +23,11 @@ import {
   getVehicule,
   markVehiculeVenduPourBon,
   vehiculePrixForBon,
-  type StockVehicule,
 } from "@/utils/stockVehicules";
 import {
   attachDraftToClient,
   createClient,
-  getClientById,
-  searchClients,
-  type ClientData,
+  findClientExactNomPrenom,
 } from "@/utils/clients";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
@@ -72,7 +69,7 @@ function stripDiacritics(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-/** Téléphone saisi dans les champs personnalisés client (clé contenant tel / mobile…). */
+/** Téléphone issu des champs personnalisés client (clé contenant tel / mobile…). */
 function extractClientTelephone(custom: Record<string, string> | undefined): string {
   if (!custom) return "";
   for (const [key, val] of Object.entries(custom)) {
@@ -106,23 +103,30 @@ function vehiculeTitreFromForm(form: DraftFormState): string {
   return parts.join(" ") || "Véhicule";
 }
 
-type CrmQuickPhase =
-  | "idle"
-  | "checking"
-  | "linked"
-  | "exists"
-  | "invite"
-  | "incomplete"
-  | "saving"
-  | "saved"
-  | "error";
+/** Copie du formulaire au moment où la popup GenerateBar se ferme après succès. */
+function snapshotDraftForm(fs: DraftFormState): DraftFormState {
+  return {
+    ...fs,
+    stockDonnees: { ...fs.stockDonnees },
+    stockColonnes: [...(fs.stockColonnes ?? [])],
+    customFieldsValues: { ...fs.customFieldsValues },
+    vehicleFieldValues: { ...fs.vehicleFieldValues },
+    documentsScanned: { ...fs.documentsScanned },
+  };
+}
 
-type CrmQuickState = {
-  phase: CrmQuickPhase;
-  client?: ClientData | null;
-  clientId?: string;
-  errorMessage?: string;
+type ClosurePayload = {
+  draftSnapshot: DraftFormState;
+  vehiculeDisplayLabel: string;
 };
+
+type ClosureCrmUi =
+  | "idle"
+  | "linked_snapshot"
+  | "checking"
+  | "already_db"
+  | "saving"
+  | "saved";
 
 function buildPdfFormData(
   form: DraftFormState,
@@ -130,8 +134,6 @@ function buildPdfFormData(
 ): Record<string, string> {
   const repriseOn = form.repriseActive;
 
-  // Filtre les colonnes stock selon les préférences véhicule : une colonne
-  // désactivée n'est ni affichée ni injectée dans le PDF.
   const visibleColonnes = (form.stockColonnes ?? []).filter((key) =>
     isStockColumnVisible(key, prefs),
   );
@@ -175,19 +177,24 @@ const NouveauBon = () => {
   const location = useLocation();
   const params = useParams<{ id: string }>();
   const [formState, setFormState] = useState<DraftFormState>(defaultFormState);
+  const formStateRef = useRef(formState);
+  useEffect(() => {
+    formStateRef.current = formState;
+  }, [formState]);
+
   const [vendeurEmail, setVendeurEmail] = useState<string>("");
   const [autoFilledClientFields, setAutoFilledClientFields] = useState<
     Array<"clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse">
   >([]);
-  /** Affiche la section « Actions rapides » après un flux PDF réussi (GenerateBar). */
-  const [postFlowActionsVisible, setPostFlowActionsVisible] = useState(false);
-  /** Incrémenté à chaque succès PDF pour relancer les contrôles CRM / stock. */
-  const [postGenVersion, setPostGenVersion] = useState(0);
-  const [crmQuick, setCrmQuick] = useState<CrmQuickState>({ phase: "idle" });
-  const [vehicleStock, setVehicleStock] = useState<StockVehicule | null>(null);
-  const [vehicleStockLoading, setVehicleStockLoading] = useState(false);
-  const [vehicleMarkedSold, setVehicleMarkedSold] = useState(false);
-  const [vehicleMarking, setVehicleMarking] = useState(false);
+
+  /** Modal « Clôturer la vente » — ouverte après fermeture de la popup GenerateBar en succès. */
+  const [closureModalOpen, setClosureModalOpen] = useState(false);
+  const [closurePayload, setClosurePayload] = useState<ClosurePayload | null>(null);
+  const [closureVehicleLoading, setClosureVehicleLoading] = useState(false);
+  const [closureSoldDone, setClosureSoldDone] = useState(false);
+  const [closureSoldSaving, setClosureSoldSaving] = useState(false);
+  const [closureCrmUi, setClosureCrmUi] = useState<ClosureCrmUi>("idle");
+
   const { formPrefs } = usePreferencesFormulaire();
 
   useEffect(() => {
@@ -227,106 +234,48 @@ const NouveauBon = () => {
   }, [params.id]);
 
   useEffect(() => {
-    setPostFlowActionsVisible(false);
-    setCrmQuick({ phase: "idle" });
-    setVehicleStock(null);
-    setVehicleStockLoading(false);
-    setVehicleMarkedSold(false);
-    setVehicleMarking(false);
-    setPostGenVersion(0);
+    setClosureModalOpen(false);
+    setClosurePayload(null);
+    setClosureVehicleLoading(false);
+    setClosureSoldDone(false);
+    setClosureSoldSaving(false);
+    setClosureCrmUi("idle");
   }, [params.id]);
 
-  const handlePostFlowSuccess = useCallback(() => {
-    setPostGenVersion((n) => n + 1);
-    setPostFlowActionsVisible(true);
+  const handleSuccessfulModalClosed = useCallback(() => {
+    const fs = formStateRef.current;
+    setClosurePayload({
+      draftSnapshot: snapshotDraftForm(fs),
+      vehiculeDisplayLabel: vehiculeTitreFromForm(fs),
+    });
+    setClosureCrmUi(fs.clientId ? "linked_snapshot" : "idle");
+    setClosureSoldDone(false);
+    setClosureSoldSaving(false);
+    setClosureModalOpen(true);
   }, []);
 
   useEffect(() => {
-    if (!postFlowActionsVisible) {
-      setCrmQuick({ phase: "idle" });
-      return;
-    }
-    const nom = formState.clientNom?.trim() ?? "";
-    const prenom = formState.clientPrenom?.trim() ?? "";
-    let cancelled = false;
-    (async () => {
-      if (formState.clientId) {
-        setCrmQuick({ phase: "checking" });
-        const c = await getClientById(formState.clientId);
-        if (cancelled) return;
-        setCrmQuick({
-          phase: "linked",
-          clientId: formState.clientId ?? undefined,
-          client: c,
-        });
-        return;
-      }
-      if (!nom || !prenom) {
-        setCrmQuick({ phase: "incomplete" });
-        return;
-      }
-      setCrmQuick({ phase: "checking" });
-      try {
-        const list = await searchClients(`${nom} ${prenom}`);
-        if (cancelled) return;
-        const exact = list.find(
-          (c) =>
-            c.nom.trim().toLowerCase() === nom.toLowerCase() &&
-            c.prenom.trim().toLowerCase() === prenom.toLowerCase(),
-        );
-        if (exact) {
-          setCrmQuick({ phase: "exists", client: exact });
-        } else {
-          setCrmQuick({ phase: "invite" });
-        }
-      } catch {
-        if (!cancelled) setCrmQuick({ phase: "error", errorMessage: "Impossible de vérifier le CRM." });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    postFlowActionsVisible,
-    formState.clientId,
-    formState.clientNom,
-    formState.clientPrenom,
-    postGenVersion,
-  ]);
-
-  useEffect(() => {
-    if (!postFlowActionsVisible) {
-      setVehicleStock(null);
-      setVehicleStockLoading(false);
-      setVehicleMarkedSold(false);
-      return;
-    }
-    const vid = formState.vehiculeStockId?.trim();
+    if (!closureModalOpen || !closurePayload) return;
+    const vid = closurePayload.draftSnapshot.vehiculeStockId?.trim();
     if (!vid) {
-      setVehicleStock(null);
-      setVehicleStockLoading(false);
-      setVehicleMarkedSold(false);
+      setClosureVehicleLoading(false);
       return;
     }
     let cancelled = false;
-    (async () => {
-      setVehicleStockLoading(true);
+    void (async () => {
+      setClosureVehicleLoading(true);
       const v = await getVehicule(vid);
       if (cancelled) return;
-      setVehicleStock(v);
-      setVehicleMarkedSold(v?.statut === "vendu");
-      setVehicleStockLoading(false);
+      setClosureSoldDone(
+        !!v && (!v.disponible || v.statut === "vendu"),
+      );
+      setClosureVehicleLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [postFlowActionsVisible, postGenVersion, formState.vehiculeStockId]);
+  }, [closureModalOpen, closurePayload]);
 
-  // Pré-remplissage depuis le stock : `/nouveau-bon?vehicleId=<uuid>`. On ne
-  // déclenche que pour un nouveau bon (pas en mode édition d'un brouillon
-  // existant), pour ne pas écraser le contenu chargé. Une fois le véhicule
-  // injecté, on nettoie la query string pour éviter de re-injecter à chaque
-  // navigation interne.
   useEffect(() => {
     if (params.id) return;
     const search = new URLSearchParams(location.search);
@@ -354,15 +303,11 @@ const NouveauBon = () => {
         stockColonnes: [...v.colonnes_pdf],
         vehiculePrix: prev.vehiculePrix || guessedPrix,
       }));
-      // Nettoie l'URL pour éviter une nouvelle injection à un re-render.
       navigate("/nouveau-bon", { replace: true });
     })();
     return () => {
       cancelled = true;
     };
-    // On ne dépend volontairement que de location.search/params.id : la fonction
-    // navigate est stable et l'effet ne doit s'exécuter qu'au montage initial
-    // ou si la query string change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, params.id]);
 
@@ -430,11 +375,6 @@ const NouveauBon = () => {
     }
   };
 
-  /**
-   * Appelé par GenerateBar après la signature vendeur réussie. Persiste le
-   * brouillon avec `signed = true` et `signedAt`. Crée le brouillon s'il
-   * n'existait pas encore (cas d'un PDF généré sans sauvegarde manuelle).
-   */
   const handleSigned = useCallback(
     async (signedAt: string) => {
       try {
@@ -455,11 +395,6 @@ const NouveauBon = () => {
     [formState],
   );
 
-  /**
-   * Appelé après envoi de l'email de signature au client : trace le token
-   * dans le brouillon pour permettre l'affichage du statut « En attente de
-   * signature client » dans le tableau de bord.
-   */
   const handleSignatureRequestSent = useCallback(
     async (token: string) => {
       const draftId = formState.id;
@@ -479,16 +414,29 @@ const NouveauBon = () => {
     [formState.id],
   );
 
-  const ensureDraftId = useCallback(async (): Promise<string> => {
-    if (formState.id) return formState.id;
-    const saved = await upsertDraft(formState);
-    setFormState((prev) => ({ ...prev, id: saved.id }));
-    return saved.id;
-  }, [formState]);
+  const handleClosureMarkSold = useCallback(async () => {
+    if (!closurePayload) return;
+    const vid = closurePayload.draftSnapshot.vehiculeStockId?.trim();
+    if (!vid || closureSoldDone || closureSoldSaving) return;
+    setClosureSoldSaving(true);
+    try {
+      const ok = await markVehiculeVenduPourBon(vid);
+      if (!ok) throw new Error("Mise à jour refusée ou véhicule introuvable.");
+      setClosureSoldDone(true);
+      toast({ title: "Stock mis à jour", description: "Le véhicule est marqué comme vendu." });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur lors de la mise à jour.";
+      toast({ title: "Stock", description: msg, variant: "destructive" });
+    } finally {
+      setClosureSoldSaving(false);
+    }
+  }, [closurePayload, closureSoldDone, closureSoldSaving]);
 
-  const handleRegisterClientInCrm = useCallback(async () => {
-    const nom = formState.clientNom?.trim();
-    const prenom = formState.clientPrenom?.trim();
+  const handleClosureRegisterCrm = useCallback(async () => {
+    if (!closurePayload) return;
+    const ds = closurePayload.draftSnapshot;
+    const nom = ds.clientNom?.trim();
+    const prenom = ds.clientPrenom?.trim();
     if (!nom || !prenom) {
       toast({
         title: "Nom et prénom requis",
@@ -497,80 +445,71 @@ const NouveauBon = () => {
       });
       return;
     }
-    setCrmQuick((s) => ({ ...s, phase: "saving" }));
-    try {
-      const draftId = await ensureDraftId();
-      const tel = extractClientTelephone(formState.customFieldsValues);
-      const created = await createClient({
-        nom,
-        prenom,
-        email: formState.clientEmail?.trim() || "",
-        telephone: tel,
-        dateNaissance: formState.clientDateNaissance?.trim() || "",
-      });
-      await attachDraftToClient(draftId, created.id);
-      setFormState((prev) => ({ ...prev, id: draftId, clientId: created.id }));
-      setCrmQuick({ phase: "saved", client: created, clientId: created.id });
-      toast({
-        title: "Client enregistré",
-        description: "La fiche a été créée et liée à ce bon de commande.",
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Impossible d'enregistrer le client.";
-      setCrmQuick({ phase: "invite" });
-      toast({ title: "CRM", description: msg, variant: "destructive" });
-    }
-  }, [formState, ensureDraftId]);
-
-  const handleLinkExistingClientToDraft = useCallback(
-    async (client: ClientData) => {
-      try {
-        const draftId = await ensureDraftId();
-        await attachDraftToClient(draftId, client.id);
-        setFormState((prev) => ({ ...prev, id: draftId, clientId: client.id }));
-        setCrmQuick({ phase: "linked", client, clientId: client.id });
-        toast({ title: "Bon lié", description: "Ce brouillon est rattaché à la fiche client." });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Liaison impossible.";
-        toast({ title: "CRM", description: msg, variant: "destructive" });
-      }
-    },
-    [ensureDraftId],
-  );
-
-  const handleMarkStockVehicleSold = useCallback(async () => {
-    const vid = formState.vehiculeStockId?.trim();
-    if (!vid) return;
     if (
-      !window.confirm(
-        "Marquer ce véhicule comme vendu dans le stock ? Il n'apparaîtra plus comme disponible.",
-      )
+      closureCrmUi === "linked_snapshot" ||
+      closureCrmUi === "already_db" ||
+      closureCrmUi === "saved"
     ) {
       return;
     }
-    setVehicleMarking(true);
-    try {
-      const ok = await markVehiculeVenduPourBon(vid);
-      if (!ok) throw new Error("Mise à jour refusée ou véhicule introuvable.");
-      setVehicleMarkedSold(true);
-      setVehicleStock((prev) =>
-        prev ? { ...prev, statut: "vendu", disponible: false } : prev,
-      );
-      toast({ title: "Stock mis à jour", description: "Le véhicule est marqué comme vendu." });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur lors de la mise à jour.";
-      toast({ title: "Stock", description: msg, variant: "destructive" });
-    } finally {
-      setVehicleMarking(false);
-    }
-  }, [formState.vehiculeStockId]);
 
-  const clientDisplayName =
-    `${formState.clientPrenom ?? ""} ${formState.clientNom ?? ""}`.trim() || "le client";
-  const vehiculeQuickLabel =
-    vehicleStock && (vehicleStock.marque || vehicleStock.modele)
-      ? [vehicleStock.marque, vehicleStock.modele].filter(Boolean).join(" ")
-      : vehiculeTitreFromForm(formState);
+    setClosureCrmUi("checking");
+    try {
+      const existing = await findClientExactNomPrenom(nom, prenom);
+      if (existing) {
+        setClosureCrmUi("already_db");
+        return;
+      }
+      setClosureCrmUi("saving");
+      let draftId = ds.id;
+      if (!draftId) {
+        const saved = await upsertDraft(ds);
+        draftId = saved.id;
+      }
+      const tel = extractClientTelephone(ds.customFieldsValues);
+      const created = await createClient({
+        nom,
+        prenom,
+        email: ds.clientEmail?.trim() || "",
+        telephone: tel,
+        dateNaissance: ds.clientDateNaissance?.trim() || "",
+      });
+      await attachDraftToClient(draftId, created.id);
+      setFormState((prev) => ({ ...prev, id: draftId, clientId: created.id }));
+      setClosureCrmUi("saved");
+      toast({
+        title: "Client enregistré",
+        description: "La fiche CRM est créée et liée au brouillon.",
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Impossible d'enregistrer le client.";
+      setClosureCrmUi("idle");
+      toast({ title: "CRM", description: msg, variant: "destructive" });
+    }
+  }, [closurePayload, closureCrmUi]);
+
+  const handleClosureFermer = useCallback(() => {
+    setClosureModalOpen(false);
+    setClosurePayload(null);
+    setClosureCrmUi("idle");
+    setClosureSoldDone(false);
+    setClosureSoldSaving(false);
+    setClosureVehicleLoading(false);
+    setFormState({ ...defaultFormState });
+    setAutoFilledClientFields([]);
+    navigate("/nouveau-bon", { replace: true });
+  }, [navigate]);
+
+  const closureClientLabel =
+    closurePayload &&
+    `${closurePayload.draftSnapshot.clientPrenom ?? ""} ${closurePayload.draftSnapshot.clientNom ?? ""}`.trim();
+
+  const crmButtonDisabled =
+    closureCrmUi === "linked_snapshot" ||
+    closureCrmUi === "already_db" ||
+    closureCrmUi === "saved" ||
+    closureCrmUi === "checking" ||
+    closureCrmUi === "saving";
 
   return (
     <>
@@ -667,177 +606,6 @@ const NouveauBon = () => {
                 onCustomFieldChange={updateCustomField}
               />
             </div>
-
-            {postFlowActionsVisible ? (
-              <div className="card-autodocs border border-primary/30 bg-[#1A1D27] shadow-[0_0_0_1px_rgba(99,102,241,0.12)]">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="font-display text-sm font-bold text-foreground">Actions rapides</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Suite à la génération du bon — vous pouvez ignorer cette étape.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-secondary cursor-pointer px-3 py-2 text-xs"
-                    onClick={() => setPostFlowActionsVisible(false)}
-                  >
-                    Passer
-                  </button>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  {/* CRM */}
-                  <div className="flex flex-col rounded-xl border border-border/80 bg-card/60 p-4">
-                    <div className="mb-2 flex items-center gap-2 text-primary">
-                      <User className="h-5 w-5 shrink-0" aria-hidden />
-                      <span className="font-display text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                        CRM
-                      </span>
-                    </div>
-                    {crmQuick.phase === "checking" ? (
-                      <div className="flex flex-1 flex-col items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden />
-                        Vérification…
-                      </div>
-                    ) : crmQuick.phase === "incomplete" ? (
-                      <p className="text-sm text-muted-foreground">
-                        Renseignez le nom et le prénom du client pour proposer l&apos;enregistrement CRM.
-                      </p>
-                    ) : crmQuick.phase === "linked" || crmQuick.phase === "saved" ? (
-                      <div className="flex flex-1 flex-col gap-3">
-                        <p className="text-sm font-medium text-foreground">
-                          Client déjà enregistré{" "}
-                          <span className="text-success" aria-hidden>
-                            ✓
-                          </span>
-                        </p>
-                        {(crmQuick.clientId ?? crmQuick.client?.id) && (
-                          <Link
-                            to={`/clients/${crmQuick.clientId ?? crmQuick.client?.id}`}
-                            className="inline-flex text-sm font-semibold text-primary hover:underline"
-                          >
-                            Voir la fiche client
-                          </Link>
-                        )}
-                      </div>
-                    ) : crmQuick.phase === "exists" && crmQuick.client ? (
-                      <div className="flex flex-1 flex-col gap-3">
-                        <p className="text-sm text-foreground">
-                          Un client{" "}
-                          <span className="font-semibold">
-                            {crmQuick.client.prenom} {crmQuick.client.nom}
-                          </span>{" "}
-                          existe déjà avec le même nom et prénom.
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Client déjà enregistré
-                          </span>
-                          <Link
-                            to={`/clients/${crmQuick.client.id}`}
-                            className="text-sm font-semibold text-primary hover:underline"
-                          >
-                            Voir la fiche
-                          </Link>
-                        </div>
-                        {formState.clientId !== crmQuick.client.id ? (
-                          <button
-                            type="button"
-                            className="btn-secondary mt-1 cursor-pointer text-xs"
-                            onClick={() => void handleLinkExistingClientToDraft(crmQuick.client!)}
-                          >
-                            Lier ce bon à cette fiche
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : crmQuick.phase === "invite" || crmQuick.phase === "saving" ? (
-                      <div className="flex flex-1 flex-col gap-3">
-                        <p className="text-sm text-foreground">
-                          Voulez-vous enregistrer{" "}
-                          <span className="font-semibold text-primary">{clientDisplayName}</span> dans
-                          vos clients ?
-                        </p>
-                        <button
-                          type="button"
-                          className="btn-primary cursor-pointer border-0 text-sm"
-                          disabled={crmQuick.phase === "saving"}
-                          onClick={() => void handleRegisterClientInCrm()}
-                        >
-                          {crmQuick.phase === "saving" ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Enregistrement…
-                            </>
-                          ) : (
-                            "Enregistrer comme client"
-                          )}
-                        </button>
-                      </div>
-                    ) : crmQuick.phase === "error" ? (
-                      <p className="text-sm text-destructive">{crmQuick.errorMessage}</p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">—</p>
-                    )}
-                  </div>
-
-                  {/* Stock vendu */}
-                  <div className="flex flex-col rounded-xl border border-border/80 bg-card/60 p-4">
-                    <div className="mb-2 flex items-center gap-2 text-primary">
-                      <Car className="h-5 w-5 shrink-0" aria-hidden />
-                      <span className="font-display text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                        Stock
-                      </span>
-                    </div>
-                    {!formState.vehiculeStockId?.trim() ? (
-                      <p className="text-sm text-muted-foreground">
-                        Aucun véhicule issu du stock n&apos;est lié à ce bon (saisie manuelle ou reprise
-                        uniquement).
-                      </p>
-                    ) : vehicleStockLoading ? (
-                      <div className="flex flex-1 flex-col items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
-                        <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden />
-                        Chargement du véhicule…
-                      </div>
-                    ) : (
-                      <div className="flex flex-1 flex-col gap-3">
-                        <p className="text-sm text-foreground">
-                          Marquer{" "}
-                          <span className="font-semibold text-primary">{vehiculeQuickLabel}</span> comme
-                          vendu dans votre stock ?
-                        </p>
-                        <button
-                          type="button"
-                          disabled={vehicleMarkedSold || vehicleMarking}
-                          onClick={() => void handleMarkStockVehicleSold()}
-                          className={cn(
-                            "inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-lg border-0 px-4 py-2.5 font-display text-sm font-bold transition-all",
-                            vehicleMarkedSold
-                              ? "bg-success/20 text-success ring-1 ring-success/40 cursor-default"
-                              : "btn-primary border-0",
-                          )}
-                        >
-                          {vehicleMarking ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              Mise à jour…
-                            </>
-                          ) : vehicleMarkedSold ? (
-                            <>
-                              <CheckCircle2 className="h-4 w-4" />
-                              Vendu ✓
-                            </>
-                          ) : (
-                            "Marquer comme vendu"
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : null}
           </div>
 
           <div className="text-muted-foreground hidden items-center justify-center gap-2 text-xs sm:flex">
@@ -866,8 +634,132 @@ const NouveauBon = () => {
         templateId=""
         onSigned={handleSigned}
         onSignatureRequestSent={handleSignatureRequestSent}
-        onFlowSuccess={handlePostFlowSuccess}
+        onSuccessfulModalClosed={handleSuccessfulModalClosed}
       />
+
+      {/* Modal clôture — après fermeture de la popup GenerateBar en succès */}
+      {closureModalOpen && closurePayload ? (
+        <>
+          <div className="pointer-events-none fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm" aria-hidden />
+          <div
+            className="fixed inset-x-4 bottom-auto top-1/2 z-[10001] mx-auto max-h-[90vh] max-w-lg -translate-y-1/2 overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#1A1D27] p-6 shadow-2xl pointer-events-auto md:inset-x-auto md:left-1/2 md:w-full md:-translate-x-1/2"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="closure-modal-title"
+          >
+            <h2
+              id="closure-modal-title"
+              className="mb-1 text-center font-display text-lg font-bold text-foreground"
+            >
+              Clôturer la vente
+            </h2>
+            <p className="mb-6 text-center text-base font-medium text-foreground">
+              🎉 Bon de commande finalisé&nbsp;!
+            </p>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col rounded-xl border border-border/80 bg-card/50 p-4">
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  🚗 Marquer comme vendu
+                </div>
+                <p className="mb-3 text-sm font-medium text-foreground">
+                  {closureVehicleLoading ? (
+                    <span className="inline-flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Chargement…
+                    </span>
+                  ) : (
+                    closurePayload.vehiculeDisplayLabel
+                  )}
+                </p>
+                {!closurePayload.draftSnapshot.vehiculeStockId?.trim() ? (
+                  <p className="text-xs text-muted-foreground">
+                    Pas de véhicule lié au stock sur ce bon.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={closureSoldDone || closureSoldSaving || closureVehicleLoading}
+                    onClick={() => void handleClosureMarkSold()}
+                    className={cn(
+                      "mt-auto inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-display text-sm font-bold transition-all",
+                      closureSoldDone
+                        ? "cursor-default bg-success/20 text-success ring-1 ring-success/40"
+                        : "btn-primary cursor-pointer border-0",
+                    )}
+                  >
+                    {closureSoldSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        …
+                      </>
+                    ) : closureSoldDone ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" aria-hidden />
+                        ✓ Vendu
+                      </>
+                    ) : (
+                      "Marquer comme vendu"
+                    )}
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-col rounded-xl border border-border/80 bg-card/50 p-4">
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  👤 Enregistrer le client
+                </div>
+                <p className="mb-3 text-sm font-medium text-foreground">
+                  {closureClientLabel || "—"}
+                </p>
+                <button
+                  type="button"
+                  disabled={crmButtonDisabled}
+                  onClick={() => void handleClosureRegisterCrm()}
+                  className={cn(
+                    "mt-auto inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-display text-sm font-bold transition-all",
+                    closureCrmUi === "linked_snapshot" ||
+                      closureCrmUi === "already_db" ||
+                      closureCrmUi === "saved"
+                      ? "cursor-default bg-success/20 text-success ring-1 ring-success/40"
+                      : "btn-primary cursor-pointer border-0",
+                  )}
+                >
+                  {closureCrmUi === "checking" || closureCrmUi === "saving" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      {closureCrmUi === "checking" ? "Vérification…" : "Enregistrement…"}
+                    </>
+                  ) : closureCrmUi === "linked_snapshot" ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" aria-hidden />
+                      ✓ Déjà enregistré
+                    </>
+                  ) : closureCrmUi === "already_db" ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" aria-hidden />
+                      ✓ Déjà enregistré
+                    </>
+                  ) : closureCrmUi === "saved" ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" aria-hidden />
+                      ✓ Client enregistré
+                    </>
+                  ) : (
+                    "Enregistrer dans le CRM"
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-center border-t border-border/60 pt-4">
+              <button type="button" className="btn-secondary cursor-pointer px-8" onClick={handleClosureFermer}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </>
   );
 };

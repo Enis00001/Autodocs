@@ -249,6 +249,13 @@ export async function findClientByNomPrenom(
   return match ? rowToClient(match) : null;
 }
 
+/**
+ * Équivalent à `findClientByNomPrenom` : une ligne `clients` pour la concession
+ * courante avec le même nom et prénom (normalisation insensible à la casse).
+ * Utilisé par le flux « Clôturer la vente ».
+ */
+export const findClientExactNomPrenom = findClientByNomPrenom;
+
 /** Crée une nouvelle fiche client. Renvoie la fiche créée. */
 export async function createClient(input: ClientUpsertData): Promise<ClientData> {
   const userId = await getCurrentUserId();
