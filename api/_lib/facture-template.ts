@@ -64,6 +64,12 @@ function formatMoneyFr(n: number): string {
 }
 
 export function buildFactureHtml(p: FactureTemplatePayload): string {
+  const livraisonRaw = String(p.date_livraison_label ?? "").trim();
+  const livraisonLabel =
+    livraisonRaw && livraisonRaw !== "—"
+      ? livraisonRaw
+      : "À définir";
+
   const prestRows =
     p.prestations.length === 0
       ? `<tr><td colspan="2" style="padding:8px;border:1px solid #ccc;color:#666;font-style:italic;">Aucune prestation supplémentaire</td></tr>`
@@ -210,7 +216,6 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
     <div class="meta">
       <div class="num">N° ${esc(p.numero_facture)}</div>
       <div>Date de facture : <strong>${esc(p.date_facture_label)}</strong></div>
-      <div>Date de livraison du véhicule : <strong>${esc(p.date_livraison_label)}</strong></div>
     </div>
   </div>
 
@@ -255,6 +260,10 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
     <div class="reste-box">
       <span>Reste à payer</span>
       ${esc(p.reste_a_payer_label)} € TTC
+    </div>
+    <div class="price-row" style="margin-top:8px;border-top:1px dashed #999;padding-top:8px;">
+      <span>Date de livraison du véhicule</span>
+      <span>${esc(livraisonLabel)}</span>
     </div>
   </div>
 

@@ -80,6 +80,7 @@ const FactureGenerateModal = ({
   const [garantieMois, setGarantieMois] = useState("12");
   const [kmNonGaranti, setKmNonGaranti] = useState(false);
   const [notes, setNotes] = useState("");
+  const [clientAdresse, setClientAdresse] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientTelephone, setClientTelephone] = useState("");
   const [prestations, setPrestations] = useState<PrestationLine[]>([]);
@@ -103,6 +104,7 @@ const FactureGenerateModal = ({
     setGarantieMois("12");
     setKmNonGaranti(false);
     setNotes("");
+    setClientAdresse(String(draft.clientAdresse ?? "").trim());
     setClientEmail(String(draft.clientEmail ?? "").trim());
     setClientTelephone(extractClientTelephoneFromDraft(draft));
     setPrestations([]);
@@ -158,6 +160,7 @@ const FactureGenerateModal = ({
 
     const payload: GenerateFacturePayload = {
       brouillon_id: draft.id,
+      client_adresse: clientAdresse.trim() || undefined,
       client_email: clientEmail.trim() || undefined,
       client_telephone: clientTelephone.trim() || undefined,
       date_livraison: dateLivraison.trim() || undefined,
@@ -233,6 +236,19 @@ const FactureGenerateModal = ({
         </div>
 
         <form className="space-y-4" onSubmit={(ev) => void handleSubmit(ev)}>
+          <div className="flex flex-col gap-1.5">
+            <label className="field-label" htmlFor="fact-client-adresse">
+              Adresse du client
+            </label>
+            <textarea
+              id="fact-client-adresse"
+              className="field-input min-h-[72px] resize-y"
+              value={clientAdresse}
+              onChange={(e) => setClientAdresse(e.target.value)}
+              placeholder="Adresse complète du client"
+            />
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label className="field-label" htmlFor="fact-client-email">

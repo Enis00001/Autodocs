@@ -1634,6 +1634,7 @@ async function handleGenerateFacture(
   const kvStr: Record<string, string> = {};
   for (const [k, v] of Object.entries(kvRaw)) kvStr[k] = String(v ?? "");
 
+  const clientAdresseInput = String(data.client_adresse ?? "").trim();
   const clientEmailInput = String(data.client_email ?? "").trim();
   const clientTelephoneInput = String(data.client_telephone ?? "").trim();
 
@@ -1722,6 +1723,7 @@ async function handleGenerateFacture(
 
   let clientTel = clientTelephoneInput;
   let clientEmailDb = clientEmailInput || String(kvStr.client_email ?? "").trim();
+  const clientAdresseDb = clientAdresseInput || String(br.client_adresse ?? "").trim();
   const clientIdRow =
     br.client_id === null || br.client_id === undefined
       ? null
@@ -1814,7 +1816,7 @@ async function handleGenerateFacture(
     concession_tva_intra: concessionTva || "—",
     client_nom: String(br.client_nom ?? "").trim() || "—",
     client_prenom: String(br.client_prenom ?? "").trim() || "—",
-    client_adresse: String(br.client_adresse ?? "").trim() || "—",
+    client_adresse: clientAdresseDb || "—",
     client_email: clientEmailDb || "—",
     client_telephone: clientTel || "—",
     vehicule_marque: vehMarque || "—",
@@ -1876,7 +1878,7 @@ async function handleGenerateFacture(
     concession_tva_intracommunautaire: concessionTva || null,
     client_nom: String(br.client_nom ?? ""),
     client_prenom: String(br.client_prenom ?? ""),
-    client_adresse: String(br.client_adresse ?? ""),
+    client_adresse: clientAdresseDb || null,
     client_email: clientEmailDb || null,
     client_telephone: clientTel || null,
     vehicule_marque: vehMarque || null,
