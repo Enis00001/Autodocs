@@ -154,6 +154,7 @@ const Dashboard = () => {
   const brouillonsEnCours = drafts.length;
   const statsReady = stats ?? {
     monthly: [],
+    chart: [],
     stockAvailableTotal: 0,
     stockSoldTotal: 0,
     draftsTotal: 0,
@@ -258,7 +259,7 @@ const Dashboard = () => {
   const latestDrafts = [...drafts]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .slice(0, 5);
-  const chartMonthly = statsReady.monthly.map((row) => ({
+  const chartMonthly = statsReady.chart.map((row) => ({
     ...row,
     mois: row.label,
     ca: row.revenue,
@@ -428,7 +429,11 @@ const Dashboard = () => {
                       strokeDasharray="3 3"
                       stroke="rgba(148, 163, 184, 0.15)"
                     />
-                    <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
+                    <XAxis
+                      dataKey="mois"
+                      interval={period === "month" ? 6 : 0}
+                      tick={{ fontSize: 11 }}
+                    />
                     <YAxis
                       tick={{ fontSize: 11 }}
                       tickFormatter={(value: number) =>
@@ -496,7 +501,11 @@ const Dashboard = () => {
                         strokeDasharray="3 3"
                         stroke="rgba(148, 163, 184, 0.15)"
                       />
-                      <XAxis dataKey="mois" tick={{ fontSize: 11 }} />
+                      <XAxis
+                        dataKey="mois"
+                        interval={period === "month" ? 6 : 0}
+                        tick={{ fontSize: 11 }}
+                      />
                       <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                       <Tooltip
                         formatter={(value: number) => [

@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserId } from "@/lib/auth";
+import { eachDayOfInterval, endOfMonth, format, startOfMonth, subMonths } from "date-fns";
+import { fr } from "date-fns/locale";
 
 export type DashboardPeriod = "month" | "3m" | "6m" | "year";
 
@@ -19,6 +21,7 @@ export type DraftSignatureState = "signed" | "pending" | "in_progress";
 
 export type DashboardStats = {
   monthly: MonthlyStatPoint[];
+  chart: Array<{ key: string; label: string; revenue: number; sales: number }>;
   stockAvailableTotal: number;
   stockSoldTotal: number;
   draftsTotal: number;
@@ -90,6 +93,32 @@ function buildLastTwelveMonths(now: Date): MonthlyStatPoint[] {
   return points;
 }
 
+function buildChartIntervals(period: DashboardPeriod, now: Date) {
+  if (period === "month") {
+    const days = eachDayOfInterval({
+      start: startOfMonth(now),
+      end: endOfMonth(now),
+    });
+    return days.map((day) => ({
+      key: format(day, "yyyy-MM-dd"),
+      label: format(day, "d MMM", { locale: fr }),
+      revenue: 0,
+      sales: 0,
+    }));
+  }
+
+  const months = getMonthsForPeriod(period);
+  return Array.from({ length: months }, (_, i) => {
+    const date = subMonths(now, months - 1 - i);
+    return {
+      key: format(date, "yyyy-MM"),
+      label: format(date, "MMM yy", { locale: fr }),
+      revenue: 0,
+      sales: 0,
+    };
+  });
+}
+
 function getVehiculeStockId(vehicleFieldValues: unknown): string | null {
   if (!vehicleFieldValues || typeof vehicleFieldValues !== "object") return null;
   const fields = vehicleFieldValues as BrouillonVehicleFields;
@@ -116,10 +145,11 @@ export function sliceMonthlyByPeriod(
 export async function loadDashboardStats(period: DashboardPeriod = "month"): Promise<DashboardStats> {
   const uid = await getCurrentUserId();
   const now = new Date();
-  void period;
-  const historyStart = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString();
+  const historyStart = getHistoryStart(period, now).toISOString();
+  const periodStart = getPeriodStart(period, now).toISOString();
   const empty: DashboardStats = {
-    monthly: buildLastTwelveMonths(now),
+    monthly: buildLastTwelveMonths(now).slice(-getMonthsForPeriod(period) * 2),
+    chart: buildChartIntervals(period, now),
     stockAvailableTotal: 0,
     stockSoldTotal: 0,
     draftsTotal: 0,
@@ -130,8 +160,10 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
   };
   if (!uid) return empty;
 
-  const monthly = buildLastTwelveMonths(now);
+  const monthly = buildLastTwelveMonths(now).slice(-getMonthsForPeriod(period) * 2);
   const byKey = new Map(monthly.map((item) => [item.key, item]));
+  const chart = buildChartIntervals(period, now);
+  const chartByKey = new Map(chart.map((item) => [item.key, item]));
 
   const [facturesRes, stockSoldRes, stockRes, draftsRes] = await Promise.all([
     supabase
@@ -139,7 +171,7 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
       .select("id, prix_ttc, created_at, brouillon_id")
       .eq("concession_id", uid)
       .neq("statut", "annulee")
-      .gte("created_at", historyStart),
+      .gte("created_at", historyStart < periodStart ? historyStart : periodStart),
     supabase
       .from("stock_vehicules")
       .select("id, created_at, updated_at, disponible")
@@ -216,7 +248,12 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
     const bucket = byKey.get(key);
     if (!bucket) continue;
     const amount = typeof row.prix_ttc === "number" ? row.prix_ttc : Number(row.prix_ttc ?? 0);
-    bucket.revenue += Number.isFinite(amount) ? amount : 0;
+    const safeAmount = Number.isFinite(amount) ? amount : 0;
+    bucket.revenue += safeAmount;
+
+    const chartKey = period === "month" ? createdAt.slice(0, 10) : key;
+    const chartBucket = chartByKey.get(chartKey);
+    if (chartBucket) chartBucket.revenue += safeAmount;
   }
 
   for (const row of soldRows) {
@@ -228,6 +265,10 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
     const bucket = byKey.get(key);
     if (!bucket) continue;
     bucket.sales += 1;
+
+    const chartKey = period === "month" ? eventDate.slice(0, 10) : key;
+    const chartBucket = chartByKey.get(chartKey);
+    if (chartBucket) chartBucket.sales += 1;
   }
 
   const draftRows = (draftsRes.data ?? []) as Array<{ id: string; created_at: string | null }>;
@@ -290,6 +331,7 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
 
   return {
     monthly,
+    chart,
     stockAvailableTotal,
     stockSoldTotal,
     draftsTotal: draftsSignedTotal + draftsPendingTotal + draftsInProgressTotal,
