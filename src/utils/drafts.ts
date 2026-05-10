@@ -31,6 +31,8 @@ export type BonDraftData = {
   clientNumeroCni: string;
   clientAdresse: string;
   clientEmail: string;
+  /** Ligne directe (non affichée sur le bon PDF, facture / CRM). */
+  clientTelephone: string;
 
   // Section 2 — Véhicule (depuis stock)
   /** UUID du véhicule dans `stock_vehicules` (vide si saisie manuelle libre). */
@@ -198,6 +200,7 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     clientNumeroCni: row.client_numero_cni ?? "",
     clientAdresse: row.client_adresse ?? "",
     clientEmail: kvStr.client_email ?? "",
+    clientTelephone: kvStr.client_telephone ?? "",
 
     vehiculeStockId: kvStr.vehicule_stock_id ?? "",
     stockDonnees: parseStringDict(rawKv.stock_donnees),
@@ -231,6 +234,7 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
 function draftToPayload(d: BonDraftData) {
   const kv: Record<string, unknown> = {
     client_email: d.clientEmail ?? "",
+    client_telephone: d.clientTelephone ?? "",
     reprise_active: d.repriseActive ? "true" : "false",
     reprise_plaque: d.reprisePlaque,
     reprise_marque: d.repriseMarque,

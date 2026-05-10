@@ -19,6 +19,7 @@ const emptyForm: ClientUpsertData = {
   prenom: "",
   email: "",
   telephone: "",
+  adresse: "",
   dateNaissance: "",
 };
 
@@ -29,6 +30,7 @@ function toUpsert(input: ClientData | ClientUpsertData | null | undefined): Clie
     prenom: input.prenom ?? "",
     email: input.email ?? "",
     telephone: input.telephone ?? "",
+    adresse: input.adresse ?? "",
     dateNaissance: input.dateNaissance ?? "",
   };
 }
@@ -83,6 +85,7 @@ const ClientFormModal = ({
         prenom: form.prenom.trim(),
         email: form.email?.trim() ?? "",
         telephone: form.telephone?.trim() ?? "",
+        adresse: form.adresse?.trim() ?? "",
         dateNaissance: form.dateNaissance?.trim() ?? "",
       });
     } catch (err) {
@@ -191,6 +194,17 @@ const ClientFormModal = ({
               />
             </label>
           </div>
+
+          <label className="block">
+            <span className="field-label">Adresse</span>
+            <textarea
+              className="field-input mt-1 min-h-[72px] resize-y"
+              value={form.adresse ?? ""}
+              onChange={(e) => update("adresse", e.target.value)}
+              placeholder="Adresse, code postal, ville"
+              rows={3}
+            />
+          </label>
 
           {error ? (
             <div className="rounded-input border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">

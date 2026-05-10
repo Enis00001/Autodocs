@@ -27,12 +27,7 @@ import {
   upsertDraft,
 } from "@/utils/drafts";
 import { supabase } from "@/lib/supabase";
-import {
-  getCustomFieldsBySection,
-  isFieldEnabled,
-  isStockColumnVisible,
-  type FormFieldPrefs,
-} from "@/utils/formPreferences";
+import { isFieldEnabled, isStockColumnVisible, type FormFieldPrefs } from "@/utils/formPreferences";
 import { cn } from "@/lib/utils";
 import {
   getVehicule,
@@ -63,6 +58,7 @@ const defaultFormState: DraftFormState = {
   clientNumeroCni: "",
   clientAdresse: "",
   clientEmail: "",
+  clientTelephone: "",
   vehiculeStockId: "",
   stockDonnees: {},
   stockColonnes: [],
@@ -109,21 +105,6 @@ function extractClientTelephone(custom: Record<string, string> | undefined): str
 }
 
 /** Première métadonnée de champ personnalisé « client » dont la clé ou le libellé évoque un téléphone. */
-function findFirstClientPhoneCustomKey(prefs: FormFieldPrefs): string | null {
-  for (const f of getCustomFieldsBySection(prefs, "client")) {
-    const nk = stripDiacritics(`${f.key} ${f.label}`);
-    if (
-      nk.includes("telephone") ||
-      nk.includes("tel") ||
-      nk.includes("mobile") ||
-      nk.includes("phone")
-    ) {
-      return f.key;
-    }
-  }
-  return null;
-}
-
 function vehiculeTitreFromForm(form: DraftFormState): string {
   const m =
     form.stockDonnees?.modele ||
@@ -197,8 +178,9 @@ function buildPdfFormData(
     clientPrenom: isFieldEnabled(prefs, "clientPrenom") ? form.clientPrenom : "",
     clientDateNaissance: isFieldEnabled(prefs, "clientDateNaissance") ? form.clientDateNaissance : "",
     clientNumeroCni: isFieldEnabled(prefs, "clientNumeroCni") ? form.clientNumeroCni : "",
-    clientAdresse: isFieldEnabled(prefs, "clientAdresse") ? form.clientAdresse : "",
-    clientEmail: form.clientEmail,
+    /** Facture / CRM uniquement — jamais sur le PDF bon. */
+    clientAdresse: "",
+    clientEmail: "",
     stock_donnees: JSON.stringify(visibleDonnees),
     stock_colonnes: JSON.stringify(visibleColonnes),
     repriseActive: repriseOn ? "oui" : "non",
@@ -525,32 +507,22 @@ const NouveauBon = () => {
     [],
   );
 
-  const handleCrmClientSelect = useCallback(
-    (c: ClientData) => {
-      const phoneKey = findFirstClientPhoneCustomKey(formPrefs);
-      const tel = c.telephone?.trim() ?? "";
-      setFormState((prev) => {
-        const next: DraftFormState = {
-          ...prev,
-          clientId: c.id,
-          clientNom: c.nom ?? "",
-          clientPrenom: c.prenom ?? "",
-          clientDateNaissance: c.dateNaissance ?? "",
-          clientEmail: c.email ?? "",
-        };
-        if (phoneKey && tel) {
-          next.customFieldsValues = { ...(prev.customFieldsValues ?? {}), [phoneKey]: tel };
-          next.vehicleFieldValues = { ...(prev.vehicleFieldValues ?? {}), [phoneKey]: tel };
-        }
-        return next;
-      });
-      setAutoFilledClientFields([]);
-      setCrmSearchInput("");
-      setCrmSearchResults([]);
-      setCrmPickerOpen(false);
-    },
-    [formPrefs],
-  );
+  const handleCrmClientSelect = useCallback((c: ClientData) => {
+    setFormState((prev) => ({
+      ...prev,
+      clientId: c.id,
+      clientNom: c.nom ?? "",
+      clientPrenom: c.prenom ?? "",
+      clientDateNaissance: c.dateNaissance ?? "",
+      clientEmail: c.email ?? "",
+      clientTelephone: c.telephone?.trim() ?? "",
+      clientAdresse: c.adresse?.trim() ?? "",
+    }));
+    setAutoFilledClientFields([]);
+    setCrmSearchInput("");
+    setCrmSearchResults([]);
+    setCrmPickerOpen(false);
+  }, []);
 
   const handleCrmClientClear = useCallback(() => {
     setFormState((prev) => ({ ...prev, clientId: null }));
@@ -669,12 +641,15 @@ const NouveauBon = () => {
         const saved = await upsertDraft(ds);
         draftId = saved.id;
       }
-      const tel = extractClientTelephone(ds.customFieldsValues);
+      const tel =
+        ds.clientTelephone?.trim() ||
+        extractClientTelephone(ds.customFieldsValues);
       const created = await createClient({
         nom,
         prenom,
         email: ds.clientEmail?.trim() || "",
         telephone: tel,
+        adresse: ds.clientAdresse?.trim() || "",
         dateNaissance: ds.clientDateNaissance?.trim() || "",
       });
       await attachDraftToClient(draftId, created.id);
@@ -1114,6 +1089,15 @@ const NouveauBon = () => {
         open={closureFactureModalOpen && !!closureFactureDraft}
         draft={closureFactureDraft}
         preset="closure"
+        invoiceContact={
+          closurePayload
+            ? {
+                client_email: closurePayload.draftSnapshot.clientEmail,
+                client_telephone: closurePayload.draftSnapshot.clientTelephone,
+                client_adresse: closurePayload.draftSnapshot.clientAdresse,
+              }
+            : null
+        }
         onClose={() => {
           setClosureFactureModalOpen(false);
           setClosureFactureDraft(null);

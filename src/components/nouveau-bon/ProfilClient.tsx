@@ -21,6 +21,7 @@ type ProfilFormShape = {
   clientNumeroCni: BonDraftData["clientNumeroCni"];
   clientAdresse: BonDraftData["clientAdresse"];
   clientEmail: BonDraftData["clientEmail"];
+  clientTelephone: BonDraftData["clientTelephone"];
 };
 
 type ClientIdentityFieldProps = {
@@ -137,15 +138,49 @@ const ProfilClient = ({
           autoClass={autoClass}
         />
         <div className="flex flex-col gap-1.5 md:col-span-2">
-          <label className="field-label">Email du client (optionnel — pour envoi du bon de commande)</label>
+          <label className="field-label">
+            Email <span className="font-normal text-muted-foreground">(optionnel pour le bon de commande)</span>
+          </label>
           <input
             type="email"
             value={form.clientEmail}
             onChange={(e) => onChange({ clientEmail: e.target.value })}
             className="field-input"
-            placeholder="exemple@client.com"
+            placeholder="email@exemple.com"
+            autoComplete="email"
           />
         </div>
+        <div className="flex flex-col gap-1.5 md:col-span-2">
+          <label className="field-label">
+            Numéro de téléphone{" "}
+            <span className="font-normal text-muted-foreground">(optionnel pour le bon de commande)</span>
+          </label>
+          <input
+            type="tel"
+            value={form.clientTelephone}
+            onChange={(e) => onChange({ clientTelephone: e.target.value })}
+            className="field-input"
+            placeholder="06 00 00 00 00"
+            autoComplete="tel"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5 md:col-span-2">
+          <label className="field-label">
+            Adresse complète{" "}
+            <span className="font-normal text-muted-foreground">(optionnel pour le bon de commande)</span>
+          </label>
+          <textarea
+            value={form.clientAdresse}
+            onChange={(e) => onChange({ clientAdresse: e.target.value })}
+            className="field-input min-h-[72px] resize-y"
+            placeholder="Adresse, Code postal, Ville"
+            rows={3}
+          />
+        </div>
+        <p className="text-[11px] leading-snug text-muted-foreground/90 md:col-span-2">
+          Ces informations sont utilisées pour la facture et la fiche client — non affichées sur le bon de
+          commande.
+        </p>
         {customFields.map((field) => (
           <div key={field.id} className="flex flex-col gap-1.5 md:col-span-2">
             <label className="field-label">{field.label}</label>

@@ -16,6 +16,7 @@ export type ClientData = {
   prenom: string;
   email: string;
   telephone: string;
+  adresse: string;
   dateNaissance: string;
   createdAt: string;
   updatedAt: string;
@@ -26,6 +27,7 @@ export type ClientUpsertData = {
   prenom: string;
   email?: string;
   telephone?: string;
+  adresse?: string;
   dateNaissance?: string;
 };
 
@@ -36,6 +38,7 @@ type ClientRow = {
   prenom: string;
   email: string | null;
   telephone: string | null;
+  adresse?: string | null;
   date_naissance: string | null;
   created_at: string;
   updated_at: string;
@@ -48,6 +51,7 @@ function rowToClient(row: ClientRow): ClientData {
     prenom: row.prenom ?? "",
     email: row.email ?? "",
     telephone: row.telephone ?? "",
+    adresse: row.adresse ?? "",
     dateNaissance: row.date_naissance ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -305,6 +309,7 @@ export async function createClient(input: ClientUpsertData): Promise<ClientData>
     prenom,
     email: input.email?.trim() || null,
     telephone: input.telephone?.trim() || null,
+    adresse: input.adresse?.trim() || null,
     date_naissance: input.dateNaissance?.trim() || null,
   };
 
@@ -341,6 +346,7 @@ export async function updateClient(
     prenom,
     email: input.email?.trim() || null,
     telephone: input.telephone?.trim() || null,
+    adresse: input.adresse?.trim() || null,
     date_naissance: input.dateNaissance?.trim() || null,
   };
 
@@ -430,7 +436,8 @@ export function clientUpsertFromDraft(draft: BonDraftData): ClientUpsertData {
     nom: draft.clientNom ?? "",
     prenom: draft.clientPrenom ?? "",
     email: draft.clientEmail ?? "",
-    telephone: "",
+    telephone: draft.clientTelephone ?? "",
+    adresse: draft.clientAdresse ?? "",
     dateNaissance: draft.clientDateNaissance ?? "",
   };
 }

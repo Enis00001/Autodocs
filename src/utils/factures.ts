@@ -52,14 +52,6 @@ export type GenerateFacturePayload = {
   client_adresse?: string;
   client_email?: string;
   client_telephone?: string;
-  date_livraison?: string;
-  acompte?: number;
-  reprise_montant?: number;
-  reprise_vehicule_description?: string;
-  garantie_commerciale_active?: boolean;
-  garantie_commerciale_mois?: number;
-  kilometrage_non_garanti?: boolean;
-  prestations_supplementaires?: { libelle: string; prix_ht: number }[];
   notes?: string;
   tva_taux?: number;
 };

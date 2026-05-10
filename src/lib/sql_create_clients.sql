@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS clients (
   prenom          TEXT NOT NULL,
   email           TEXT,
   telephone       TEXT,
+  adresse         TEXT,
   date_naissance  TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()

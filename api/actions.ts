@@ -545,7 +545,8 @@ function buildHtml(
     clientPrenom: get("clientPrenom"),
     clientDateNaissance: get("clientDateNaissance"),
     clientNumeroCni: get("clientNumeroCni"),
-    clientAdresse: get("clientAdresse"),
+    /** Email / adresse acheteur : non imprimés sur le bon (réservés facture & CRM). */
+    clientAdresse: "",
 
     vehiculePrix: formatMoney(prix),
 
@@ -1735,18 +1736,7 @@ async function handleGenerateFacture(
 
   const tvaTaux = Math.min(100, Math.max(0, parseNum(String(data.tva_taux ?? "20")) || 20));
 
-  const prestationsRaw = Array.isArray(data.prestations_supplementaires)
-    ? data.prestations_supplementaires
-    : [];
   const prestations: { libelle: string; prix_ht: number }[] = [];
-  for (const p of prestationsRaw) {
-    if (!p || typeof p !== "object") continue;
-    const po = p as Record<string, unknown>;
-    const libelle = String(po.libelle ?? "").trim();
-    const prixHt = round2(parseNum(String(po.prix_ht ?? "0")));
-    if (!libelle || prixHt <= 0) continue;
-    prestations.push({ libelle, prix_ht: prixHt });
-  }
 
   const sumPrestHt = round2(prestations.reduce((s, pr) => s + pr.prix_ht, 0));
   const vehHt = round2(vehicleNetTtc / (1 + tvaTaux / 100));
@@ -1755,32 +1745,14 @@ async function handleGenerateFacture(
   const prixTtcTotal = round2(vehicleNetTtc + prestTtc);
   const tvaMontant = round2(prixTtcTotal - prixHtTotal);
 
-  const acompte = round2(parseNum(String(data.acompte ?? br.acompte ?? "0")));
-  const repriseMontantFacture = round2(
-    parseNum(String(data.reprise_montant ?? kvStr.reprise_valeur ?? "0")),
-  );
+  const acompte = round2(parseNum(String(br.acompte ?? "0")));
+  const repriseMontantFacture = round2(parseNum(String(kvStr.reprise_valeur ?? "0")));
   const resteAPayer = round2(Math.max(0, prixTtcTotal - acompte - repriseMontantFacture));
 
-  const dateLivraisonRaw = String(
-    data.date_livraison ?? br.vehicule_date_livraison ?? "",
-  ).trim();
-  const dateLivraison = dateLivraisonRaw || null;
-
-  const garantieActive =
-    data.garantie_commerciale_active === true ||
-    data.garantie_commerciale_active === "true";
-  const garantieMois = Math.max(
-    0,
-    Math.round(parseNum(String(data.garantie_commerciale_mois ?? "0"))),
-  );
   const mentionGarantie =
-    garantieActive && garantieMois > 0
-      ? `Le véhicule est vendu avec une garantie commerciale de ${garantieMois} mois, aux exclusions et limitations prévues au bon de commande et aux conditions générales de vente le cas échéant.`
-      : "Le véhicule est vendu dans l'état où il se trouve au jour de la livraison (vente « en l'état »), sans garantie commerciale complémentaire sauf disposition conventionnelle écrite jointe.";
+    "Le véhicule est vendu dans l'état où il se trouve au jour de la livraison (vente « en l'état »), sans garantie commerciale complémentaire sauf disposition conventionnelle écrite jointe.";
 
-  const kmNonGaranti =
-    data.kilometrage_non_garanti === true ||
-    data.kilometrage_non_garanti === "true";
+  const kmNonGaranti = false;
 
   const notes = String(data.notes ?? "").trim();
 
@@ -1810,9 +1782,14 @@ async function handleGenerateFacture(
   const concessionEmail = String(prof?.email_contact ?? authEmail ?? "").trim();
   const concessionTva = String(prof?.tva_intracommunautaire ?? "").trim();
 
-  let clientTel = clientTelephoneInput;
-  let clientEmailDb = clientEmailInput || String(kvStr.client_email ?? "").trim();
-  const clientAdresseDb = clientAdresseInput || String(br.client_adresse ?? "").trim();
+  let clientTel =
+    clientTelephoneInput ||
+    String(kvStr.client_telephone ?? "").trim();
+  let clientEmailDb =
+    clientEmailInput || String(kvStr.client_email ?? "").trim();
+  let clientAdresseDb =
+    clientAdresseInput ||
+    String(br.client_adresse ?? "").trim();
   const clientIdRow =
     br.client_id === null || br.client_id === undefined
       ? null
@@ -1821,7 +1798,7 @@ async function handleGenerateFacture(
   if (clientIdRow) {
     const { data: cl } = await admin
       .from("clients")
-      .select("telephone, email")
+      .select("telephone, email, adresse")
       .eq("id", clientIdRow)
       .eq("concession_id", userId)
       .maybeSingle();
@@ -1829,6 +1806,7 @@ async function handleGenerateFacture(
       const cli = cl as Record<string, unknown>;
       if (!clientTel) clientTel = String(cli.telephone ?? "").trim();
       if (!clientEmailDb) clientEmailDb = String(cli.email ?? "").trim();
+      if (!clientAdresseDb) clientAdresseDb = String(cli.adresse ?? "").trim();
     }
   }
 
@@ -1920,7 +1898,6 @@ async function handleGenerateFacture(
   const templatePayload: FactureTemplatePayload = {
     numero_facture: numeroFacture,
     date_facture_label: isoDateToFr(dateFactureIso),
-    date_livraison_label: dateLivraison ? isoDateToFr(dateLivraison) : "—",
     concession_nom: concessionNom,
     concession_siret: concessionSiret || "—",
     concession_adresse: concessionAdresse || "—",
@@ -1983,7 +1960,7 @@ async function handleGenerateFacture(
     client_id: clientIdRow,
     numero_facture: numeroFacture,
     date_facture: dateFactureIso,
-    date_livraison: dateLivraison,
+    date_livraison: null,
     concession_nom: concessionNom,
     concession_siret: concessionSiret || null,
     concession_adresse: concessionAdresse || null,

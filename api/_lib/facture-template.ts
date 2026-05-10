@@ -7,7 +7,6 @@ export type PrestationFacture = { libelle: string; prix_ht: number };
 export type FactureTemplatePayload = {
   numero_facture: string;
   date_facture_label: string;
-  date_livraison_label: string;
 
   concession_nom: string;
   concession_siret: string;
@@ -208,12 +207,6 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
     String(p.vehicule_couleur ?? "").trim() ||
     extractVehiculeField(vehiculeDonnees, ["couleur", "color", "teinte", "coloris"]);
 
-  const livraisonRaw = String(p.date_livraison_label ?? "").trim();
-  const livraisonLabel =
-    livraisonRaw && livraisonRaw !== "—"
-      ? livraisonRaw
-      : "À définir";
-
   const prestRows =
     p.prestations.length === 0
       ? `<tr><td colspan="2" style="padding:8px;border:1px solid #ccc;color:#666;font-style:italic;">Aucune prestation supplémentaire</td></tr>`
@@ -404,10 +397,6 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
     <div class="reste-box">
       <span>Reste à payer</span>
       ${esc(p.reste_a_payer_label)} € TTC
-    </div>
-    <div class="price-row" style="margin-top:8px;border-top:1px dashed #999;padding-top:8px;">
-      <span>Date de livraison du véhicule</span>
-      <span>${esc(livraisonLabel)}</span>
     </div>
   </div>
 
