@@ -1634,6 +1634,9 @@ async function handleGenerateFacture(
   const kvStr: Record<string, string> = {};
   for (const [k, v] of Object.entries(kvRaw)) kvStr[k] = String(v ?? "");
 
+  const clientEmailInput = String(data.client_email ?? "").trim();
+  const clientTelephoneInput = String(data.client_telephone ?? "").trim();
+
   const stockDonnees = parseStringDict(kvRaw.stock_donnees);
   const prix = parseNum(String(br.vehicule_prix ?? ""));
   const remise = parseNum(String(br.vehicule_remise ?? ""));
@@ -1717,8 +1720,8 @@ async function handleGenerateFacture(
   const concessionEmail = String(prof?.email_contact ?? authEmail ?? "").trim();
   const concessionTva = String(prof?.tva_intracommunautaire ?? "").trim();
 
-  let clientTel = "";
-  let clientEmailDb = String(kvStr.client_email ?? "").trim();
+  let clientTel = clientTelephoneInput;
+  let clientEmailDb = clientEmailInput || String(kvStr.client_email ?? "").trim();
   const clientIdRow =
     br.client_id === null || br.client_id === undefined
       ? null
@@ -1733,7 +1736,7 @@ async function handleGenerateFacture(
       .maybeSingle();
     if (cl && typeof cl === "object") {
       const cli = cl as Record<string, unknown>;
-      clientTel = String(cli.telephone ?? "").trim();
+      if (!clientTel) clientTel = String(cli.telephone ?? "").trim();
       if (!clientEmailDb) clientEmailDb = String(cli.email ?? "").trim();
     }
   }

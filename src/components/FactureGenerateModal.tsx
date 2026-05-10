@@ -34,6 +34,25 @@ function parseEuro(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function extractClientTelephoneFromDraft(draft: BonDraftData): string {
+  const fields = draft.customFieldsValues ?? {};
+  for (const [key, val] of Object.entries(fields)) {
+    const v = String(val ?? "").trim();
+    if (!v) continue;
+    const k = key.toLowerCase();
+    if (
+      k.includes("telephone") ||
+      k.includes("téléphone") ||
+      k.includes("tel") ||
+      k.includes("mobile") ||
+      k.includes("phone")
+    ) {
+      return v;
+    }
+  }
+  return "";
+}
+
 export type FactureGenerateModalPreset = "standard" | "closure";
 
 type Props = {
@@ -61,6 +80,8 @@ const FactureGenerateModal = ({
   const [garantieMois, setGarantieMois] = useState("12");
   const [kmNonGaranti, setKmNonGaranti] = useState(false);
   const [notes, setNotes] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [clientTelephone, setClientTelephone] = useState("");
   const [prestations, setPrestations] = useState<PrestationLine[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +103,8 @@ const FactureGenerateModal = ({
     setGarantieMois("12");
     setKmNonGaranti(false);
     setNotes("");
+    setClientEmail(String(draft.clientEmail ?? "").trim());
+    setClientTelephone(extractClientTelephoneFromDraft(draft));
     setPrestations([]);
     setError(null);
   }, [open, draft, preset]);
@@ -135,6 +158,8 @@ const FactureGenerateModal = ({
 
     const payload: GenerateFacturePayload = {
       brouillon_id: draft.id,
+      client_email: clientEmail.trim() || undefined,
+      client_telephone: clientTelephone.trim() || undefined,
       date_livraison: dateLivraison.trim() || undefined,
       acompte: parseEuro(acompte),
       reprise_montant: parseEuro(repriseMontant),
@@ -208,6 +233,35 @@ const FactureGenerateModal = ({
         </div>
 
         <form className="space-y-4" onSubmit={(ev) => void handleSubmit(ev)}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="field-label" htmlFor="fact-client-email">
+                Email du client
+              </label>
+              <input
+                id="fact-client-email"
+                type="email"
+                className="field-input"
+                value={clientEmail}
+                onChange={(e) => setClientEmail(e.target.value)}
+                placeholder="client@email.fr"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="field-label" htmlFor="fact-client-tel">
+                Téléphone du client
+              </label>
+              <input
+                id="fact-client-tel"
+                type="tel"
+                className="field-input"
+                value={clientTelephone}
+                onChange={(e) => setClientTelephone(e.target.value)}
+                placeholder="06 12 34 56 78"
+              />
+            </div>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label className="field-label" htmlFor="fact-date-liv">

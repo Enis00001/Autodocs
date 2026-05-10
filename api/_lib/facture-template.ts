@@ -188,15 +188,6 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
   }
   .legal p { margin-bottom: 6px; }
   .legal strong { font-weight: 700; }
-  .signatures { display: flex; gap: 16px; margin-top: 14px; }
-  .sig {
-    flex: 1;
-    border: 1px solid #ccc;
-    padding: 8px;
-    min-height: 72px;
-  }
-  .sig .t { font-weight: 700; font-size: 9px; margin-bottom: 4px; text-transform: uppercase; }
-  .sig .z { min-height: 56px; border: 1px dashed #bbb; margin-top: 6px; }
   .notes-box { margin-top: 8px; padding: 8px; border: 1px dashed #999; font-size: 9px; }
   .reprise-desc { font-size: 9px; color: #444; margin-top: 4px; font-style: italic; }
 </style>
@@ -277,19 +268,6 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
     <p><strong>Garantie légale de conformité</strong> : pour les acheteurs qualifiés de consommateurs, le véhicule bénéficie de la garantie légale de conformité prévue aux articles L. 217-3 et suivants du Code de la consommation, dans les conditions fixées par le décret n° 2021-609 du 19 mai 2021 et les textes subséquents.</p>
     <p>${p.vehicule_km_non_garanti ? "Le kilométrage est indiqué <strong>sans garantie</strong> au moment de la vente." : "Le vendeur déclare que le <strong>kilométrage indiqué est exact</strong> au moment de la vente."}</p>
     <p><strong>Conservation du document</strong> : ce document doit être conservé <strong>10 ans</strong> par le vendeur et l'acheteur aux fins notamment de justification fiscale et de garanties.</p>
-  </div>
-
-  <div class="signatures">
-    <div class="sig">
-      <div class="t">Signature du vendeur</div>
-      <div>${esc(p.concession_nom)}</div>
-      <div class="z"></div>
-    </div>
-    <div class="sig">
-      <div class="t">Signature de l'acheteur</div>
-      <div>${esc(p.client_prenom)} ${esc(p.client_nom)}</div>
-      <div class="z"></div>
-    </div>
   </div>
 
 </div>

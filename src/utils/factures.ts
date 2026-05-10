@@ -49,6 +49,8 @@ export type FactureRecord = {
 
 export type GenerateFacturePayload = {
   brouillon_id: string;
+  client_email?: string;
+  client_telephone?: string;
   date_livraison?: string;
   acompte?: number;
   reprise_montant?: number;
