@@ -329,17 +329,40 @@ const NouveauBon = () => {
 
   const handleSuccessfulModalClosed = useCallback(() => {
     const fs = formStateRef.current;
-    setClosurePayload({
-      draftSnapshot: snapshotDraftForm(fs),
-      vehiculeDisplayLabel: vehiculeTitreFromForm(fs),
-    });
-    setClosureCrmUi(fs.clientId ? "linked_snapshot" : "idle");
-    setClosureSoldDone(false);
-    setClosureSoldSaving(false);
-    setClosureFactureDone(null);
-    setClosureFactureModalOpen(false);
-    setClosureFactureDraft(null);
-    setClosureModalOpen(true);
+    const snapshot = snapshotDraftForm(fs);
+    const openClosure = (state: DraftFormState) => {
+      setClosurePayload({
+        draftSnapshot: snapshotDraftForm(state),
+        vehiculeDisplayLabel: vehiculeTitreFromForm(state),
+      });
+      setClosureCrmUi(state.clientId ? "linked_snapshot" : "idle");
+      setClosureSoldDone(false);
+      setClosureSoldSaving(false);
+      setClosureFactureDone(null);
+      setClosureFactureModalOpen(false);
+      setClosureFactureDraft(null);
+      setClosureModalOpen(true);
+    };
+
+    void (async () => {
+      try {
+        const saved = await upsertDraft(closureSnapshotForUpsert(snapshot));
+        const nextState: DraftFormState = {
+          ...snapshot,
+          id: saved.id,
+        };
+        setFormState((prev) => ({ ...prev, id: saved.id }));
+        const t = toast({
+          title: "Bon sauvegardé automatiquement ✓",
+          description: "Le brouillon a été mis à jour.",
+        });
+        window.setTimeout(() => t.dismiss(), 3000);
+        openClosure(nextState);
+      } catch (err) {
+        console.error("Erreur sauvegarde auto:", err);
+        openClosure(snapshot);
+      }
+    })();
   }, []);
 
   useEffect(() => {

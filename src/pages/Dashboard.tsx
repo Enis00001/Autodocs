@@ -16,6 +16,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
+import { toast } from "@/hooks/use-toast";
 import { BonDraftData, loadDrafts, deleteDraft } from "@/utils/drafts";
 import { isDraftFormComplete } from "@/utils/bonFormCompletion";
 import SignatureStatusBadge from "@/components/SignatureStatusBadge";
@@ -758,9 +759,22 @@ const Dashboard = () => {
                                 type="button"
                                 className="btn-danger cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
                                 onClick={async () => {
-                                  if (window.confirm("Supprimer ce brouillon ?")) {
+                                  if (!window.confirm("Supprimer ce bon de commande ?")) return;
+                                  try {
                                     await deleteDraft(d.id);
                                     setDrafts((prev) => prev.filter((x) => x.id !== d.id));
+                                    const t = toast({ title: "Bon supprimé ✓" });
+                                    window.setTimeout(() => t.dismiss(), 3000);
+                                  } catch (err) {
+                                    const message =
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Suppression impossible.";
+                                    toast({
+                                      title: "Erreur de suppression",
+                                      description: message,
+                                      variant: "destructive",
+                                    });
                                   }
                                 }}
                                 aria-label="Supprimer le brouillon"

@@ -421,13 +421,29 @@ export async function markDraftSignatureRequestSent(
   }
 }
 
-export async function deleteDraft(id: string): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
-  await supabase.from("brouillons").delete().eq("id", id).eq("user_id", userId);
+export async function deleteDraft(id: string): Promise<boolean> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw new Error("Non authentifié");
+  }
+
+  const { error } = await supabase
+    .from("brouillons")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id);
+  if (error) {
+    console.error("deleteDraft:", error);
+    throw new Error(error.message || "Suppression impossible.");
+  }
+
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("autodocs_drafts_updated"));
   }
+  return true;
 }
 
 export async function upsertDraft(
@@ -439,58 +455,32 @@ export async function upsertDraft(
   }
   const now = new Date().toISOString();
 
-  if (partial.id) {
-    const { data: existing } = await supabase
-      .from("brouillons")
-      .select("*")
-      .eq("id", partial.id)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (existing) {
-      const merged: BonDraftData = {
-        ...rowToDraft(existing as BrouillonRow),
-        ...partial,
-        id: partial.id,
-        updatedAt: now,
-      };
-      const { error } = await supabase
-        .from("brouillons")
-        .update({ updated_at: now, ...draftToPayload(merged) })
-        .eq("id", partial.id)
-        .eq("user_id", userId);
-      if (error) {
-        console.error("upsertDraft update:", error);
-        throw new Error(error.message || "Erreur lors de la mise à jour du brouillon.");
-      }
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("autodocs_drafts_updated"));
-      }
-      return merged;
-    }
-  }
-
   const id = crypto.randomUUID?.() ?? String(Date.now());
-  const { id: _omit, ...rest } = partial;
-  void _omit;
+  const targetId = partial.id ?? id;
   const created: BonDraftData = {
-    ...rest,
-    id,
+    ...partial,
+    id: targetId,
     createdAt: now,
     updatedAt: now,
   };
-  const { error } = await supabase.from("brouillons").insert({
+  const payload = {
     user_id: userId,
-    id,
+    id: targetId,
     created_at: now,
     updated_at: now,
     ...draftToPayload(created),
-  });
+  };
+  const { data, error } = await supabase
+    .from("brouillons")
+    .upsert(payload, { onConflict: "id" })
+    .select("*")
+    .single();
   if (error) {
-    console.error("upsertDraft insert:", error);
-    throw new Error(error.message || "Erreur lors de la création du brouillon.");
+    console.error("upsertDraft upsert:", error);
+    throw new Error(error.message || "Erreur lors de la sauvegarde du brouillon.");
   }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("autodocs_drafts_updated"));
   }
-  return created;
+  return rowToDraft(data as BrouillonRow);
 }

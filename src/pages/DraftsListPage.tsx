@@ -30,6 +30,7 @@ import TopBar from "@/components/layout/TopBar";
 import { buildPdfFormDataFromDraft, generatePDF, downloadBase64Pdf } from "@/utils/generatePDF";
 import FactureGenerateModal from "@/components/FactureGenerateModal";
 import { getFactures, getFactureById } from "@/utils/factures";
+import { toast } from "@/hooks/use-toast";
 
 const clientLabel = (d: BonDraftData) =>
   [d.clientPrenom, d.clientNom].filter(Boolean).join(" ").trim() || "—";
@@ -382,9 +383,22 @@ const DraftsListPage = ({
                               type="button"
                               className="btn-danger cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
                               onClick={async () => {
-                                if (window.confirm("Supprimer ce brouillon ?")) {
+                                if (!window.confirm("Supprimer ce bon de commande ?")) return;
+                                try {
                                   await deleteDraft(d.id);
                                   setDrafts((prev) => prev.filter((x) => x.id !== d.id));
+                                  const t = toast({ title: "Bon supprimé ✓" });
+                                  window.setTimeout(() => t.dismiss(), 3000);
+                                } catch (err) {
+                                  const message =
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Suppression impossible.";
+                                  toast({
+                                    title: "Erreur de suppression",
+                                    description: message,
+                                    variant: "destructive",
+                                  });
                                 }
                               }}
                               aria-label="Supprimer le brouillon"
