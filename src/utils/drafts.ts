@@ -83,6 +83,11 @@ export type BonDraftData = {
   /** Date ISO de signature côté client (signature via /signer/:token). */
   clientSignedAt?: string;
   /**
+   * Horodatages des emails de relance (table `signature_requests`, demande en cours).
+   */
+  signatureRelance1SentAt?: string;
+  signatureRelance2SentAt?: string;
+  /**
    * UUID de la fiche client (table `clients`) rattachée à ce brouillon.
    * Nullable : un bon peut être créé avant que sa fiche client n'existe.
    * La FK est `ON DELETE SET NULL` côté Postgres : supprimer un client
@@ -292,7 +297,60 @@ export async function loadDrafts(): Promise<BonDraftData[]> {
     console.error("loadDrafts:", error);
     return [];
   }
-  return (data ?? []).map((row) => rowToDraft(row as BrouillonRow));
+  const drafts = (data ?? []).map((row) => rowToDraft(row as BrouillonRow));
+  const ids = drafts.map((d) => d.id);
+  if (ids.length === 0) return drafts;
+
+  const { data: srList, error: srErr } = await supabase
+    .from("signature_requests")
+    .select("brouillon_id, token, relance_1_sent_at, relance_2_sent_at, created_at")
+    .in("brouillon_id", ids)
+    .is("signed_at", null);
+
+  if (srErr) {
+    console.error("loadDrafts signature_requests:", srErr);
+    return drafts;
+  }
+
+  type SrPick = {
+    brouillon_id: string | null;
+    token?: string | null;
+    relance_1_sent_at?: string | null;
+    relance_2_sent_at?: string | null;
+    created_at?: string | null;
+  };
+
+  const byBrouillon = new Map<string, SrPick[]>();
+  for (const row of (srList ?? []) as SrPick[]) {
+    const bid = String(row.brouillon_id ?? "").trim();
+    if (!bid) continue;
+    const arr = byBrouillon.get(bid) ?? [];
+    arr.push(row);
+    byBrouillon.set(bid, arr);
+  }
+
+  return drafts.map((d) => {
+    const rows = byBrouillon.get(d.id);
+    if (!rows?.length) return d;
+    const match = d.signatureRequestToken
+      ? rows.find((r) => String(r.token ?? "") === d.signatureRequestToken)
+      : undefined;
+    const sorted = [...rows].sort(
+      (a, b) =>
+        new Date(String(b.created_at ?? 0)).getTime() -
+        new Date(String(a.created_at ?? 0)).getTime(),
+    );
+    const pick = match ?? sorted[0];
+    return {
+      ...d,
+      signatureRelance1SentAt: pick.relance_1_sent_at
+        ? String(pick.relance_1_sent_at)
+        : undefined,
+      signatureRelance2SentAt: pick.relance_2_sent_at
+        ? String(pick.relance_2_sent_at)
+        : undefined,
+    };
+  });
 }
 
 export async function getDraft(id: string): Promise<BonDraftData | undefined> {

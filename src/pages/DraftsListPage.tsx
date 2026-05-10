@@ -29,6 +29,8 @@ import {
   getClients,
 } from "@/utils/clients";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/apiClient";
+import { getCurrentConcessionId, getCurrentMembreRole } from "@/lib/auth";
 import TopBar from "@/components/layout/TopBar";
 import { buildPdfFormDataFromDraft, generatePDF, downloadBase64Pdf } from "@/utils/generatePDF";
 import FactureGenerateModal from "@/components/FactureGenerateModal";
@@ -37,6 +39,10 @@ import { toast } from "@/hooks/use-toast";
 
 const clientLabel = (d: BonDraftData) =>
   [d.clientPrenom, d.clientNom].filter(Boolean).join(" ").trim() || "—";
+
+/** Bon avec lien de signature client envoyé, en attente de signature (cf. SignatureStatusBadge « pending »). */
+const isEnAttenteSignatureClient = (d: BonDraftData) =>
+  !!d.signatureRequestToken && !d.clientSignedAt;
 
 const vehiculeLabel = (d: BonDraftData) => {
   const order =
@@ -84,6 +90,8 @@ const DraftsListPage = ({
   );
   const [factureLoadingId, setFactureLoadingId] = useState<string | null>(null);
   const [emailSendingId, setEmailSendingId] = useState<string | null>(null);
+  const [relanceSendingId, setRelanceSendingId] = useState<string | null>(null);
+  const [membreRole, setMembreRole] = useState<"admin" | "commercial">("commercial");
   const navigate = useNavigate();
 
   const refresh = async () => {
@@ -106,6 +114,10 @@ const DraftsListPage = ({
     }
     setFacturesByBrouillon(m);
   };
+
+  useEffect(() => {
+    void getCurrentMembreRole().then(setMembreRole);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -177,6 +189,57 @@ const DraftsListPage = ({
       });
     } finally {
       setEmailSendingId(null);
+    }
+  };
+
+  const handleSendRelanceBon = async (d: BonDraftData) => {
+    const concessionId = await getCurrentConcessionId();
+    if (!concessionId) {
+      toast({
+        title: "Session",
+        description: "Concession introuvable pour ce compte.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setRelanceSendingId(d.id);
+    try {
+      const response = await apiFetch("/api/actions", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "send-relances",
+          concession_id: concessionId,
+          brouillon_id: d.id,
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        sent?: number;
+      };
+      if (!response.ok) {
+        throw new Error(body.error || "Envoi de la relance impossible.");
+      }
+      const n = Number(body.sent ?? 0);
+      if (n < 1) {
+        toast({
+          title: "Aucun envoi",
+          description:
+            "Vérifiez l’email client ou l’état de la demande de signature.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Email de relance envoyé ✓" });
+      }
+      await refresh();
+    } catch (err) {
+      toast({
+        title: "Relance impossible",
+        description:
+          err instanceof Error ? err.message : "Réessayez dans un instant.",
+        variant: "destructive",
+      });
+    } finally {
+      setRelanceSendingId(null);
     }
   };
 
@@ -377,6 +440,43 @@ const DraftsListPage = ({
                         </td>
                         <td className="py-3 text-right">
                           <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2">
+                            {membreRole === "admin" && isEnAttenteSignatureClient(d) ? (
+                              (() => {
+                                const r1 = !!d.signatureRelance1SentAt;
+                                const r2 = !!d.signatureRelance2SentAt;
+                                const doneBoth = r1 && r2;
+                                const sendingRel = relanceSendingId === d.id;
+                                const label = doneBoth
+                                  ? "✓ Relancé 2x"
+                                  : r1
+                                    ? "📧 Relance 2"
+                                    : "📧 Relancer";
+                                return (
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      "btn-secondary inline-flex items-center gap-1.5 px-2 py-1.5 text-xs md:px-2.5",
+                                      doneBoth
+                                        ? "cursor-not-allowed opacity-50"
+                                        : "cursor-pointer",
+                                    )}
+                                    disabled={doneBoth || sendingRel}
+                                    onClick={() => void handleSendRelanceBon(d)}
+                                    title={
+                                      doneBoth
+                                        ? "Les deux relances ont déjà été envoyées"
+                                        : "Envoyer un email de relance pour ce bon"
+                                    }
+                                    aria-label={sendingRel ? "Envoi de la relance" : label}
+                                  >
+                                    {sendingRel ? (
+                                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                                    ) : null}
+                                    <span>{sendingRel ? "Envoi…" : label}</span>
+                                  </button>
+                                );
+                              })()
+                            ) : null}
                             {(() => {
                               const factureMeta = facturesByBrouillon.get(d.id);
                               if (!factureMeta) {

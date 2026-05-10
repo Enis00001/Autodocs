@@ -1134,10 +1134,7 @@ const ProfilConcession = () => {
                       </p>
                     )}
 
-                    <div className="rounded-input border border-border/60 bg-secondary/20 p-3 space-y-2">
-                      <div className="text-sm font-semibold text-foreground">
-                        Envoyer les relances maintenant
-                      </div>
+                    <div className="rounded-input border border-border/60 bg-secondary/20 p-3">
                       <button
                         type="button"
                         disabled={sendingRelances || !isAdminMembre}
@@ -1151,10 +1148,10 @@ const ProfilConcession = () => {
                         )}
                         {sendingRelances
                           ? "Envoi en cours…"
-                          : "Vérifier et envoyer les relances en attente"}
+                          : "Envoyer toutes les relances en attente"}
                       </button>
                       {relancesResult !== null ? (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-2 text-xs text-muted-foreground">
                           {relancesResult} email(s) de relance envoyé(s)
                         </p>
                       ) : null}

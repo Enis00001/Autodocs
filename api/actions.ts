@@ -645,6 +645,8 @@ type ResendBody = {
 
 type SendRelancesBody = {
   concession_id?: string;
+  /** Si renseigné : n’envoie la relance suivante que pour ce brouillon (sans filtre délai). */
+  brouillon_id?: string;
 };
 
 type SaveRelancesConfigBody = {
@@ -1440,31 +1442,14 @@ async function handleSendRelances(
   const body = data as SendRelancesBody;
   console.log("send-relances body:", body);
 
+  const targetedBrouillonId =
+    typeof body.brouillon_id === "string" ? body.brouillon_id.trim() : "";
   const concessionFilter = String(body.concession_id ?? "").trim() || null;
 
   const admin = await getSupabaseAdmin();
-  const configQuery = admin
-    .from("relances_config")
-    .select(
-      "concession_id, actif, delai_premier_rappel, delai_deuxieme_rappel, message_personnalise",
-    )
-    .eq("actif", true);
-
-  if (concessionFilter) configQuery.eq("concession_id", concessionFilter);
-
-  const { data: configs, error: cfgErr } = await configQuery;
-  if (cfgErr) {
-    console.error("[actions/send-relances] config read:", cfgErr);
-    return res.status(500).json({ error: "Impossible de lire la configuration des relances." });
-  }
-  if (!configs || configs.length === 0) {
-    return res.status(200).json({ sent: 0 });
-  }
-
   const resend = new Resend(apiKey);
   const appUrl = getPublicAppUrl(req);
   const now = new Date();
-  let sent = 0;
 
   type RelanceSrRow = {
     id: string;
@@ -1475,11 +1460,17 @@ async function handleSendRelances(
     client_nom?: string | null;
     client_prenom?: string | null;
     form_data?: unknown;
+    relance_1_sent_at?: string | null;
+    relance_2_sent_at?: string | null;
+  };
+
+  type RelancesConfigForMail = {
+    message_personnalise?: string | null;
   };
 
   const sendRelanceMailForRow = async (
     sr: RelanceSrRow,
-    configRow: (typeof configs)[number],
+    configRow: RelancesConfigForMail,
     numero: 1 | 2,
   ): Promise<boolean> => {
     const token = String(sr.token ?? "").trim();
@@ -1587,6 +1578,91 @@ async function handleSendRelances(
     }
   };
 
+  if (targetedBrouillonId) {
+    if (!concessionFilter) {
+      return res
+        .status(400)
+        .json({ error: "concession_id requis pour une relance ciblée." });
+    }
+
+    const { data: brRow, error: brErr } = await admin
+      .from("brouillons")
+      .select("id, concession_id")
+      .eq("id", targetedBrouillonId)
+      .maybeSingle();
+
+    if (brErr) {
+      console.error("[actions/send-relances] targeted brouillon:", brErr);
+      return res.status(500).json({ error: "Impossible de vérifier le bon." });
+    }
+    if (!brRow) {
+      return res.status(404).json({ error: "Bon introuvable." });
+    }
+    if (String(brRow.concession_id ?? "").trim() !== concessionFilter) {
+      return res.status(403).json({ error: "Bon non autorisé pour cette concession." });
+    }
+
+    const { data: cfgRow } = await admin
+      .from("relances_config")
+      .select("message_personnalise")
+      .eq("concession_id", concessionFilter)
+      .maybeSingle();
+
+    const configForSend: RelancesConfigForMail = {
+      message_personnalise: cfgRow?.message_personnalise ?? null,
+    };
+
+    const { data: srs, error: srErr } = await admin
+      .from("signature_requests")
+      .select(
+        "id, token, expires_at, brouillon_id, client_email, client_nom, client_prenom, form_data, created_at, relance_1_sent_at, relance_2_sent_at",
+      )
+      .eq("brouillon_id", targetedBrouillonId)
+      .is("signed_at", null)
+      .order("created_at", { ascending: false });
+
+    if (srErr) {
+      console.error("[actions/send-relances] targeted signature_requests:", srErr);
+      return res
+        .status(500)
+        .json({ error: "Impossible de lire la demande de signature." });
+    }
+
+    const sr = (srs?.[0] ?? undefined) as RelanceSrRow | undefined;
+    if (!sr) {
+      return res.status(200).json({ sent: 0 });
+    }
+
+    let sentTargeted = 0;
+    if (!sr.relance_1_sent_at) {
+      if (await sendRelanceMailForRow(sr, configForSend, 1)) sentTargeted = 1;
+    } else if (!sr.relance_2_sent_at) {
+      if (await sendRelanceMailForRow(sr, configForSend, 2)) sentTargeted = 1;
+    }
+
+    return res.status(200).json({ sent: sentTargeted });
+  }
+
+  const configQuery = admin
+    .from("relances_config")
+    .select(
+      "concession_id, actif, delai_premier_rappel, delai_deuxieme_rappel, message_personnalise",
+    )
+    .eq("actif", true);
+
+  if (concessionFilter) configQuery.eq("concession_id", concessionFilter);
+
+  const { data: configs, error: cfgErr } = await configQuery;
+  if (cfgErr) {
+    console.error("[actions/send-relances] config read:", cfgErr);
+    return res.status(500).json({ error: "Impossible de lire la configuration des relances." });
+  }
+  if (!configs || configs.length === 0) {
+    return res.status(200).json({ sent: 0 });
+  }
+
+  let sent = 0;
+
   for (const config of configs) {
     const concessionId = String(config.concession_id ?? "").trim();
     if (!concessionId) continue;
@@ -1638,7 +1714,8 @@ async function handleSendRelances(
     }
 
     for (const sr of aRelancer1 ?? []) {
-      if (await sendRelanceMailForRow(sr as RelanceSrRow, config, 1)) sent += 1;
+      if (await sendRelanceMailForRow(sr as RelanceSrRow, config as RelancesConfigForMail, 1))
+        sent += 1;
     }
 
     const delaiMs2 = Math.max(0, deuxiemeDelai) * 24 * 60 * 60 * 1000;
@@ -1664,7 +1741,8 @@ async function handleSendRelances(
     }
 
     for (const sr of aRelancer2 ?? []) {
-      if (await sendRelanceMailForRow(sr as RelanceSrRow, config, 2)) sent += 1;
+      if (await sendRelanceMailForRow(sr as RelanceSrRow, config as RelancesConfigForMail, 2))
+        sent += 1;
     }
   }
 
