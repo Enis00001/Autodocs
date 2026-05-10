@@ -344,9 +344,9 @@ function buildHtml(
   const remise = parseNum(formData.vehiculeRemise);
   const repriseValeur = parseNum(formData.reprise_valeur);
   const repriseActive = repriseValeur > 0;
-  const netAPayer = Math.max(0, prix - remise - repriseValeur);
+  const netAPayer = Math.max(0, prix);
   const acompte = parseNum(formData.acompte);
-  const solde = Math.max(0, netAPayer - acompte);
+  const solde = Math.max(0, prix - acompte);
 
   const repriseDureeMoisRaw = (formData.reprise_duree_mois ?? "").trim();
   const hasRepriseDuree = repriseDureeMoisRaw !== "" && parseNum(repriseDureeMoisRaw) > 0;

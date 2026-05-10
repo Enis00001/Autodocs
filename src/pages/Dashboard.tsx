@@ -65,7 +65,7 @@ const Dashboard = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
   const [period, setPeriod] = useState<DashboardPeriod>("month");
   const [stats, setStats] = useState<Awaited<ReturnType<typeof loadDashboardStats>> | null>(null);
@@ -102,15 +102,15 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [period, reloadKey]);
+  }, [period, refreshKey]);
 
   const handleRetry = useCallback(() => {
-    setReloadKey((k) => k + 1);
+    setRefreshKey((k) => k + 1);
   }, []);
 
   useEffect(() => {
-    const onFocus = () => setReloadKey((k) => k + 1);
-    const intervalId = window.setInterval(() => setReloadKey((k) => k + 1), 30000);
+    const onFocus = () => setRefreshKey((k) => k + 1);
+    const intervalId = window.setInterval(() => setRefreshKey((k) => k + 1), 30000);
     window.addEventListener("focus", onFocus);
     return () => {
       window.clearInterval(intervalId);
@@ -579,8 +579,7 @@ const Dashboard = () => {
                   Aucune vente pour le moment
                 </p>
                 <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                  Vos prochaines ventes apparaîtront ici dès qu'une facture
-                  aura été émise.
+                  Les véhicules marqués « vendu » apparaissent ici automatiquement.
                 </p>
               </div>
             ) : (
@@ -590,7 +589,7 @@ const Dashboard = () => {
                     <tr className="border-b border-border text-left text-muted-foreground">
                       <th className="pb-3 font-medium">Véhicule</th>
                       <th className="pb-3 font-medium">Client</th>
-                      <th className="hidden pb-3 font-medium md:table-cell">Date</th>
+                      <th className="hidden pb-3 font-medium md:table-cell">Date vente</th>
                       <th className="pb-3 text-right font-medium">Prix TTC</th>
                     </tr>
                   </thead>
@@ -607,7 +606,10 @@ const Dashboard = () => {
                           {sale.vehicule}
                         </td>
                         <td
-                          className="max-w-[140px] truncate py-3 text-muted-foreground md:max-w-none"
+                          className={cn(
+                            "max-w-[140px] truncate py-3 md:max-w-none",
+                            sale.hasFacture ? "text-muted-foreground" : "text-amber-400",
+                          )}
                           title={sale.client}
                         >
                           {sale.client}
@@ -621,8 +623,12 @@ const Dashboard = () => {
                               })
                             : "—"}
                         </td>
-                        <td className="py-3 text-right font-semibold text-foreground tabular-nums">
-                          {formatCurrency(sale.prixTtc)}
+                        <td className="py-3 text-right font-semibold tabular-nums">
+                          {sale.prixTtc === null ? (
+                            <span className="text-amber-400">Facture non générée</span>
+                          ) : (
+                            <span className="text-foreground">{formatCurrency(sale.prixTtc)}</span>
+                          )}
                         </td>
                       </tr>
                     ))}

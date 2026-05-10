@@ -68,7 +68,7 @@ function normalizeVehiculeKey(raw: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[\s_.\-]/g, "");
+    .replace(/[\s_.-]/g, "");
 }
 
 function extractVehiculeField(
@@ -225,8 +225,12 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
 
   const repriseBlock =
     parseFloat(String(p.reprise_montant_label).replace(/\s/g, "").replace(",", ".")) > 0
-      ? `<div class="price-row"><span>Reprise véhicule déduite</span><span>− ${esc(p.reprise_montant_label)} €</span></div>
+      ? `<div class="price-row"><span>Reprise déduite</span><span>− ${esc(p.reprise_montant_label)} €</span></div>
          ${(p.reprise_description ?? "").trim() ? `<div class="reprise-desc">${esc(p.reprise_description.trim())}</div>` : ""}`
+      : "";
+  const acompteBlock =
+    parseFloat(String(p.acompte_label).replace(/\s/g, "").replace(",", ".")) > 0
+      ? `<div class="price-row"><span>Acompte versé</span><span>− ${esc(p.acompte_label)} €</span></div>`
       : "";
 
   return `<!DOCTYPE html>
@@ -392,11 +396,11 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
     <div class="price-row emphasis"><span>Total HT</span><span>${esc(p.prix_ht_total_label)} €</span></div>
     <div class="price-row"><span>TVA (${esc(p.tva_taux_label)} %)</span><span>${esc(p.tva_montant_label)} €</span></div>
     <div class="price-row emphasis"><span>Total TTC</span><span>${esc(p.prix_ttc_label)} €</span></div>
-    <div class="price-row"><span>Acompte versé</span><span>− ${esc(p.acompte_label)} €</span></div>
+    ${acompteBlock}
     ${repriseBlock}
     <div class="reste-box">
-      <span>Reste à payer</span>
-      ${esc(p.reste_a_payer_label)} € TTC
+      <span>Net à payer TTC</span>
+      ${esc(p.reste_a_payer_label)} €
     </div>
   </div>
 

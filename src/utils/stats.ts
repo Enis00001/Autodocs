@@ -267,7 +267,8 @@ export type RecentSaleRow = {
   createdAt: string;
   vehicule: string;
   client: string;
-  prixTtc: number;
+  prixTtc: number | null;
+  hasFacture: boolean;
 };
 
 /**
@@ -282,84 +283,72 @@ export async function loadRecentSales(
 ): Promise<RecentSaleRow[]> {
   const uid = await getCurrentUserId();
   if (!uid) return [];
-  const since = getPeriodStart(period).toISOString();
-
-  const { data: facturesData, error: facturesError } = await supabase
-    .from("factures")
-    .select(
-      "id, created_at, prix_ttc, client_nom, client_prenom, vehicule_marque, vehicule_modele, vehicule_version, brouillon_id",
-    )
-    .eq("concession_id", uid)
-    .neq("statut", "annulee")
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  void period;
 
   const { data: stockData, error: stockError } = await supabase
     .from("stock_vehicules")
-    .select("id, donnees, marque, modele, prix, updated_at, created_at")
+    .select("id, donnees, marque, modele, updated_at, created_at")
     .eq("concession_id", uid)
     .eq("statut", "vendu")
     .order("updated_at", { ascending: false })
-    .limit(limit * 2);
-
-  if (facturesError) {
-    console.error("loadRecentSales factures:", facturesError);
-    throw new Error(facturesError.message);
-  }
+    .limit(limit * 6);
   if (stockError) {
     console.error("loadRecentSales stock:", stockError);
     throw new Error(stockError.message);
   }
 
-  const factureRows = facturesData ?? [];
-  const brouillonIds = Array.from(
-    new Set(
-      factureRows
-        .map((row) =>
-          typeof row.brouillon_id === "string" && row.brouillon_id.trim()
-            ? row.brouillon_id
-            : null,
-        )
-        .filter((id): id is string => Boolean(id)),
-    ),
-  );
-  const soldVehiculeIdsFromFactures = new Set<string>();
-  if (brouillonIds.length > 0) {
-    const { data: brouillonsRows, error: brouillonsError } = await supabase
-      .from("brouillons")
-      .select("id, vehicle_field_values")
-      .eq("user_id", uid)
-      .in("id", brouillonIds);
-    if (brouillonsError) {
-      console.error("loadRecentSales brouillons:", brouillonsError);
+  const soldRows = stockData ?? [];
+  const soldIds = soldRows.map((row) => String(row.id));
+  const { data: brouillonsData, error: brouillonsError } = await supabase
+    .from("brouillons")
+    .select("id, vehicle_field_values")
+    .eq("user_id", uid);
+  if (brouillonsError) {
+    console.error("loadRecentSales brouillons:", brouillonsError);
+  }
+  const brouillonByVehicule = new Map<string, string>();
+  for (const row of brouillonsData ?? []) {
+    const vehiculeId = getVehiculeStockId(row.vehicle_field_values);
+    if (!vehiculeId || !soldIds.includes(vehiculeId)) continue;
+    if (typeof row.id === "string" && row.id.trim()) {
+      brouillonByVehicule.set(vehiculeId, row.id);
     }
-    for (const row of brouillonsRows ?? []) {
-      const vehiculeId = getVehiculeStockId(row.vehicle_field_values);
-      if (vehiculeId) soldVehiculeIdsFromFactures.add(vehiculeId);
+  }
+  const brouillonIds = Array.from(new Set(brouillonByVehicule.values()));
+  const factureByBrouillon = new Map<
+    string,
+    { client: string; prixTtc: number; createdAt: string }
+  >();
+  if (brouillonIds.length > 0) {
+    const { data: facturesData, error: facturesError } = await supabase
+      .from("factures")
+      .select("brouillon_id, client_nom, client_prenom, prix_ttc, created_at")
+      .eq("concession_id", uid)
+      .neq("statut", "annulee")
+      .in("brouillon_id", brouillonIds)
+      .order("created_at", { ascending: false });
+    if (facturesError) {
+      console.error("loadRecentSales factures:", facturesError);
+    }
+    for (const row of facturesData ?? []) {
+      const brouillonId =
+        typeof row.brouillon_id === "string" ? row.brouillon_id.trim() : "";
+      if (!brouillonId || factureByBrouillon.has(brouillonId)) continue;
+      const client = [row.client_prenom, row.client_nom]
+        .map((v) => (typeof v === "string" ? v.trim() : ""))
+        .filter(Boolean)
+        .join(" ");
+      const prix =
+        typeof row.prix_ttc === "number" ? row.prix_ttc : Number(row.prix_ttc ?? 0);
+      factureByBrouillon.set(brouillonId, {
+        client: client || "Facture non générée",
+        prixTtc: Number.isFinite(prix) ? prix : 0,
+        createdAt: typeof row.created_at === "string" ? row.created_at : "",
+      });
     }
   }
 
-  const fromFactures: RecentSaleRow[] = factureRows.map((row) => {
-    const vehiculeParts = [row.vehicule_marque, row.vehicule_modele, row.vehicule_version]
-      .map((v) => (typeof v === "string" ? v.trim() : ""))
-      .filter(Boolean);
-    const clientParts = [row.client_prenom, row.client_nom]
-      .map((v) => (typeof v === "string" ? v.trim() : ""))
-      .filter(Boolean);
-    const prix =
-      typeof row.prix_ttc === "number" ? row.prix_ttc : Number(row.prix_ttc ?? 0);
-    return {
-      id: String(row.id),
-      createdAt: typeof row.created_at === "string" ? row.created_at : "",
-      vehicule: vehiculeParts.join(" ") || "—",
-      client: clientParts.join(" ") || "—",
-      prixTtc: Number.isFinite(prix) ? prix : 0,
-    };
-  });
-
-  const fromStock: RecentSaleRow[] = (stockData ?? [])
-    .filter((row) => !soldVehiculeIdsFromFactures.has(String(row.id)))
+  return soldRows
     .map((row) => {
       const d =
         row.donnees && typeof row.donnees === "object"
@@ -370,27 +359,23 @@ export async function loadRecentSales(
         .filter(Boolean)
         .slice(0, 3)
         .join(" ");
-      const rawPrix = row.prix ?? d.prix ?? d["Prix TTC"] ?? d.prix_ttc;
-      const prix =
-        typeof rawPrix === "number" ? rawPrix : Number(String(rawPrix ?? "0").replace(",", "."));
-      const createdAt =
+      const soldAt =
         typeof row.updated_at === "string" && row.updated_at
           ? row.updated_at
-          : (row.created_at ?? "");
+          : typeof row.created_at === "string"
+            ? row.created_at
+            : "";
+      const brouillonId = brouillonByVehicule.get(String(row.id));
+      const facture = brouillonId ? factureByBrouillon.get(brouillonId) : undefined;
       return {
-        id: `stock-${row.id}`,
-        createdAt: typeof createdAt === "string" ? createdAt : "",
+        id: String(row.id),
+        createdAt: facture?.createdAt || soldAt,
         vehicule: vehicule || "—",
-        client: "—",
-        prixTtc: Number.isFinite(prix) ? prix : 0,
+        client: facture?.client || "Facture non générée",
+        prixTtc: facture ? facture.prixTtc : null,
+        hasFacture: Boolean(facture),
       };
     })
-    .filter((row) => {
-      if (!row.createdAt) return false;
-      const d = new Date(row.createdAt);
-      return !Number.isNaN(d.getTime()) && d >= new Date(since);
-    })
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-
-  return [...fromFactures, ...fromStock].slice(0, limit);
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, limit);
 }

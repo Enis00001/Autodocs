@@ -258,7 +258,7 @@ function normalizeVehiculeKey(raw: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[\s_.\-]/g, "");
+    .replace(/[\s_.-]/g, "");
 }
 
 function extractVehiculeField(
@@ -475,9 +475,9 @@ function buildHtml(
   const remise = parseNum(formData.vehiculeRemise);
   const repriseValeur = parseNum(formData.reprise_valeur);
   const repriseActive = repriseValeur > 0;
-  const netAPayer = Math.max(0, prix - remise - repriseValeur);
+  const netAPayer = Math.max(0, prix);
   const acompte = parseNum(formData.acompte);
-  const solde = Math.max(0, netAPayer - acompte);
+  const solde = Math.max(0, prix - acompte);
 
   const repriseDureeMoisRaw = (formData.reprise_duree_mois ?? "").trim();
   const hasRepriseDuree = repriseDureeMoisRaw !== "" && parseNum(repriseDureeMoisRaw) > 0;
@@ -1365,7 +1365,7 @@ function parseAdresse(raw: string): {
 function parseDate(raw: string): { j: string; m: string; a: string } {
   const s = raw.trim();
   if (!s) return { j: "", m: "", a: "" };
-  const slash = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/.exec(s);
+  const slash = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/.exec(s);
   if (slash) {
     const j = slash[1].padStart(2, "0");
     const m = slash[2].padStart(2, "0");
@@ -1729,25 +1729,21 @@ async function handleGenerateFacture(
   const clientTelephoneInput = String(data.client_telephone ?? "").trim();
 
   const stockDonnees = parseStringDict(kvRaw.stock_donnees);
-  const prix = parseNum(String(br.vehicule_prix ?? ""));
-  const remise = parseNum(String(br.vehicule_remise ?? ""));
-  const repriseBon = parseNum(String(kvStr.reprise_valeur ?? ""));
-  const vehicleNetTtc = Math.max(0, round2(prix - remise - repriseBon));
-
-  const tvaTaux = Math.min(100, Math.max(0, parseNum(String(data.tva_taux ?? "20")) || 20));
-
+  const prixTtcInput = round2(parseNum(String(br.vehicule_prix ?? data.prix_ttc ?? "0")));
+  const tvaTaux = 20;
   const prestations: { libelle: string; prix_ht: number }[] = [];
-
   const sumPrestHt = round2(prestations.reduce((s, pr) => s + pr.prix_ht, 0));
-  const vehHt = round2(vehicleNetTtc / (1 + tvaTaux / 100));
-  const prestTtc = round2(sumPrestHt * (1 + tvaTaux / 100));
-  const prixHtTotal = round2(vehHt + sumPrestHt);
-  const prixTtcTotal = round2(vehicleNetTtc + prestTtc);
+  const prixHtVehicule = round2(prixTtcInput / 1.2);
+  const prixHtTotal = round2(prixHtVehicule + sumPrestHt);
+  const prixTtcTotal = round2(prixTtcInput);
   const tvaMontant = round2(prixTtcTotal - prixHtTotal);
-
-  const acompte = round2(parseNum(String(br.acompte ?? "0")));
-  const repriseMontantFacture = round2(parseNum(String(kvStr.reprise_valeur ?? "0")));
-  const resteAPayer = round2(Math.max(0, prixTtcTotal - acompte - repriseMontantFacture));
+  const acompte = round2(parseNum(String(data.acompte ?? br.acompte ?? "0")));
+  const repriseMontantFacture = round2(
+    parseNum(String(data.reprise_montant ?? kvStr.reprise_valeur ?? "0")),
+  );
+  const netAPayerTtc = round2(
+    Math.max(0, prixTtcTotal - acompte - repriseMontantFacture),
+  );
 
   const mentionGarantie =
     "Le véhicule est vendu dans l'état où il se trouve au jour de la livraison (vente « en l'état »), sans garantie commerciale complémentaire sauf disposition conventionnelle écrite jointe.";
@@ -1922,7 +1918,7 @@ async function handleGenerateFacture(
     vehicule_energie: vehEnergie || "—",
     vehicule_donnees: stockDonnees,
     prestations,
-    prix_ht_vehicule_label: formatMoney(vehHt),
+    prix_ht_vehicule_label: formatMoney(prixHtVehicule),
     prix_ht_prestations_label: formatMoney(sumPrestHt),
     prix_ht_total_label: formatMoney(prixHtTotal),
     tva_taux_label: formatMoney(tvaTaux),
@@ -1931,7 +1927,7 @@ async function handleGenerateFacture(
     acompte_label: formatMoney(acompte),
     reprise_montant_label: formatMoney(repriseMontantFacture),
     reprise_description: repriseDesc,
-    reste_a_payer_label: formatMoney(resteAPayer),
+    reste_a_payer_label: formatMoney(netAPayerTtc),
     mention_garantie_vente: mentionGarantie,
     notes,
   };
@@ -1981,12 +1977,12 @@ async function handleGenerateFacture(
     vehicule_immatriculation: vehImmat || null,
     vehicule_couleur: vehCouleur || null,
     vehicule_energie: vehEnergie || null,
-    prix_ht: prixHtTotal,
+    prix_ht: prixHtVehicule,
     tva_taux: tvaTaux,
     tva_montant: tvaMontant,
     prix_ttc: prixTtcTotal,
     acompte,
-    reste_a_payer: resteAPayer,
+    reste_a_payer: netAPayerTtc,
     reprise_vehicule_description: repriseDesc || null,
     reprise_montant: repriseMontantFacture,
     prestations_supplementaires: prestations,

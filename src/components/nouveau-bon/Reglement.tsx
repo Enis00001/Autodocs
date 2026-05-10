@@ -40,14 +40,16 @@ const Reglement = ({
   customValues = {},
   onCustomFieldChange,
 }: ReglementProps) => {
-  const { prix, remise, reprise, netAPayer, acompte, solde } = useMemo(() => {
+  const { prix, remise, reprise, netAPayer, acompte, solde, prixHt, tvaMontant } = useMemo(() => {
     const prix = parseNum(form.vehiculePrix);
     const remise = parseNum(form.vehiculeRemise);
     const reprise = form.repriseActive ? parseNum(form.repriseValeur) : 0;
     const netAPayer = Math.max(0, prix - remise - reprise);
     const acompte = parseNum(form.acompte);
     const solde = Math.max(0, netAPayer - acompte);
-    return { prix, remise, reprise, netAPayer, acompte, solde };
+    const prixHt = prix > 0 ? prix / 1.2 : 0;
+    const tvaMontant = Math.max(0, prix - prixHt);
+    return { prix, remise, reprise, netAPayer, acompte, solde, prixHt, tvaMontant };
   }, [form.vehiculePrix, form.vehiculeRemise, form.repriseActive, form.repriseValeur, form.acompte]);
 
   const modes: Array<{ id: BonDraftData["modePaiement"]; label: string; icon: typeof Wallet }> = [
@@ -98,7 +100,7 @@ const Reglement = ({
         <div className="flex flex-col gap-1.5 md:col-span-2">
           <label className="field-label flex items-center gap-1.5">
             <span className="text-primary">●</span>
-            Prix du véhicule (€)
+            Prix de vente TTC (€)
             <span className="text-[10px] font-normal text-muted-foreground ml-auto">
               Requis
             </span>
@@ -112,7 +114,7 @@ const Reglement = ({
             onChange={(e) => onChange({ vehiculePrix: e.target.value })}
           />
           <p className="text-[11px] text-muted-foreground">
-            Pré-rempli depuis le stock si une colonne « Prix » est détectée.
+            soit {formatEur(prixHt)} € HT + {formatEur(tvaMontant)} € de TVA (20%)
           </p>
         </div>
         )}
@@ -185,7 +187,7 @@ const Reglement = ({
           </div>
         )}
         <div className="flex items-center justify-between py-1.5 border-t border-border/60 mt-1">
-          <span className="font-semibold">Net à payer</span>
+          <span className="font-semibold">Net à payer TTC</span>
           <span className="font-semibold text-primary">{formatEur(netAPayer)} €</span>
         </div>
         {acompte > 0 && (
