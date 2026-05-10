@@ -18,7 +18,6 @@ import {
 import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
 import { BonDraftData, loadDrafts, deleteDraft } from "@/utils/drafts";
-import { isDraftFormComplete } from "@/utils/bonFormCompletion";
 import { cn } from "@/lib/utils";
 import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
 import {
@@ -33,7 +32,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   Area,
   AreaChart,
@@ -226,7 +224,7 @@ const Dashboard = () => {
   const pieData = [
     { name: "Signés", value: currentSigned, color: "#10B981" },
     { name: "En attente", value: currentPending, color: "#F59E0B" },
-    { name: "En cours", value: currentInProgress, color: "#94A3B8" },
+    { name: "En cours", value: currentInProgress, color: "#6366F1" },
   ].filter((d) => d.value > 0);
   const noDataForPeriod = currentRevenue === 0 && currentSales === 0 && currentSigned === 0 && currentPending === 0 && currentInProgress === 0;
 
@@ -489,68 +487,86 @@ const Dashboard = () => {
               {loading ? (
                 <div className="skeleton h-72 w-full rounded-input" />
               ) : currentSigned === 0 && currentPending === 0 && currentInProgress === 0 ? (
-                <div className="flex h-72 flex-col items-center justify-center text-center">
-                  <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <ClipboardList className="h-7 w-7" />
-                  </div>
-                  <p className="font-display text-base font-bold text-foreground">
-                    Aucune donnée pour cette période
-                  </p>
-                  <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                    Changez la période pour voir plus d'historique.
-                  </p>
+                <div className="flex h-48 items-center justify-center text-gray-500">
+                  Aucun bon de commande
                 </div>
               ) : (
                 <div className="relative h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height={220}>
                     <PieChart>
                       <Pie
                         data={pieData}
+                        cx="50%"
+                        cy="50%"
                         dataKey="value"
-                        nameKey="name"
-                        innerRadius={60}
-                        outerRadius={90}
-                        paddingAngle={2}
-                        stroke="none"
+                        innerRadius={70}
+                        outerRadius={95}
+                        paddingAngle={3}
                       >
-                        {pieData.map((entry) => (
-                          <Cell key={entry.name} fill={entry.color} />
+                        {pieData.map((entry, index) => (
+                          <Cell key={index} fill={entry.color} />
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value: number, name: string) => [
-                          `${Number(value)} bon${Number(value) > 1 ? "s" : ""}`,
-                          name,
-                        ]}
-                      />
-                      <Legend
-                        verticalAlign="bottom"
-                        iconType="circle"
-                        formatter={(value, entry) => {
-                          const payload = entry?.payload as
-                            | { value?: number }
-                            | undefined;
-                          return (
-                            <span className="text-xs text-muted-foreground">
-                              {value} ({payload?.value ?? 0})
-                            </span>
-                          );
+                        formatter={(value: number, name: string) => [`${value} bons`, name]}
+                        contentStyle={{
+                          backgroundColor: "#1F2937",
+                          border: "none",
+                          borderRadius: "8px",
+                          color: "#F9FAFB",
                         }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center -translate-y-4">
-                    <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                      Total
-                    </span>
-                    <span className="font-display text-2xl font-bold text-foreground">
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "50%",
+                      left: "50%",
+                      transform: "translate(-50%, -50%)",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#9CA3AF",
+                        textTransform: "uppercase",
+                        letterSpacing: "1px",
+                      }}
+                    >
+                      TOTAL
+                    </div>
+                    <div style={{ fontSize: "28px", fontWeight: "bold", color: "#F9FAFB" }}>
                       {currentSigned + currentPending + currentInProgress}
-                    </span>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap justify-center gap-6">
+                    {[
+                      { label: "Signés", value: currentSigned, color: "#10B981" },
+                      { label: "En attente", value: currentPending, color: "#F59E0B" },
+                      { label: "En cours", value: currentInProgress, color: "#6366F1" },
+                    ].map((item) => (
+                      <div key={item.label} className="flex items-center gap-2">
+                        <div
+                          style={{
+                            width: "10px",
+                            height: "10px",
+                            borderRadius: "50%",
+                            backgroundColor: item.color,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ fontSize: "13px", color: "#D1D5DB" }}>
+                          {item.label} : <strong style={{ color: "#F9FAFB" }}>{item.value}</strong>
+                        </span>
+                      </div>
+                    ))}
                   </div>
                   <div className="mt-2 grid grid-cols-1 gap-1 text-[12px] md:grid-cols-3">
                     <p className="text-emerald-500">🟢 Signés : {currentSigned} bons</p>
                     <p className="text-amber-500">🟡 En attente de signature : {currentPending} bons</p>
-                    <p className="text-slate-400">⚫ En cours de rédaction : {currentInProgress} bons</p>
+                    <p className="text-indigo-400">⚫ En cours de rédaction : {currentInProgress} bons</p>
                   </div>
                 </div>
               )}
@@ -694,7 +710,6 @@ const Dashboard = () => {
                   </thead>
                   <tbody>
                     {drafts.map((d) => {
-                      const complet = isDraftFormComplete(d as unknown as Record<string, unknown>);
                       const isDownloading = downloadingDraftId === d.id;
                       const signatureStatus = statsReady.draftStatusById[d.id] ?? "in_progress";
                       return (
@@ -717,34 +732,22 @@ const Dashboard = () => {
                             })}
                           </td>
                           <td className="hidden py-3 md:table-cell">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span
-                                className={cn(
-                                  "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                                  complet
-                                    ? "bg-success/15 text-success"
-                                    : "bg-amber-500/15 text-amber-400",
-                                )}
-                              >
-                                {complet ? "Complet" : "En cours"}
-                              </span>
-                              <span
-                                className={cn(
-                                  "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                                  signatureStatus === "signed"
-                                    ? "bg-emerald-500/15 text-emerald-400"
-                                    : signatureStatus === "pending"
-                                      ? "bg-amber-500/15 text-amber-400"
-                                      : "bg-slate-500/15 text-slate-300",
-                                )}
-                              >
-                                {signatureStatus === "signed"
-                                  ? "Signé"
+                            <span
+                              className={cn(
+                                "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                                signatureStatus === "signed"
+                                  ? "bg-emerald-500/15 text-emerald-400"
                                   : signatureStatus === "pending"
-                                    ? "En attente"
-                                    : "En cours"}
-                              </span>
-                            </div>
+                                    ? "bg-amber-500/15 text-amber-400"
+                                    : "bg-amber-400/15 text-amber-300",
+                              )}
+                            >
+                              {signatureStatus === "signed"
+                                ? "Signé"
+                                : signatureStatus === "pending"
+                                  ? "En attente"
+                                  : "En cours"}
+                            </span>
                           </td>
                           <td className="py-3 text-right">
                             <div className="flex items-center justify-end gap-1.5 md:gap-2">
