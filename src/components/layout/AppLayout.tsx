@@ -1,13 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Outlet } from "react-router-dom";
 import { Menu, CarFront, User } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { SidebarContent } from "./SidebarContent";
 import AppSidebar from "./AppSidebar";
+import { getCurrentUserIsAdmin } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const AppLayout = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    void getCurrentUserIsAdmin().then(setIsAdmin);
+  }, []);
 
   return (
     <div className="flex min-h-screen w-full bg-[#0F1117]">
@@ -45,8 +51,15 @@ const AppLayout = () => {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#6366F1]/20 text-[#6366F1]">
             <CarFront className="h-4 w-4" />
           </div>
-          <span className="font-display text-base font-bold text-[#F1F5F9]">
-            Auto<span className="text-[#6366F1]">Docs</span>
+          <span className="flex items-center gap-1.5">
+            <span className="font-display text-base font-bold text-[#F1F5F9]">
+              Auto<span className="text-[#6366F1]">Docs</span>
+            </span>
+            {isAdmin ? (
+              <span className="rounded border border-violet-400/35 bg-violet-500/10 px-1 py-0.5 font-display text-[8px] font-bold uppercase tracking-wider text-violet-300/95">
+                Admin
+              </span>
+            ) : null}
           </span>
         </Link>
 

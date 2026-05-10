@@ -479,7 +479,9 @@ async function renderPdfFromHtml(html: string): Promise<Buffer> {
  *  Auth + quota
  * ================================================================== */
 
-async function requireAuthUserId(req: VercelRequest): Promise<string | null> {
+type AuthContext = { userId: string; isAdmin: boolean };
+
+async function requireAuthContext(req: VercelRequest): Promise<AuthContext | null> {
   const header = req.headers.authorization;
   const token = typeof header === "string" ? header.replace(/^Bearer\s+/i, "").trim() : "";
   if (!token) return null;
@@ -492,12 +494,18 @@ async function requireAuthUserId(req: VercelRequest): Promise<string | null> {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data?.user) return null;
-  return data.user.id;
+  const isAdmin = data.user.user_metadata?.is_admin === true;
+  return { userId: data.user.id, isAdmin };
 }
 
 async function checkAndConsumeQuota(
   userId: string,
+  isAdmin: boolean,
 ): Promise<{ ok: true } | { ok: false; status: number; body: unknown }> {
+  if (isAdmin) {
+    return { ok: true };
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
@@ -570,8 +578,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const userId = await requireAuthUserId(req);
-  if (!userId) {
+  const auth = await requireAuthContext(req);
+  if (!auth) {
     return res.status(401).json({ error: "Non autorisé" });
   }
 
@@ -599,7 +607,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     customHtml !== null;
 
   if (!shouldBypassQuota) {
-    const quota = await checkAndConsumeQuota(userId);
+    const quota = await checkAndConsumeQuota(auth.userId, auth.isAdmin);
     if (!quota.ok) {
       return res.status(quota.status).json(quota.body);
     }

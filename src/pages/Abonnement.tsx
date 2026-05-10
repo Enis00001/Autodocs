@@ -90,12 +90,17 @@ const Abonnement = () => {
       return;
     }
 
+    if (info.isAdmin) {
+      return;
+    }
+
     autoCheckoutTriggeredRef.current = true;
     void handleUpgrade(target);
   }, [loading, info, searchParams, setSearchParams, handleUpgrade]);
 
   const plan = info?.plan ?? "gratuit";
   const isPro = plan === "pro";
+  const isAdmin = info?.isAdmin ?? false;
   const bons = info?.bonsTotal ?? 0;
   const remainingFreeBons = Math.max(0, QUOTA_GRATUIT - bons);
   const percent = Math.min(100, (bons / QUOTA_GRATUIT) * 100);
@@ -145,18 +150,25 @@ const Abonnement = () => {
                           Pro
                         </span>
                       )}
+                      {!isPro && isAdmin && (
+                        <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wider text-violet-300">
+                          Admin
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {isPro
                         ? renewal
                           ? `Renouvellement le ${renewal}`
                           : "Abonnement actif"
-                        : `${QUOTA_GRATUIT} bons de commande offerts`}
+                        : isAdmin
+                          ? "Bons de commande illimités (compte administrateur)"
+                          : `${QUOTA_GRATUIT} bons de commande offerts`}
                     </p>
                   </div>
                 </div>
 
-                {!isPro && (
+                {!isPro && !isAdmin && (
                   <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
                     <button
                       type="button"
@@ -182,7 +194,7 @@ const Abonnement = () => {
                 )}
               </div>
 
-              {!isPro && (
+              {!isPro && !isAdmin && (
                 <div className="card-autodocs space-y-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-semibold text-foreground">Quota gratuit</span>
@@ -235,7 +247,7 @@ const Abonnement = () => {
                     "Toutes les fonctionnalités",
                   ]}
                   cta={
-                    !isPro ? (
+                    !isPro && !isAdmin ? (
                       <button
                         type="button"
                         className="btn-secondary w-full cursor-pointer"
@@ -262,7 +274,7 @@ const Abonnement = () => {
                     "💰 Économisez 189 € / an",
                   ]}
                   cta={
-                    !isPro ? (
+                    !isPro && !isAdmin ? (
                       <button
                         type="button"
                         className="btn-primary w-full cursor-pointer"
@@ -272,11 +284,11 @@ const Abonnement = () => {
                         {submitting === "annual" ? "Redirection…" : "Choisir Annuel"}
                         <ArrowRight className="h-4 w-4" />
                       </button>
-                    ) : (
+                    ) : isPro ? (
                       <div className="rounded-input border border-success/30 bg-success/10 px-3 py-2 text-center text-sm font-semibold text-success">
                         Plan actif
                       </div>
-                    )
+                    ) : undefined
                   }
                 />
               </div>

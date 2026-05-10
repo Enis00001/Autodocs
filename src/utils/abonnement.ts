@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserId } from "@/lib/auth";
+import { apiFetch } from "@/lib/apiClient";
 
 export type AbonnementPlan = "gratuit" | "pro";
 
@@ -9,6 +10,8 @@ export type AbonnementInfo = {
   quota: number; // 10 en gratuit, Infinity en pro (on renverra Number.POSITIVE_INFINITY)
   dateRenouvellement: string | null;
   actif: boolean;
+  /** Compte admin : bypass quota côté API (même en plan gratuit). */
+  isAdmin: boolean;
 };
 
 export const QUOTA_GRATUIT = 10;
@@ -18,8 +21,14 @@ export const QUOTA_GRATUIT = 10;
  * encore (nouveau compte), on renvoie les valeurs par défaut (gratuit, 0 bons).
  */
 export async function loadAbonnement(): Promise<AbonnementInfo | null> {
-  const uid = await getCurrentUserId();
+  const { data: authData, error: authErr } = await supabase.auth.getUser();
+  if (authErr) {
+    console.error("loadAbonnement:", authErr);
+    return null;
+  }
+  const uid = authData.user?.id ?? null;
   if (!uid) return null;
+  const isAdmin = authData.user?.user_metadata?.is_admin === true;
 
   const { data, error } = await supabase
     .from("abonnements")
@@ -35,6 +44,7 @@ export async function loadAbonnement(): Promise<AbonnementInfo | null> {
       quota: QUOTA_GRATUIT,
       dateRenouvellement: null,
       actif: true,
+      isAdmin,
     };
   }
 
@@ -45,6 +55,7 @@ export async function loadAbonnement(): Promise<AbonnementInfo | null> {
     quota: plan === "pro" ? Number.POSITIVE_INFINITY : QUOTA_GRATUIT,
     dateRenouvellement: (data?.date_renouvellement as string | null) ?? null,
     actif: data?.actif ?? true,
+    isAdmin,
   };
 }
 
@@ -90,9 +101,8 @@ export async function consumeBonQuota(): Promise<{
   const uid = await getCurrentUserId();
   if (!uid) throw new Error("Utilisateur non connecté.");
 
-  const res = await fetch("/api/increment-bons", {
+  const res = await apiFetch("/api/increment-bons", {
     method: "POST",
-    headers: { "content-type": "application/json" },
     body: JSON.stringify({ userId: uid }),
   });
 

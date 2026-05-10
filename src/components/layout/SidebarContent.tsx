@@ -6,6 +6,7 @@ import { loadDrafts } from "@/utils/drafts";
 import { loadConcession, getConcessionInitials } from "@/utils/concession";
 import type { ConcessionData } from "@/utils/concession";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserIsAdmin } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export const sidebarNavConfig = [
@@ -43,6 +44,11 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
     address: "",
   });
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    void getCurrentUserIsAdmin().then(setIsAdmin);
+  }, []);
 
   useEffect(() => {
     const refreshDrafts = () => {
@@ -89,8 +95,15 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
           <CarFront className="h-5 w-5" strokeWidth={2.2} />
         </div>
         <div>
-          <div className="font-display text-lg font-extrabold tracking-tight text-[#F1F5F9]">
-            Auto<span className="text-[#6366F1]">Docs</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="font-display text-lg font-extrabold tracking-tight text-[#F1F5F9]">
+              Auto<span className="text-[#6366F1]">Docs</span>
+            </div>
+            {isAdmin ? (
+              <span className="rounded-md border border-violet-400/35 bg-violet-500/10 px-1.5 py-0.5 font-display text-[9px] font-bold uppercase tracking-wider text-violet-300/95">
+                Admin
+              </span>
+            ) : null}
           </div>
           <p className="text-[10px] font-medium uppercase tracking-widest text-[#94A3B8]/80">
             Concession
