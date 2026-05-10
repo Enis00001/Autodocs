@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard, SlidersHorizontal, FileText, Building2 } from "lucide-react";
+import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard, SlidersHorizontal, FileText, Building2, Users } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts } from "@/utils/drafts";
 import { loadConcession, getConcessionInitials } from "@/utils/concession";
@@ -14,6 +14,7 @@ export const sidebarNavConfig = [
   { title: "Historique", path: "/historique", icon: ClipboardList },
   { title: "CERFA", path: "/cerfa", icon: FileText },
   { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
+  { title: "Clients", path: "/clients", icon: Users },
   { title: "Ma concession", path: "/profil-concession", icon: Building2 },
   { title: "Abonnement", path: "/abonnement", icon: CreditCard },
   { title: "Modification des champs", path: "/preferences", icon: SlidersHorizontal },
@@ -100,9 +101,11 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
           const isActive =
             item.path === "/nouveau-bon"
               ? location.pathname === "/nouveau-bon" || location.pathname.startsWith("/nouveau-bon/")
-              : item.path === "/app"
-                ? location.pathname === "/app" || location.pathname === "/dashboard"
-                : location.pathname === item.path;
+              : item.path === "/clients"
+                ? location.pathname === "/clients" || location.pathname.startsWith("/clients/")
+                : item.path === "/app"
+                  ? location.pathname === "/app" || location.pathname === "/dashboard"
+                  : location.pathname === item.path;
           return (
             <Link
               key={item.path}

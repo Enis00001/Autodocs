@@ -80,6 +80,13 @@ export type BonDraftData = {
   signatureRequestSentAt?: string;
   /** Date ISO de signature côté client (signature via /signer/:token). */
   clientSignedAt?: string;
+  /**
+   * UUID de la fiche client (table `clients`) rattachée à ce brouillon.
+   * Nullable : un bon peut être créé avant que sa fiche client n'existe.
+   * La FK est `ON DELETE SET NULL` côté Postgres : supprimer un client
+   * détache simplement les bons sans les détruire.
+   */
+  clientId?: string | null;
 };
 
 type BrouillonRow = {
@@ -91,6 +98,8 @@ type BrouillonRow = {
   client_date_naissance: string;
   client_numero_cni: string;
   client_adresse: string;
+  /** FK optionnel vers `clients(id)` (CRM). */
+  client_id: string | null;
   // Colonnes véhicule legacy : on les laisse en base, on ne les écrit plus.
   vehicule_prix: string;
   vehicule_remise: string;
@@ -215,6 +224,7 @@ function rowToDraft(row: BrouillonRow): BonDraftData {
     signatureRequestToken: kvStr.signature_request_token || undefined,
     signatureRequestSentAt: kvStr.signature_request_sent_at || undefined,
     clientSignedAt: kvStr.client_signed_at || undefined,
+    clientId: row.client_id ?? null,
   };
 }
 
@@ -262,6 +272,7 @@ function draftToPayload(d: BonDraftData) {
     mode_paiement: d.modePaiement,
     documents_scanned: d.documentsScanned ?? {},
     vehicle_field_values: kv,
+    client_id: d.clientId ?? null,
   };
 }
 

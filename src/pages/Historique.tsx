@@ -1,10 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, FileEdit, X, Trash2, Download } from "lucide-react";
+import {
+  Search,
+  FileEdit,
+  X,
+  Trash2,
+  Download,
+  UserPlus,
+  UserCircle,
+} from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts, deleteDraft } from "@/utils/drafts";
 import { isDraftFormComplete } from "@/utils/bonFormCompletion";
 import SignatureStatusBadge from "@/components/SignatureStatusBadge";
+import ClientFormModal from "@/components/ClientFormModal";
+import {
+  attachDraftToClient,
+  ClientData,
+  ClientUpsertData,
+  clientUpsertFromDraft,
+  createClient,
+  findClientByNomPrenom,
+  getClients,
+} from "@/utils/clients";
 import { cn } from "@/lib/utils";
 import TopBar from "@/components/layout/TopBar";
 import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
@@ -19,16 +37,66 @@ const vehiculeLabel = (d: BonDraftData) => {
   return vals.slice(0, 2).join(" · ") || "—";
 };
 
+/**
+ * Pour chaque brouillon, on calcule un état CRM :
+ *  - "linked"   → un client_id explicite est rattaché (afficher "Voir la fiche")
+ *  - "match"    → pas de client_id mais nom+prénom matchent une fiche existante
+ *                 (auto-link possible en un clic)
+ *  - "missing"  → pas de match → on propose "Créer la fiche client"
+ *  - "empty"    → pas de nom/prénom saisi → rien à faire
+ */
+type CrmState =
+  | { kind: "linked"; clientId: string }
+  | { kind: "match"; client: ClientData }
+  | { kind: "missing" }
+  | { kind: "empty" };
+
 const Historique = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
+  const [clients, setClients] = useState<ClientData[]>([]);
   const [filterDate, setFilterDate] = useState("");
   const [q, setQ] = useState("");
   const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
+  const [creatingForDraft, setCreatingForDraft] = useState<BonDraftData | null>(null);
+  const [linkingDraftId, setLinkingDraftId] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  const refresh = async () => {
+    const [d, c] = await Promise.all([loadDrafts(), getClients()]);
+    setDrafts(d);
+    setClients(c);
+  };
+
   useEffect(() => {
-    void loadDrafts().then(setDrafts);
+    void refresh();
+    const onUpdate = () => void refresh();
+    window.addEventListener("autodocs_drafts_updated", onUpdate);
+    window.addEventListener("autodocs_clients_updated", onUpdate);
+    return () => {
+      window.removeEventListener("autodocs_drafts_updated", onUpdate);
+      window.removeEventListener("autodocs_clients_updated", onUpdate);
+    };
   }, []);
+
+  // Map nom+prénom (lowercase) → ClientData, calculé une fois par render.
+  const clientsByName = useMemo(() => {
+    const map = new Map<string, ClientData>();
+    for (const c of clients) {
+      const key = `${c.nom.trim().toLowerCase()}|${c.prenom.trim().toLowerCase()}`;
+      if (!map.has(key)) map.set(key, c);
+    }
+    return map;
+  }, [clients]);
+
+  const crmStateOf = (d: BonDraftData): CrmState => {
+    if (d.clientId) return { kind: "linked", clientId: d.clientId };
+    const nom = d.clientNom?.trim();
+    const prenom = d.clientPrenom?.trim();
+    if (!nom || !prenom) return { kind: "empty" };
+    const match = clientsByName.get(`${nom.toLowerCase()}|${prenom.toLowerCase()}`);
+    if (match) return { kind: "match", client: match };
+    return { kind: "missing" };
+  };
 
   const filteredDrafts = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -52,6 +120,29 @@ const Historique = () => {
       month: "2-digit",
       year: "numeric",
     });
+
+  const handleAttach = async (draftId: string, clientId: string) => {
+    try {
+      setLinkingDraftId(draftId);
+      await attachDraftToClient(draftId, clientId);
+      await refresh();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Liaison impossible.");
+    } finally {
+      setLinkingDraftId(null);
+    }
+  };
+
+  const handleCreateFromDraft = async (input: ClientUpsertData) => {
+    if (!creatingForDraft) return;
+    // 1. Recherche au cas où un client a été créé entre temps avec exactement
+    //    le même nom+prénom : on évite le doublon en attachant celui-là.
+    const existing = await findClientByNomPrenom(input.nom, input.prenom);
+    const target = existing ?? (await createClient(input));
+    await attachDraftToClient(creatingForDraft.id, target.id);
+    setCreatingForDraft(null);
+    await refresh();
+  };
 
   return (
     <>
@@ -103,13 +194,14 @@ const Historique = () => {
                   <th className="pb-3 font-medium">Véhicule</th>
                   <th className="hidden pb-3 font-medium md:table-cell">Date</th>
                   <th className="hidden pb-3 font-medium md:table-cell">Statut</th>
+                  <th className="hidden pb-3 font-medium lg:table-cell">Fiche</th>
                   <th className="pb-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredDrafts.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                    <td colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                       {drafts.length === 0
                         ? "Aucun bon enregistré"
                         : "Aucun résultat pour ces filtres"}
@@ -119,6 +211,8 @@ const Historique = () => {
                   filteredDrafts.map((d) => {
                     const complet = isDraftFormComplete(d as unknown as Record<string, unknown>);
                     const isDownloading = downloadingDraftId === d.id;
+                    const isLinking = linkingDraftId === d.id;
+                    const crm = crmStateOf(d);
                     return (
                       <tr key={d.id} className="row-hover border-b border-border/50 last:border-0">
                         <td className="py-3 font-medium text-foreground">{clientLabel(d)}</td>
@@ -145,6 +239,42 @@ const Historique = () => {
                             </span>
                             <SignatureStatusBadge draft={d} showResendButton />
                           </div>
+                        </td>
+                        <td className="hidden py-3 lg:table-cell">
+                          {crm.kind === "linked" ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+                              onClick={() => navigate(`/clients/${crm.clientId}`)}
+                              aria-label="Voir la fiche client"
+                            >
+                              <UserCircle className="h-3.5 w-3.5" />
+                              Voir la fiche
+                            </button>
+                          ) : crm.kind === "match" ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline disabled:opacity-50"
+                              onClick={() => void handleAttach(d.id, crm.client.id)}
+                              disabled={isLinking}
+                              aria-label="Lier le brouillon à la fiche client existante"
+                            >
+                              <UserCircle className="h-3.5 w-3.5" />
+                              {isLinking ? "Liaison…" : "Lier la fiche"}
+                            </button>
+                          ) : crm.kind === "missing" ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-primary"
+                              onClick={() => setCreatingForDraft(d)}
+                              aria-label="Créer une fiche client à partir de ce brouillon"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                              Créer la fiche
+                            </button>
+                          ) : (
+                            <span className="text-[12px] text-muted-foreground/60">—</span>
+                          )}
                         </td>
                         <td className="py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5 md:gap-2">
@@ -209,6 +339,15 @@ const Historique = () => {
           </div>
         </div>
       </div>
+
+      <ClientFormModal
+        open={!!creatingForDraft}
+        initial={creatingForDraft ? clientUpsertFromDraft(creatingForDraft) : null}
+        title="Créer la fiche client"
+        submitLabel="Créer et lier au bon"
+        onClose={() => setCreatingForDraft(null)}
+        onSubmit={handleCreateFromDraft}
+      />
     </>
   );
 };
