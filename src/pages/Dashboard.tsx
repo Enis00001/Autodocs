@@ -416,8 +416,8 @@ const Dashboard = () => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <div className="card-autodocs">
+          <div className="grid grid-cols-1 gap-4">
+            <div className="card-autodocs w-full">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="font-display text-sm font-bold text-foreground">
                   Ventes mensuelles
@@ -441,8 +441,8 @@ const Dashboard = () => {
                   </p>
                 </div>
               ) : (
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="w-full">
+                  <ResponsiveContainer width="100%" height={300}>
                     <BarChart
                       data={monthlyForPeriod}
                       margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
