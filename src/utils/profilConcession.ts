@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId } from "@/lib/auth";
 
 /**
  * Profil détaillé de la concession (vendeur) utilisé pour pré-remplir
@@ -67,12 +67,12 @@ function rowToProfil(row: ProfilConcessionRow): ProfilConcession {
  * d'invitation à compléter le profil.
  */
 export async function loadProfilConcession(): Promise<ProfilConcession | null> {
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return null;
   const { data, error } = await supabase
     .from("profil_concession")
     .select("*")
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .maybeSingle();
   if (error) {
     console.error("loadProfilConcession:", error);
@@ -87,12 +87,12 @@ export async function loadProfilConcession(): Promise<ProfilConcession | null> {
  * la contrainte UNIQUE sur user_id côté SQL).
  */
 export async function saveProfilConcession(profil: ProfilConcession): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) {
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) {
     throw new Error("Session expirée. Reconnectez-vous pour sauvegarder le profil.");
   }
   const payload = {
-    user_id: userId,
+    concession_id: concessionId,
     nom_concession: profil.nomConcession.trim() || null,
     adresse: profil.adresse.trim() || null,
     code_postal: profil.codePostal.trim() || null,
@@ -106,7 +106,7 @@ export async function saveProfilConcession(profil: ProfilConcession): Promise<vo
   };
   const { error } = await supabase
     .from("profil_concession")
-    .upsert(payload, { onConflict: "user_id" });
+    .upsert(payload, { onConflict: "concession_id" });
   if (error) {
     console.error("saveProfilConcession:", error);
     throw new Error(error.message || "Erreur lors de la sauvegarde du profil.");

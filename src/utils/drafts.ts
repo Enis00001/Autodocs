@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId, getCurrentUserId } from "@/lib/auth";
 
 export type DocumentScannedState = {
   status: "ok" | "invalid" | "unreadable";
@@ -281,12 +281,12 @@ function draftToPayload(d: BonDraftData) {
 }
 
 export async function loadDrafts(): Promise<BonDraftData[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
   const { data, error } = await supabase
     .from("brouillons")
     .select("*")
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .order("updated_at", { ascending: false });
   if (error) {
     console.error("loadDrafts:", error);
@@ -296,13 +296,13 @@ export async function loadDrafts(): Promise<BonDraftData[]> {
 }
 
 export async function getDraft(id: string): Promise<BonDraftData | undefined> {
-  const userId = await getCurrentUserId();
-  if (!userId) return undefined;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return undefined;
   const { data, error } = await supabase
     .from("brouillons")
     .select("*")
     .eq("id", id)
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .maybeSingle();
   if (error) {
     console.error("getDraft:", error);
@@ -321,14 +321,14 @@ export async function markDraftSigned(
   id: string,
   signedAt: string = new Date().toISOString(),
 ): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return;
 
   const { data: existing, error: readError } = await supabase
     .from("brouillons")
     .select("vehicle_field_values")
     .eq("id", id)
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .maybeSingle();
 
   if (readError || !existing) {
@@ -354,7 +354,7 @@ export async function markDraftSigned(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .eq("user_id", userId);
+    .eq("concession_id", concessionId);
 
   if (error) {
     console.error("markDraftSigned update:", error);
@@ -376,14 +376,14 @@ export async function markDraftSignatureRequestSent(
   token: string,
   sentAt: string = new Date().toISOString(),
 ): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return;
 
   const { data: existing, error: readError } = await supabase
     .from("brouillons")
     .select("vehicle_field_values")
     .eq("id", id)
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .maybeSingle();
 
   if (readError || !existing) {
@@ -409,7 +409,7 @@ export async function markDraftSignatureRequestSent(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .eq("user_id", userId);
+    .eq("concession_id", concessionId);
 
   if (error) {
     console.error("markDraftSignatureRequestSent update:", error);
@@ -422,11 +422,8 @@ export async function markDraftSignatureRequestSent(
 }
 
 export async function deleteDraft(id: string): Promise<boolean> {
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) {
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) {
     throw new Error("Non authentifié");
   }
 
@@ -434,7 +431,7 @@ export async function deleteDraft(id: string): Promise<boolean> {
     .from("brouillons")
     .delete()
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("concession_id", concessionId);
   if (error) {
     console.error("deleteDraft:", error);
     throw new Error(error.message || "Suppression impossible.");
@@ -449,8 +446,11 @@ export async function deleteDraft(id: string): Promise<boolean> {
 export async function upsertDraft(
   partial: Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & { id?: string },
 ): Promise<BonDraftData> {
-  const userId = await getCurrentUserId();
-  if (!userId) {
+  const [concessionId, userId] = await Promise.all([
+    getCurrentConcessionId(),
+    getCurrentUserId(),
+  ]);
+  if (!concessionId || !userId) {
     throw new Error("Session expirée. Reconnectez-vous pour sauvegarder le brouillon.");
   }
   const now = new Date().toISOString();
@@ -464,7 +464,12 @@ export async function upsertDraft(
     updatedAt: now,
   };
   const payload = {
+    // `user_id` reste écrit pour back-compat (colonne legacy NOT NULL dans
+    // certaines bases). `concession_id` + `created_by` sont les colonnes
+    // sources de vérité du modèle multi-utilisateurs.
     user_id: userId,
+    concession_id: concessionId,
+    created_by: userId,
     id: targetId,
     created_at: now,
     updated_at: now,

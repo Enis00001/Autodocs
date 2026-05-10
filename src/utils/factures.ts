@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId } from "@/lib/auth";
 import { apiFetch } from "@/lib/apiClient";
 
 export type FactureStatut = "emise" | "payee" | "annulee";
@@ -97,13 +97,14 @@ export async function generateFacture(
 }
 
 export async function getFactures(): Promise<FactureRecord[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
   const { data, error } = await supabase
     .from("factures")
     .select(
       "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, created_at",
     )
+    .eq("concession_id", concessionId)
     .order("created_at", { ascending: false });
   if (error) {
     console.error("getFactures:", error);
@@ -113,14 +114,15 @@ export async function getFactures(): Promise<FactureRecord[]> {
 }
 
 export async function getFactureById(id: string): Promise<FactureRecord | null> {
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return null;
   const { data, error } = await supabase
     .from("factures")
     .select(
       "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, created_at",
     )
     .eq("id", id)
+    .eq("concession_id", concessionId)
     .maybeSingle();
   if (error) {
     console.error("getFactureById:", error);
@@ -132,14 +134,15 @@ export async function getFactureById(id: string): Promise<FactureRecord | null> 
 export async function getFactureByBrouillonId(
   brouillonId: string,
 ): Promise<FactureRecord | null> {
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return null;
   const { data, error } = await supabase
     .from("factures")
     .select(
       "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, created_at",
     )
     .eq("brouillon_id", brouillonId)
+    .eq("concession_id", concessionId)
     .maybeSingle();
   if (error) {
     console.error("getFactureByBrouillonId:", error);
@@ -149,14 +152,15 @@ export async function getFactureByBrouillonId(
 }
 
 export async function getFacturesByClient(clientId: string): Promise<FactureRecord[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
   const { data, error } = await supabase
     .from("factures")
     .select(
       "id, concession_id, brouillon_id, client_id, numero_facture, date_facture, date_livraison, concession_nom, concession_siret, concession_adresse, concession_telephone, concession_email, concession_tva_intracommunautaire, client_nom, client_prenom, client_adresse, client_email, client_telephone, vehicule_marque, vehicule_modele, vehicule_version, vehicule_annee, vehicule_kilometrage, vehicule_vin, vehicule_immatriculation, vehicule_couleur, vehicule_energie, prix_ht, tva_taux, tva_montant, prix_ttc, acompte, reste_a_payer, reprise_vehicule_description, reprise_montant, prestations_supplementaires, statut, notes, pdf_base64, created_at",
     )
     .eq("client_id", clientId)
+    .eq("concession_id", concessionId)
     .order("created_at", { ascending: false });
   if (error) {
     console.error("getFacturesByClient:", error);
@@ -169,9 +173,13 @@ export async function updateFactureStatut(
   id: string,
   statut: FactureStatut,
 ): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Session expirée.");
-  const { error } = await supabase.from("factures").update({ statut }).eq("id", id);
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) throw new Error("Session expirée.");
+  const { error } = await supabase
+    .from("factures")
+    .update({ statut })
+    .eq("id", id)
+    .eq("concession_id", concessionId);
   if (error) {
     console.error("updateFactureStatut:", error);
     throw new Error(error.message || "Mise à jour impossible.");

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId, getCurrentUserId } from "@/lib/auth";
 
 const LOCAL_STORAGE_KEY = "autodocs_vendeurs";
 const MIGRATION_FLAG_KEY = "autodocs_migrated_vendeurs_v1";
@@ -68,15 +68,16 @@ function setMigrationFlag(): void {
 }
 
 export async function loadVendeurs(): Promise<Vendeur[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
-  console.log("Tentative sauvegarde: loadVendeurs (select vendeurs)");
+  const [concessionId, userId] = await Promise.all([
+    getCurrentConcessionId(),
+    getCurrentUserId(),
+  ]);
+  if (!concessionId) return [];
   const { data, error } = await supabase
     .from("vendeurs")
     .select("id, nom, prenom, date_ajout")
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .order("date_ajout", { ascending: false });
-  console.log("Résultat Supabase:", { data, error });
 
   if (error) {
     console.error("loadVendeurs:", error);
@@ -85,26 +86,27 @@ export async function loadVendeurs(): Promise<Vendeur[]> {
 
   const rows = (data ?? []) as VendeurRow[];
 
-  // Migration one-shot depuis localStorage (même si la table n'est pas vide)
+  // Migration one-shot depuis localStorage (même si la table n'est pas vide).
   const local = readLocalVendeurs();
   const shouldMigrate = local.length > 0 && !getMigrationFlag();
   if (shouldMigrate) {
-    const toUpsert = local.map((v) => ({ ...vendeurToRow(v), user_id: userId }));
-    console.log("Tentative sauvegarde: loadVendeurs migration", { data: toUpsert });
+    const toUpsert = local.map((v) => ({
+      ...vendeurToRow(v),
+      user_id: userId,
+      concession_id: concessionId,
+    }));
     const migResult = await supabase
       .from("vendeurs")
       .upsert(toUpsert, { onConflict: "id" });
-    console.log("Résultat Supabase:", { data: migResult.data, error: migResult.error });
     if (migResult.error) console.error("loadVendeurs migration:", migResult.error);
     setMigrationFlag();
 
-    console.log("Tentative sauvegarde: loadVendeurs (select after migration)");
     const { data: dataAfter, error: errAfter } = await supabase
       .from("vendeurs")
       .select("id, nom, prenom, date_ajout")
-      .eq("user_id", userId)
+      .eq("concession_id", concessionId)
       .order("date_ajout", { ascending: false });
-    console.log("Résultat Supabase:", { data: dataAfter, error: errAfter });
+    if (errAfter) console.error("loadVendeurs reload:", errAfter);
     return ((dataAfter ?? []) as VendeurRow[]).map(rowToVendeur);
   }
 
@@ -113,15 +115,16 @@ export async function loadVendeurs(): Promise<Vendeur[]> {
 
 /** Insère (ou met à jour) un vendeur dans Supabase. */
 export async function saveVendeur(vendeur: Vendeur): Promise<Vendeur> {
-  const userId = await getCurrentUserId();
-  if (!userId) return vendeur;
+  const [concessionId, userId] = await Promise.all([
+    getCurrentConcessionId(),
+    getCurrentUserId(),
+  ]);
+  if (!concessionId) return vendeur;
   const row = vendeurToRow(vendeur);
-  const payload = { ...row, user_id: userId };
-  console.log("Tentative sauvegarde: saveVendeur", { data: payload });
+  const payload = { ...row, user_id: userId, concession_id: concessionId };
   const result = await supabase
     .from("vendeurs")
     .upsert(payload, { onConflict: "id" });
-  console.log("Résultat Supabase:", { data: result.data, error: result.error });
   if (result.error) console.error("saveVendeur:", result.error);
   return vendeur;
 }
@@ -139,10 +142,13 @@ export async function addVendeur(nom: string, prenom: string): Promise<Vendeur> 
 }
 
 export async function deleteVendeur(id: string): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
-  console.log("Tentative sauvegarde: deleteVendeur", { id });
-  const result = await supabase.from("vendeurs").delete().eq("id", id).eq("user_id", userId).select();
-  console.log("Résultat Supabase:", { data: result.data, error: result.error });
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return;
+  const result = await supabase
+    .from("vendeurs")
+    .delete()
+    .eq("id", id)
+    .eq("concession_id", concessionId)
+    .select();
   if (result.error) console.error("deleteVendeur:", result.error);
 }

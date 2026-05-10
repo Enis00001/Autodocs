@@ -17,6 +17,11 @@ import {
   Check,
   ArrowRight,
   Star,
+  Users,
+  UserPlus,
+  Shield,
+  Ban,
+  CircleCheck,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
@@ -36,6 +41,8 @@ import {
 } from "@/utils/abonnement";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/apiClient";
+import { useAuth } from "@/context/AuthContext";
 
 const ACCEPT_LOGO = "image/jpeg,image/png,image/svg+xml,.jpg,.jpeg,.png,.svg";
 
@@ -49,6 +56,9 @@ const ProfilConcession = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const abonnementSectionRef = useRef<HTMLDivElement>(null);
+  const { concessionId, membreRole } = useAuth();
+  const isAdminMembre = membreRole === "admin";
+  const lockConcessionFields = !isAdminMembre;
 
   // ---- Section 1 — Identité légale + logo
   const [profil, setProfil] = useState<ProfilConcessionData>(emptyProfilConcession);
@@ -68,6 +78,25 @@ const ProfilConcession = () => {
   });
   const [savingGerant, setSavingGerant] = useState(false);
   const [sendingResetMail, setSendingResetMail] = useState(false);
+
+  type TeamMemberRow = {
+    id: string;
+    user_id: string;
+    email: string | null;
+    prenom: string | null;
+    nom: string | null;
+    role: string;
+    actif: boolean;
+  };
+
+  const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<{ id: string; email: string; created_at: string }[]>(
+    [],
+  );
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmailInput, setInviteEmailInput] = useState("");
+  const [inviteSending, setInviteSending] = useState(false);
 
   // ---- Section 3 — Abonnement
   const [abonnement, setAbonnement] = useState<AbonnementInfo | null>(null);
@@ -136,6 +165,44 @@ const ProfilConcession = () => {
       setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  const reloadTeam = useCallback(async () => {
+    if (!concessionId || !isAdminMembre) {
+      setTeamMembers([]);
+      setPendingInvites([]);
+      setTeamLoading(false);
+      return;
+    }
+    setTeamLoading(true);
+    const [memRes, invRes] = await Promise.all([
+      supabase
+        .from("membres_concession")
+        .select("id, user_id, email, prenom, nom, role, actif")
+        .eq("concession_id", concessionId)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("invitations")
+        .select("id, email, created_at")
+        .eq("concession_id", concessionId)
+        .is("accepted_at", null)
+        .order("created_at", { ascending: false }),
+    ]);
+    if (!memRes.error && memRes.data) {
+      setTeamMembers(memRes.data as TeamMemberRow[]);
+    } else {
+      setTeamMembers([]);
+    }
+    if (!invRes.error && invRes.data) {
+      setPendingInvites(invRes.data as { id: string; email: string; created_at: string }[]);
+    } else {
+      setPendingInvites([]);
+    }
+    setTeamLoading(false);
+  }, [concessionId, isAdminMembre]);
+
+  useEffect(() => {
+    void reloadTeam();
+  }, [reloadTeam]);
 
   // ---- Section 1 helpers
   const updateProfil = <K extends keyof ProfilConcessionData>(
@@ -243,6 +310,53 @@ const ProfilConcession = () => {
     }
   };
 
+  const handleSendInvite = async () => {
+    const email = inviteEmailInput.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast({
+        title: "Email invalide",
+        description: "Vérifiez l'adresse saisie.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setInviteSending(true);
+    try {
+      const res = await apiFetch("/api/actions", {
+        method: "POST",
+        body: JSON.stringify({ action: "invite-membre", email }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(body.error || "Invitation impossible.");
+      toast({ title: "Invitation envoyée ✓" });
+      setInviteOpen(false);
+      setInviteEmailInput("");
+      await reloadTeam();
+    } catch (err) {
+      toast({
+        title: "Invitation impossible",
+        description: err instanceof Error ? err.message : "Réessayez.",
+        variant: "destructive",
+      });
+    } finally {
+      setInviteSending(false);
+    }
+  };
+
+  const handleToggleMemberActif = async (memberId: string, nextActif: boolean) => {
+    const { error } = await supabase.from("membres_concession").update({ actif: nextActif }).eq("id", memberId);
+    if (error) {
+      toast({
+        title: "Mise à jour impossible",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({ title: nextActif ? "Membre réactivé ✓" : "Membre désactivé ✓" });
+    await reloadTeam();
+  };
+
   // ---- Section 3 helpers
   const handleUpgrade = useCallback(async (interval: CheckoutInterval) => {
     setSubmittingPlan(interval);
@@ -298,7 +412,12 @@ const ProfilConcession = () => {
                   🏢 Informations de la concession
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div
+                  className={cn(
+                    "grid grid-cols-1 gap-3 md:grid-cols-2",
+                    lockConcessionFields && "pointer-events-none opacity-70 select-none",
+                  )}
+                >
                   <div className="flex flex-col gap-1.5 md:col-span-2">
                     <label className="field-label">
                       Nom de la concession <span className="text-destructive">*</span>
@@ -447,6 +566,7 @@ const ProfilConcession = () => {
                     <button
                       type="button"
                       onClick={handleLogoClick}
+                      disabled={lockConcessionFields}
                       className="border-2 border-dashed border-border rounded-lg p-6 flex items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-primary transition-colors bg-transparent w-full interactive-lift"
                     >
                       {concession.logoBase64 ? (
@@ -465,20 +585,26 @@ const ProfilConcession = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => void handleSaveConcession()}
-                  disabled={saving}
-                  className="px-4 py-2.5 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
-                  style={{ boxShadow: "0 0 20px hsla(228,91%,64%,0.25)" }}
-                >
-                  {saving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  {saving ? "Sauvegarde…" : "Sauvegarder la concession"}
-                </button>
+                {!lockConcessionFields ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveConcession()}
+                    disabled={saving}
+                    className="px-4 py-2.5 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
+                    style={{ boxShadow: "0 0 20px hsla(228,91%,64%,0.25)" }}
+                  >
+                    {saving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    {saving ? "Sauvegarde…" : "Sauvegarder la concession"}
+                  </button>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">
+                    Seul l&apos;administrateur peut modifier l&apos;identité légale et le logo.
+                  </p>
+                )}
 
                 <p className="text-xs text-muted-foreground">
                   Ces informations pré-remplissent le CERFA 15776*01, les bons de
@@ -586,6 +712,151 @@ const ProfilConcession = () => {
               </section>
 
               {/* ============================================================
+                  Section 2bis — Équipe (admin uniquement)
+                  ============================================================ */}
+              {isAdminMembre ? (
+                <section className="card-autodocs space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="card-title-autodocs mb-0 flex items-center gap-2">
+                      <Users className="h-5 w-5 text-primary" />
+                      Mon équipe
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInviteOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer border-0"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Inviter un commercial
+                    </button>
+                  </div>
+
+                  {teamLoading ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto rounded-input border border-border/60">
+                        <table className="w-full text-sm">
+                          <thead className="border-b border-border/60 bg-secondary/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2 font-semibold">Membre</th>
+                              <th className="px-3 py-2 font-semibold">Email</th>
+                              <th className="px-3 py-2 font-semibold">Rôle</th>
+                              <th className="px-3 py-2 font-semibold">Statut</th>
+                              <th className="px-3 py-2 font-semibold text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {teamMembers.map((m) => (
+                              <tr key={m.id} className="border-b border-border/40 last:border-0">
+                                <td className="px-3 py-2.5 font-medium text-foreground">
+                                  {[m.prenom, m.nom].filter(Boolean).join(" ") || "—"}
+                                </td>
+                                <td className="px-3 py-2.5 text-muted-foreground">{m.email ?? "—"}</td>
+                                <td className="px-3 py-2.5">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                                    <Shield className="h-3 w-3" />
+                                    {m.role === "admin" ? "Administrateur" : "Commercial"}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  {m.actif ? (
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-success">
+                                      <CircleCheck className="h-3.5 w-3.5" />
+                                      Actif
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                                      <Ban className="h-3.5 w-3.5" />
+                                      Inactif
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                  <button
+                                    type="button"
+                                    className="text-xs font-medium text-primary hover:underline cursor-pointer bg-transparent border-0"
+                                    onClick={() =>
+                                      void handleToggleMemberActif(m.id, !m.actif)
+                                    }
+                                  >
+                                    {m.actif ? "Désactiver" : "Réactiver"}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {pendingInvites.length > 0 ? (
+                        <div className="rounded-input border border-dashed border-border/70 bg-secondary/20 px-3 py-3">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Invitations en attente
+                          </div>
+                          <ul className="space-y-1 text-sm text-muted-foreground">
+                            {pendingInvites.map((inv) => (
+                              <li key={inv.id}>
+                                <span className="text-foreground">{inv.email}</span>
+                                <span className="mx-2 text-border">·</span>
+                                envoyée le{" "}
+                                {new Date(inv.created_at).toLocaleDateString("fr-FR")}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </section>
+              ) : null}
+
+              {inviteOpen ? (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 px-4">
+                  <div className="card-autodocs w-full max-w-md space-y-4 shadow-xl">
+                    <div className="card-title-autodocs mb-0">Inviter un commercial</div>
+                    <p className="text-sm text-muted-foreground">
+                      Un email d&apos;invitation sera envoyé avec un lien sécurisé valable 7 jours.
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="field-label">Email du collaborateur</label>
+                      <input
+                        type="email"
+                        className="field-input"
+                        value={inviteEmailInput}
+                        onChange={(e) => setInviteEmailInput(e.target.value)}
+                        placeholder="commercial@exemple.fr"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary cursor-pointer border-0"
+                        onClick={() => {
+                          setInviteOpen(false);
+                          setInviteEmailInput("");
+                        }}
+                        disabled={inviteSending}
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="button"
+                        className="gradient-primary rounded-lg px-4 py-2 text-[13px] font-medium text-primary-foreground border-0 cursor-pointer disabled:opacity-60"
+                        disabled={inviteSending}
+                        onClick={() => void handleSendInvite()}
+                      >
+                        {inviteSending ? "Envoi…" : "Envoyer l'invitation"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* ============================================================
                   Section 3 — Abonnement
                   ============================================================ */}
               <section
@@ -602,6 +873,13 @@ const ProfilConcession = () => {
                     💳 Abonnement
                   </h2>
                 </div>
+
+                {!isAdminMembre ? (
+                  <p className="text-xs text-muted-foreground">
+                    L&apos;abonnement et les paiements sont gérés par l&apos;administrateur de la
+                    concession. Vous bénéficiez du même plan et du même quota que toute l&apos;équipe.
+                  </p>
+                ) : null}
 
                 {abonnementLoading ? (
                   <div className="card-autodocs space-y-3">
@@ -660,7 +938,7 @@ const ProfilConcession = () => {
                         </div>
                       </div>
 
-                      {!isPro && !isAdmin && (
+                      {!isPro && !isAdmin && isAdminMembre && (
                         <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
                           <button
                             type="button"
@@ -686,7 +964,7 @@ const ProfilConcession = () => {
                       )}
                     </div>
 
-                    {!isPro && !isAdmin && (
+                    {!isPro && !isAdmin && isAdminMembre && (
                       <div className="card-autodocs space-y-3">
                         <div className="flex items-center justify-between text-sm">
                           <span className="font-semibold text-foreground">Quota gratuit</span>
@@ -739,7 +1017,7 @@ const ProfilConcession = () => {
                           "Toutes les fonctionnalités",
                         ]}
                         cta={
-                          !isPro && !isAdmin ? (
+                          !isPro && !isAdmin && isAdminMembre ? (
                             <button
                               type="button"
                               className="btn-secondary w-full cursor-pointer"
@@ -766,7 +1044,7 @@ const ProfilConcession = () => {
                           "💰 Économisez 189 € / an",
                         ]}
                         cta={
-                          !isPro && !isAdmin ? (
+                          !isPro && !isAdmin && isAdminMembre ? (
                             <button
                               type="button"
                               className="btn-primary w-full cursor-pointer"

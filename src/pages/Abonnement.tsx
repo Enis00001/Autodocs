@@ -10,9 +10,12 @@ import {
   type AbonnementInfo,
   type CheckoutInterval,
 } from "@/utils/abonnement";
+import { useAuth } from "@/context/AuthContext";
+import AccessDenied from "@/components/auth/AccessDenied";
 import { cn } from "@/lib/utils";
 
 const Abonnement = () => {
+  const { membreRole, loading: authLoading } = useAuth();
   const [info, setInfo] = useState<AbonnementInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<CheckoutInterval | null>(null);
@@ -111,6 +114,17 @@ const Abonnement = () => {
         year: "numeric",
       })
     : null;
+
+  if (!loading && !authLoading && !info?.isAdmin && membreRole !== "admin") {
+    return (
+      <AccessDenied
+        title="Gestion réservée à l'administrateur"
+        description="La souscription et le paiement de l'abonnement sont réservés à l'administrateur de la concession. Consultez la section « Ma concession » pour l'état du plan."
+        backLabel="Retour à Ma concession"
+        backTo="/profil-concession"
+      />
+    );
+  }
 
   return (
     <>

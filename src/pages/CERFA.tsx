@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId, getCurrentUserId } from "@/lib/auth";
 import { loadDrafts, type BonDraftData } from "@/utils/drafts";
 import {
   loadProfilConcession,
@@ -273,15 +273,15 @@ const CERFA = () => {
   const refreshHistory = async () => {
     setHistoryLoading(true);
     try {
-      const userId = await getCurrentUserId();
-      if (!userId) {
+      const concessionId = await getCurrentConcessionId();
+      if (!concessionId) {
         setHistory([]);
         return;
       }
       const { data, error } = await supabase
         .from("cerfas")
         .select("*")
-        .eq("user_id", userId)
+        .eq("concession_id", concessionId)
         .order("created_at", { ascending: false });
       if (error) {
         console.error("[cerfa] loadHistory:", error);
@@ -368,10 +368,13 @@ const CERFA = () => {
       const cerfaData = buildCerfaData(state, profil);
       const pdfBase64 = await generateCERFA(cerfaData);
 
+      const concessionId = await getCurrentConcessionId();
       const userId = await getCurrentUserId();
-      if (userId) {
+      if (concessionId && userId) {
         const { error: insertError } = await supabase.from("cerfas").insert({
+          concession_id: concessionId,
           user_id: userId,
+          created_by: userId,
           brouillon_id: state.brouillonId || null,
           cerfa_data: cerfaData,
           pdf_base64: pdfBase64,

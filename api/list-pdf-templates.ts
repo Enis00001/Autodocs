@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
+import { getActiveConcessionIdForUser } from "./_lib/concession.js";
 
 function getUrl() {
   return process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
@@ -51,27 +52,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const userId = user.id;
   const serviceKey = getServiceRole();
 
-  const runSelect = async (client: ReturnType<typeof createClient>) => {
-    return client
-      .from("pdf_templates")
-      .select("id, template_name, created_at")
-      .eq("dealer_id", userId)
-      .order("created_at", { ascending: false });
-  };
+  const selectShape =
+    "id, template_name, created_at, concession_id, dealer_id" as const;
 
-  if (serviceKey) {
-    const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-    const { data, error } = await runSelect(admin);
+  const selectFilteredByConcession = (
+    client: ReturnType<typeof createClient>,
+    concessionId: string,
+  ) =>
+    client
+      .from("pdf_templates")
+      .select(selectShape)
+      .eq("concession_id", concessionId)
+      .order("created_at", { ascending: false });
+
+  if (!serviceKey) {
+    const { data, error } = await supabaseAuth
+      .from("pdf_templates")
+      .select(selectShape)
+      .order("created_at", { ascending: false });
     if (error) {
-      console.error("[list-pdf-templates]", error);
+      console.error("[list-pdf-templates] client RLS", error);
       return res.status(500).json({ error: error.message });
     }
     return res.status(200).json({ templates: data ?? [] });
   }
 
-  const { data, error } = await runSelect(supabaseAuth);
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const concessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!concessionId) {
+    return res.status(400).json({ error: "Concession introuvable pour cet utilisateur." });
+  }
+
+  const { data, error } = await selectFilteredByConcession(admin, concessionId);
   if (error) {
-    console.error("[list-pdf-templates] client RLS", error);
+    console.error("[list-pdf-templates]", error);
     return res.status(500).json({ error: error.message });
   }
   return res.status(200).json({ templates: data ?? [] });

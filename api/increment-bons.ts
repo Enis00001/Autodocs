@@ -1,20 +1,22 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import {
+  getActiveConcessionIdForUser,
+  getMembreRoleForConcession,
+} from "./_lib/concession.js";
 
 /**
  * POST /api/increment-bons
  *
  * Headers : Authorization: Bearer <access_token>
- * Body JSON : { userId: string }
+ * Body JSON : { concessionId: string }
  * Retourne :
  *   200 { plan, bonsTotal, quota, allowed: true } si OK
  *   200 { ..., adminBypass: true } si compte admin (sans incrément)
  *   401 si JWT manquant ou invalide
- *   403 si userId ne correspond pas au JWT
+ *   403 si la concession ne correspond pas au JWT ou au corps
  *   402 { error, plan, bonsTotal, quota } si quota atteint
  *
- * Vérifie le quota de l'utilisateur (10 bons gratuits au total,
- * illimité en plan pro) et incrémente `bons_total` côté serveur. Appelé
- * par le front juste avant la génération PDF.
+ * Le quota est partagé au niveau de la concession (plan gratuit vs pro).
  */
 const QUOTA_GRATUIT = 10;
 
@@ -30,9 +32,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: "Authorization Bearer requis" });
   }
 
-  const body = (req.body ?? {}) as { userId?: string };
-  const userId = body.userId;
-  if (!userId) return res.status(400).json({ error: "userId requis" });
+  const body = (req.body ?? {}) as { concessionId?: string };
+  const concessionIdBody =
+    typeof body.concessionId === "string" ? body.concessionId.trim() : "";
+  if (!concessionIdBody) return res.status(400).json({ error: "concessionId requis" });
 
   const { createClient } = await import("@supabase/supabase-js");
   const supabaseAdmin = createClient(
@@ -44,16 +47,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (userErr || !userData?.user) {
     return res.status(401).json({ error: "Session invalide" });
   }
-  if (userData.user.id !== userId) {
-    return res.status(403).json({ error: "userId incompatible avec la session" });
+  const userId = userData.user.id;
+
+  const concessionFromJwt = await getActiveConcessionIdForUser(supabaseAdmin, userId);
+  if (!concessionFromJwt || concessionFromJwt !== concessionIdBody) {
+    return res.status(403).json({ error: "concessionId incompatible avec la session" });
+  }
+
+  const roleInConcession = await getMembreRoleForConcession(
+    supabaseAdmin,
+    userId,
+    concessionIdBody,
+  );
+  if (!roleInConcession) {
+    return res.status(403).json({ error: "Accès concession refusé" });
   }
 
   const isAdmin = userData.user.user_metadata?.is_admin === true;
 
   const { data: existing } = await supabaseAdmin
     .from("abonnements")
-    .select("plan, bons_total, actif")
-    .eq("user_id", userId)
+    .select("id, plan, bons_total, actif")
+    .eq("concession_id", concessionIdBody)
     .maybeSingle();
 
   const plan = (existing?.plan as string) || "gratuit";
@@ -81,8 +96,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const nextCount = bonsTotal + 1;
 
-  if (!existing) {
+  if (!existing?.id) {
     await supabaseAdmin.from("abonnements").insert({
+      concession_id: concessionIdBody,
       user_id: userId,
       plan: "gratuit",
       bons_total: nextCount,
@@ -94,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         bons_total: nextCount,
         updated_at: new Date().toISOString(),
       })
-      .eq("user_id", userId);
+      .eq("id", existing.id);
   }
 
   return res.status(200).json({

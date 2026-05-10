@@ -1,9 +1,9 @@
--- AutoDocs — Facturation véhicule (RLS par concession = auth.uid)
--- Exécuter dans le SQL Editor Supabase après validation du schéma.
+-- AutoDocs — Facturation véhicule (RLS par concession — voir sql_rls_policies.sql).
+-- public.concessions doit exister (sql_create_concessions.sql).
 
 CREATE TABLE IF NOT EXISTS factures (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  concession_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  concession_id UUID NOT NULL REFERENCES public.concessions(id) ON DELETE CASCADE,
   brouillon_id UUID REFERENCES brouillons(id) ON DELETE SET NULL,
   client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
   numero_facture TEXT NOT NULL,

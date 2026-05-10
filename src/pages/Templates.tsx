@@ -10,8 +10,9 @@ import {
   openTemplateInNewTab,
 } from "@/utils/templates";
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
 import { loadVehicleFields } from "@/utils/vehicleFields";
+import { useAuth } from "@/context/AuthContext";
+import AccessDenied from "@/components/auth/AccessDenied";
 
 const ACCEPT_IMPORT =
   ".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -21,14 +22,16 @@ const PDF_STORAGE_BUCKET = "pdf-templates";
 type BannerState = { variant: "info" | "success" | "error"; text: string } | null;
 
 const TemplatesPage = () => {
+  const { concessionId, user, membreRole } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateName, setTemplateName] = useState("");
   const [banner, setBanner] = useState<BannerState>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    seedTemplatesIfEmpty().then(setTemplates);
-  }, []);
+    if (membreRole !== "admin") return;
+    void seedTemplatesIfEmpty().then(setTemplates);
+  }, [membreRole]);
 
   const openImportDialog = () => {
     fileInputRef.current?.click();
@@ -61,9 +64,9 @@ const TemplatesPage = () => {
       return;
     }
 
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      setBanner({ variant: "error", text: "Vous devez être connecté pour importer un PDF." });
+    const dealerId = user?.id;
+    if (!dealerId || !concessionId) {
+      setBanner({ variant: "error", text: "Concession introuvable ou session invalide." });
       return;
     }
 
@@ -76,7 +79,7 @@ const TemplatesPage = () => {
     setBanner({ variant: "info", text: "Analyse en cours..." });
 
     try {
-      const objectPath = `${userId}/${crypto.randomUUID()}.pdf`;
+      const objectPath = `${concessionId}/${crypto.randomUUID()}.pdf`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from(PDF_STORAGE_BUCKET)
         .upload(objectPath, file, {
@@ -102,14 +105,15 @@ const TemplatesPage = () => {
 
       const storagePath = uploadData?.path ?? objectPath;
 
-      const vehicleFields = await loadVehicleFields(userId);
+      const vehicleFields = await loadVehicleFields(concessionId);
       const vehicle_field_keys = vehicleFields.map((v) => v.field_key);
 
       const res = await fetch("/api/analyze-template", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dealer_id: userId,
+          dealer_id: dealerId,
+          concession_id: concessionId,
           template_name: displayName,
           storage_path: storagePath,
           pdf_field_names: null,
@@ -151,6 +155,15 @@ const TemplatesPage = () => {
     await deleteTemplate(id);
     setTemplates((prev) => prev.filter((t) => t.id !== id));
   };
+
+  if (membreRole !== "admin") {
+    return (
+      <AccessDenied
+        title="Réservé à l'administrateur"
+        description="L'import et la gestion des templates PDF sont réservés à l'administrateur de la concession."
+      />
+    );
+  }
 
   return (
     <>

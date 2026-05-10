@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, User, Car, Repeat, Wallet, Plus, Trash2 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
+import AccessDenied from "@/components/auth/AccessDenied";
 import {
   DEFAULT_FORM_PREFS,
   SECTIONS,
@@ -32,6 +34,7 @@ const SECTION_OPTIONS: Array<{ id: FieldSection; label: string }> = [
 ];
 
 const Preferences = () => {
+  const { membreRole } = useAuth();
   const [prefs, setPrefs] = useState<FormFieldPrefs>(DEFAULT_FORM_PREFS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -124,6 +127,15 @@ const Preferences = () => {
       setSaving(false);
     }
   };
+
+  if (membreRole !== "admin") {
+    return (
+      <AccessDenied
+        title="Réservé à l'administrateur"
+        description="Seul l'administrateur de la concession peut modifier la configuration du formulaire (Activation et étiquettes des champs)."
+      />
+    );
+  }
 
   return (
     <>

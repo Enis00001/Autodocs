@@ -9,9 +9,11 @@
 -- l'application. Tu peux les dropper manuellement quand tu veux.
 -- =============================================================================
 
+-- `concession_id` référence public.concessions (créée avant cette table).
+
 CREATE TABLE IF NOT EXISTS stock_vehicules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  concession_id uuid REFERENCES auth.users(id),
+  concession_id uuid REFERENCES public.concessions(id) ON DELETE CASCADE,
   donnees jsonb NOT NULL DEFAULT '{}'::jsonb,
   colonnes_pdf jsonb NOT NULL DEFAULT '[]'::jsonb,
   disponible boolean DEFAULT true,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, X, Check } from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId } from "@/lib/auth";
 import {
   searchVehicules,
   vehiculeDisplayLabel,
@@ -41,7 +41,7 @@ const VehiculeVente = ({
   const stockWrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    getCurrentUserId().then(setConcessionId);
+    void getCurrentConcessionId().then(setConcessionId);
   }, []);
 
   useEffect(() => {

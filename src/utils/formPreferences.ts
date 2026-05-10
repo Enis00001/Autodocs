@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId } from "@/lib/auth";
 
 export type FieldSection = "client" | "vehicule" | "reprise" | "reglement";
 export type FieldType = "text" | "number" | "date";
@@ -177,9 +177,13 @@ export function isStockColumnVisible(columnName: string, prefs: FormFieldPrefs):
 }
 
 export async function loadFormPrefs(): Promise<FormFieldPrefs> {
-  const userId = await getCurrentUserId();
-  if (!userId) return DEFAULT_FORM_PREFS;
-  const { data, error } = await supabase.from("preferences_formulaire").select("champs_actifs").eq("user_id", userId).maybeSingle();
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return DEFAULT_FORM_PREFS;
+  const { data, error } = await supabase
+    .from("preferences_formulaire")
+    .select("champs_actifs")
+    .eq("concession_id", concessionId)
+    .maybeSingle();
   if (error) {
     console.error("loadFormPrefs:", error);
     return DEFAULT_FORM_PREFS;
@@ -189,15 +193,24 @@ export async function loadFormPrefs(): Promise<FormFieldPrefs> {
 }
 
 export async function saveFormPrefs(prefs: FormFieldPrefs): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Session expirée. Reconnectez-vous pour sauvegarder.");
-  const { data: existing, error: selErr } = await supabase.from("preferences_formulaire").select("id").eq("user_id", userId).maybeSingle();
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) throw new Error("Session expirée. Reconnectez-vous pour sauvegarder.");
+  const { data: existing, error: selErr } = await supabase
+    .from("preferences_formulaire")
+    .select("id")
+    .eq("concession_id", concessionId)
+    .maybeSingle();
   if (selErr) throw new Error(selErr.message || "Erreur de chargement des préférences.");
   if (existing?.id) {
-    const { error } = await supabase.from("preferences_formulaire").update({ champs_actifs: prefs }).eq("id", (existing as { id: string }).id);
+    const { error } = await supabase
+      .from("preferences_formulaire")
+      .update({ champs_actifs: prefs })
+      .eq("id", (existing as { id: string }).id);
     if (error) throw new Error(error.message || "Erreur de sauvegarde des préférences.");
   } else {
-    const { error } = await supabase.from("preferences_formulaire").insert({ user_id: userId, champs_actifs: prefs });
+    const { error } = await supabase
+      .from("preferences_formulaire")
+      .insert({ concession_id: concessionId, champs_actifs: prefs });
     if (error) throw new Error(error.message || "Erreur de sauvegarde des préférences.");
   }
 }

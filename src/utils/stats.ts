@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId } from "@/lib/auth";
 import { eachDayOfInterval, endOfMonth, format, startOfMonth, subMonths } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -143,7 +143,7 @@ export function sliceMonthlyByPeriod(
 }
 
 export async function loadDashboardStats(period: DashboardPeriod = "month"): Promise<DashboardStats> {
-  const uid = await getCurrentUserId();
+  const concessionId = await getCurrentConcessionId();
   const now = new Date();
   const historyStart = getHistoryStart(period, now).toISOString();
   const periodStart = getPeriodStart(period, now).toISOString();
@@ -158,7 +158,7 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
     draftsInProgressTotal: 0,
     draftStatusById: {},
   };
-  if (!uid) return empty;
+  if (!concessionId) return empty;
 
   const monthly = buildLastTwelveMonths(now).slice(-getMonthsForPeriod(period) * 2);
   const byKey = new Map(monthly.map((item) => [item.key, item]));
@@ -169,22 +169,22 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
     supabase
       .from("factures")
       .select("id, prix_ttc, created_at, brouillon_id")
-      .eq("concession_id", uid)
+      .eq("concession_id", concessionId)
       .neq("statut", "annulee")
       .gte("created_at", historyStart < periodStart ? historyStart : periodStart),
     supabase
       .from("stock_vehicules")
       .select("id, created_at, updated_at, disponible")
-      .eq("concession_id", uid)
+      .eq("concession_id", concessionId)
       .eq("statut", "vendu"),
     supabase
       .from("stock_vehicules")
       .select("statut, disponible")
-      .eq("concession_id", uid),
+      .eq("concession_id", concessionId),
     supabase
       .from("brouillons")
       .select("id, created_at")
-      .eq("user_id", uid)
+      .eq("concession_id", concessionId)
       .gte("created_at", historyStart),
   ]);
 
@@ -216,7 +216,7 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
     const { data: brouillonsForFactures, error: brouillonsForFacturesError } = await supabase
       .from("brouillons")
       .select("id, vehicle_field_values")
-      .eq("user_id", uid)
+      .eq("concession_id", concessionId)
       .in("id", brouillonIds);
     if (brouillonsForFacturesError) {
       console.error(
@@ -361,14 +361,14 @@ export async function loadRecentSales(
   period: DashboardPeriod = "month",
   limit = 5,
 ): Promise<RecentSaleRow[]> {
-  const uid = await getCurrentUserId();
-  if (!uid) return [];
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
   void period;
 
   const { data: stockData, error: stockError } = await supabase
     .from("stock_vehicules")
     .select("id, donnees, marque, modele, updated_at, created_at")
-    .eq("concession_id", uid)
+    .eq("concession_id", concessionId)
     .eq("statut", "vendu")
     .order("updated_at", { ascending: false })
     .limit(limit * 6);
@@ -382,7 +382,7 @@ export async function loadRecentSales(
   const { data: brouillonsData, error: brouillonsError } = await supabase
     .from("brouillons")
     .select("id, vehicle_field_values")
-    .eq("user_id", uid);
+    .eq("concession_id", concessionId);
   if (brouillonsError) {
     console.error("loadRecentSales brouillons:", brouillonsError);
   }
@@ -403,7 +403,7 @@ export async function loadRecentSales(
     const { data: facturesData, error: facturesError } = await supabase
       .from("factures")
       .select("brouillon_id, client_nom, client_prenom, prix_ttc, created_at")
-      .eq("concession_id", uid)
+      .eq("concession_id", concessionId)
       .neq("statut", "annulee")
       .in("brouillon_id", brouillonIds)
       .order("created_at", { ascending: false });

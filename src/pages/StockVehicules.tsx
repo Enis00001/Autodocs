@@ -21,7 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId } from "@/lib/auth";
 import {
   Dialog,
   DialogContent,
@@ -259,9 +259,9 @@ const StockVehicules = () => {
 
   useEffect(() => {
     (async () => {
-      const uid = await getCurrentUserId();
-      setConcessionId(uid);
-      if (uid) await refresh(uid);
+      const cid = await getCurrentConcessionId();
+      setConcessionId(cid);
+      if (cid) await refresh(cid);
       else setLoading(false);
     })();
   }, []);
@@ -269,8 +269,8 @@ const StockVehicules = () => {
   useEffect(() => {
     const onStockUpdated = () => {
       void (async () => {
-        const uid = await getCurrentUserId();
-        if (uid) await refresh(uid);
+        const cid = await getCurrentConcessionId();
+        if (cid) await refresh(cid);
       })();
     };
     window.addEventListener("autodocs_stock_updated", onStockUpdated);

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId, getCurrentUserId } from "@/lib/auth";
 
 export type Template = {
   id: string;
@@ -74,15 +74,13 @@ function setMigrationFlag(): void {
 }
 
 export async function loadTemplates(): Promise<Template[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
-  console.log("Tentative sauvegarde: loadTemplates (select templates)");
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
   const { data, error } = await supabase
     .from("templates")
     .select("id, nom, date_import, fichier_base64, type")
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .order("date_import", { ascending: false });
-  console.log("Résultat Supabase:", { data, error });
 
   if (error) {
     console.error("loadTemplates:", error);
@@ -94,15 +92,18 @@ export async function loadTemplates(): Promise<Template[]> {
 
 /** Insère (ou met à jour) un template dans Supabase. */
 export async function saveTemplate(template: Template): Promise<Template> {
-  const userId = await getCurrentUserId();
-  if (!userId) return template;
+  const [concessionId, userId] = await Promise.all([
+    getCurrentConcessionId(),
+    getCurrentUserId(),
+  ]);
+  if (!concessionId) return template;
   const row = templateToRow(template);
-  const payload = { ...row, user_id: userId };
-  console.log("Tentative sauvegarde: saveTemplate", { template: { id: template.id, name: template.name }, row: payload });
+  // `user_id` reste écrit pour back-compat (colonne legacy NOT NULL dans
+  // certaines bases). `concession_id` est la source de vérité partagée.
+  const payload = { ...row, user_id: userId, concession_id: concessionId };
   const result = await supabase
     .from("templates")
     .upsert(payload, { onConflict: "id" });
-  console.log("Résultat Supabase:", { data: result.data, error: result.error });
   if (result.error) console.error("saveTemplate:", result.error);
   return template;
 }
@@ -127,11 +128,13 @@ export async function createTemplate(
 }
 
 export async function deleteTemplate(id: string): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
-  console.log("Tentative sauvegarde: deleteTemplate", { id });
-  const { data, error } = await supabase.from("templates").delete().eq("id", id).eq("user_id", userId).select();
-  console.log("Résultat Supabase:", { data, error });
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return;
+  const { error } = await supabase
+    .from("templates")
+    .delete()
+    .eq("id", id)
+    .eq("concession_id", concessionId);
   if (error) console.error("deleteTemplate:", error);
 }
 
@@ -156,33 +159,39 @@ export function getDefaultTemplates(): Template[] {
 }
 
 export async function seedTemplatesIfEmpty(): Promise<Template[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
-  // 1) On charge ce qu'il y a déjà en DB.
-  const current = await loadTemplates();
+  const [concessionId, userId] = await Promise.all([
+    getCurrentConcessionId(),
+    getCurrentUserId(),
+  ]);
+  if (!concessionId) return [];
+  void (await loadTemplates());
 
-  // 2) Migration one-shot depuis localStorage (même si DB pas vide).
+  // Migration one-shot depuis localStorage (même si DB pas vide).
   const localTemplates = readLocalTemplates();
   const importedLocalTemplates = localTemplates.filter((t) => !!t.contentBase64);
   if (importedLocalTemplates.length > 0 && !getMigrationFlag()) {
-    const rows = importedLocalTemplates.map((t) => ({ ...templateToRow(t), user_id: userId }));
-    console.log("Tentative sauvegarde: seedTemplatesIfEmpty migration", { rowsCount: rows.length, rows: rows.map((r) => ({ id: r.id, nom: r.nom })) });
+    const rows = importedLocalTemplates.map((t) => ({
+      ...templateToRow(t),
+      user_id: userId,
+      concession_id: concessionId,
+    }));
     const result = await supabase.from("templates").upsert(rows, { onConflict: "id" });
-    console.log("Résultat Supabase:", { data: result.data, error: result.error });
     if (result.error) console.error("seedTemplatesIfEmpty (migration):", result.error);
     setMigrationFlag();
   }
 
-  // 3) Reload après migration (éventuelle) ou state initial.
+  // Reload après migration (éventuelle) ou state initial.
   const after = await loadTemplates();
   if (after.length > 0) return after;
 
-  // 4) Sinon : seed des templates par défaut
+  // Sinon : seed des templates par défaut.
   const defaults = getDefaultTemplates();
-  const rows = defaults.map((t) => ({ ...templateToRow(t), user_id: userId }));
-  console.log("Tentative sauvegarde: seedTemplatesIfEmpty defaults", { rowsCount: rows.length, rows: rows.map((r) => ({ id: r.id, nom: r.nom })) });
+  const rows = defaults.map((t) => ({
+    ...templateToRow(t),
+    user_id: userId,
+    concession_id: concessionId,
+  }));
   const result = await supabase.from("templates").upsert(rows, { onConflict: "id" });
-  console.log("Résultat Supabase:", { data: result.data, error: result.error });
   if (result.error) console.error("seedTemplatesIfEmpty (defaults):", result.error);
   return loadTemplates();
 }

@@ -519,10 +519,28 @@ async function checkAndConsumeQuota(
   const { createClient } = await import("@supabase/supabase-js");
   const admin = createClient(supabaseUrl, serviceKey);
 
+  const { data: membre } = await admin
+    .from("membres_concession")
+    .select("concession_id")
+    .eq("user_id", userId)
+    .eq("actif", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const concessionId = membre?.concession_id as string | undefined;
+  if (!concessionId) {
+    return {
+      ok: false,
+      status: 403,
+      body: { error: "Concession introuvable pour ce compte." },
+    };
+  }
+
   const { data: existing } = await admin
     .from("abonnements")
-    .select("plan, bons_total")
-    .eq("user_id", userId)
+    .select("id, plan, bons_total")
+    .eq("concession_id", concessionId)
     .maybeSingle();
 
   const plan = (existing?.plan as string) || "gratuit";
@@ -543,8 +561,9 @@ async function checkAndConsumeQuota(
   }
 
   const nextCount = bonsTotal + 1;
-  if (!existing) {
+  if (!existing?.id) {
     await admin.from("abonnements").insert({
+      concession_id: concessionId,
       user_id: userId,
       plan: "gratuit",
       bons_total: nextCount,
@@ -553,7 +572,7 @@ async function checkAndConsumeQuota(
     await admin
       .from("abonnements")
       .update({ bons_total: nextCount, updated_at: new Date().toISOString() })
-      .eq("user_id", userId);
+      .eq("id", existing.id);
   }
 
   return { ok: true };

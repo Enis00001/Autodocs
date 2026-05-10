@@ -54,14 +54,20 @@ const DEFAULT_PREFS: FieldPrefs = {
   hiddenKeys: [],
 };
 
-function storageKey(userId: string) {
-  return `autodocs:field-prefs:${userId}`;
+/**
+ * Préférences partagées par concession (admin only). Le param est l'ID de
+ * la concession active (= `useAuth().concessionId`). On supporte aussi le
+ * legacy `userId` pour les anciennes installations qui avaient stocké la
+ * clé `autodocs:field-prefs:<userId>` avant la migration multi-utilisateurs.
+ */
+function storageKey(scopeId: string) {
+  return `autodocs:field-prefs:${scopeId}`;
 }
 
-export function loadFieldPreferences(userId: string): FieldPrefs {
+export function loadFieldPreferences(scopeId: string): FieldPrefs {
   if (typeof window === "undefined") return DEFAULT_PREFS;
   try {
-    const raw = window.localStorage.getItem(storageKey(userId));
+    const raw = window.localStorage.getItem(storageKey(scopeId));
     if (!raw) return DEFAULT_PREFS;
     const parsed = JSON.parse(raw) as Partial<FieldPrefs>;
     const hiddenKeys = Array.isArray(parsed.hiddenKeys)
@@ -73,8 +79,8 @@ export function loadFieldPreferences(userId: string): FieldPrefs {
   }
 }
 
-export function saveFieldPreferences(userId: string, prefs: FieldPrefs): void {
+export function saveFieldPreferences(scopeId: string, prefs: FieldPrefs): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(storageKey(userId), JSON.stringify(prefs));
+  window.localStorage.setItem(storageKey(scopeId), JSON.stringify(prefs));
 }
 

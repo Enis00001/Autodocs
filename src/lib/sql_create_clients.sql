@@ -6,7 +6,8 @@
 --
 -- Une concession (= 1 utilisateur Auth) possède N clients.
 -- Un brouillon (bon de commande) peut être rattaché à un client (nullable).
--- RLS : un user ne voit que ses propres clients (concession_id = auth.uid()).
+-- RLS : voir sql_rls_policies.sql (membres actifs de la concession).
+-- Nécessite que la table public.concessions existe (sql_create_concessions.sql).
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -14,7 +15,7 @@
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS clients (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  concession_id   UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  concession_id   UUID NOT NULL REFERENCES public.concessions(id) ON DELETE CASCADE,
   nom             TEXT NOT NULL,
   prenom          TEXT NOT NULL,
   email           TEXT,

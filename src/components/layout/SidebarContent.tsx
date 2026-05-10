@@ -20,6 +20,7 @@ import { loadConcession, getConcessionInitials } from "@/utils/concession";
 import type { ConcessionData } from "@/utils/concession";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserIsAdmin } from "@/lib/auth";
+import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
 type SidebarItem = {
@@ -116,6 +117,7 @@ type SidebarContentProps = {
 export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { membreRole } = useAuth();
   const [concession, setConcession] = useState<ConcessionData>({
     name: "Ma concession",
     address: "",
@@ -158,6 +160,22 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
 
   const renderItem = (item: SidebarItem) => {
     const isActive = matchActive(item.path, location.pathname);
+    const disabledNav = item.path === "/preferences" && membreRole !== "admin";
+    if (disabledNav) {
+      return (
+        <span
+          key={item.path}
+          title="Réservé à l'administrateur de la concession"
+          className={cn(
+            "group relative flex min-h-11 cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium opacity-45",
+            "text-[#64748B]",
+          )}
+        >
+          <item.icon className="h-[18px] w-[18px] shrink-0 text-[#64748B]" strokeWidth={2} />
+          <span>{item.title}</span>
+        </span>
+      );
+    }
     return (
       <Link
         key={item.path}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import TopBar from "@/components/layout/TopBar";
-import { getCurrentUserId } from "@/lib/auth";
+import { useAuth } from "@/context/AuthContext";
+import AccessDenied from "@/components/auth/AccessDenied";
 import {
   addVehicleField,
   deleteVehicleField,
@@ -16,75 +17,78 @@ import {
 } from "@/utils/bonFieldPreferences";
 
 const VehicleFieldsPage = () => {
+  const { concessionId, membreRole } = useAuth();
   const [rows, setRows] = useState<VehicleFieldRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [newLabel, setNewLabel] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [hiddenKeys, setHiddenKeys] = useState<string[]>([]);
 
-  const refresh = async (concessionId: string) => {
+  const refresh = async (cid: string) => {
     setLoading(true);
     setError(null);
-    const list = await loadVehicleFields(concessionId);
+    const list = await loadVehicleFields(cid);
     setRows(list);
     setLoading(false);
   };
 
   useEffect(() => {
-    getCurrentUserId().then((uid) => {
-      if (!uid) {
-        setLoading(false);
-        setError("Utilisateur non connecté.");
-        return;
-      }
-      setUserId(uid);
-      const prefs = loadFieldPreferences(uid);
-      setHiddenKeys(prefs.hiddenKeys);
-      refresh(uid);
-    });
-  }, []);
+    if (!concessionId) {
+      setLoading(false);
+      return;
+    }
+    const prefs = loadFieldPreferences(concessionId);
+    setHiddenKeys(prefs.hiddenKeys);
+    void refresh(concessionId);
+  }, [concessionId]);
+
+  if (membreRole !== "admin") {
+    return (
+      <AccessDenied
+        title="Réservé à l'administrateur"
+        description="Seul l'administrateur de la concession peut modifier les champs personnalisés du formulaire."
+      />
+    );
+  }
 
   const toggleStandardField = (key: string) => {
-    if (!userId) return;
+    if (!concessionId) return;
     const next = hiddenKeys.includes(key)
       ? hiddenKeys.filter((k) => k !== key)
       : [...hiddenKeys, key];
     setHiddenKeys(next);
-    saveFieldPreferences(userId, { hiddenKeys: next });
+    saveFieldPreferences(concessionId, { hiddenKeys: next });
   };
 
   const handleAdd = async () => {
-    const uid = await getCurrentUserId();
-    if (!uid) return;
+    if (!concessionId) return;
     const label = newLabel.trim();
     if (!label) {
       setError("Saisissez un nom de champ.");
       return;
     }
-    const created = await addVehicleField(uid, label);
+    const created = await addVehicleField(concessionId, label);
     if (!created) {
       setError("Impossible d'ajouter le champ.");
       return;
     }
     setNewLabel("");
     setError(null);
-    await refresh(uid);
+    await refresh(concessionId);
   };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Supprimer ce champ ?")) return;
-    const uid = await getCurrentUserId();
-    if (!uid) return;
-    const ok = await deleteVehicleField(id, uid);
+    if (!concessionId) return;
+    const ok = await deleteVehicleField(id, concessionId);
     if (!ok) {
       setError("Suppression impossible.");
       return;
     }
     setError(null);
-    await refresh(uid);
+    await refresh(concessionId);
   };
 
   const startEdit = (row: VehicleFieldRow) => {
@@ -98,21 +102,19 @@ const VehicleFieldsPage = () => {
   };
 
   const saveEdit = async (id: string) => {
-    const uid = await getCurrentUserId();
-    if (!uid) return;
-    const updated = await updateVehicleField(id, uid, editLabel);
+    if (!concessionId) return;
+    const updated = await updateVehicleField(id, concessionId, editLabel);
     if (!updated) {
       setError("Impossible d'enregistrer les modifications.");
       return;
     }
     setError(null);
     cancelEdit();
-    await refresh(uid);
+    await refresh(concessionId);
   };
 
   const moveField = async (id: string, direction: "up" | "down") => {
-    const uid = await getCurrentUserId();
-    if (!uid) return;
+    if (!concessionId) return;
     const currentIndex = rows.findIndex((r) => r.id === id);
     if (currentIndex < 0) return;
     const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
@@ -124,16 +126,16 @@ const VehicleFieldsPage = () => {
 
     setRows(next);
     const ok = await reorderVehicleFields(
-      uid,
+      concessionId,
       next.map((r) => r.id),
     );
     if (!ok) {
       setError("Impossible de réordonner les champs.");
-      await refresh(uid);
+      await refresh(concessionId);
       return;
     }
     setError(null);
-    await refresh(uid);
+    await refresh(concessionId);
   };
 
   return (

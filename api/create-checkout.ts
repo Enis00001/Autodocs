@@ -1,26 +1,24 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
+import { assertIsAdminOfConcession } from "./_lib/concession.js";
 
 /**
  * POST /api/create-checkout
  *
  * Body JSON attendu :
- *   { userId: string, email?: string, interval?: "monthly" | "annual" }
+ *   { concessionId: string, userId: string, email?: string, interval?: "monthly" | "annual" }
  * Retourne : { url: string }
  *
- * Crée (ou réutilise) un customer Stripe pour l'utilisateur, démarre une
+ * Crée (ou réutilise) un customer Stripe pour la concession, démarre une
  * Checkout Session pour l'abonnement « Pro » (mode subscription) et renvoie
  * l'URL hébergée Stripe vers laquelle on redirige le navigateur.
- *
- * Selon `interval` on utilise :
- *   - "annual"  → STRIPE_PRICE_ID_PRO_ANNUAL  (399 €/an)
- *   - "monthly" (défaut) → STRIPE_PRICE_ID_PRO (49 €/mois)
  */
 
 /** URL publique de production (utilisée pour success/cancel). */
 const PROD_URL = "https://autodocs-eight.vercel.app";
 
 type CheckoutBody = {
+  concessionId?: string;
   userId?: string;
   email?: string;
   interval?: "monthly" | "annual";
@@ -53,15 +51,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const body = parseBody(req.body);
-    const userId = body.userId;
+    const rawUserId = body.userId;
+    const concessionId =
+      typeof body.concessionId === "string" && body.concessionId.trim().length > 0
+        ? body.concessionId.trim()
+        : null;
     const email = body.email;
     const interval: "monthly" | "annual" =
       body.interval === "annual" ? "annual" : "monthly";
-    if (!userId) {
+    if (!rawUserId) {
       return res.status(400).json({ error: "userId requis" });
     }
+    if (!concessionId) {
+      return res.status(400).json({ error: "concessionId requis" });
+    }
 
-    // Résolution du price ID en fonction de l'intervalle demandé.
+    const authHeader = req.headers.authorization;
+    const token =
+      typeof authHeader === "string" ? authHeader.replace(/^Bearer\s+/i, "").trim() : "";
+    if (!token) {
+      return res.status(401).json({ error: "Authorization Bearer requis" });
+    }
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabaseAdmin = createClient(
+      process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+
+    const { data: jwtUser, error: jwtErr } = await supabaseAdmin.auth.getUser(token);
+    if (jwtErr || !jwtUser?.user?.id) {
+      return res.status(401).json({ error: "Session invalide" });
+    }
+    if (jwtUser.user.id !== rawUserId) {
+      return res.status(403).json({ error: "Accès refusé" });
+    }
+
+    const okAdmin = await assertIsAdminOfConcession(supabaseAdmin, rawUserId, concessionId);
+    if (!okAdmin) {
+      return res.status(403).json({
+        error: "Seul l'administrateur de la concession peut souscrire un abonnement.",
+      });
+    }
+
     const priceId =
       interval === "annual"
         ? process.env.STRIPE_PRICE_ID_PRO_ANNUAL
@@ -75,26 +107,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // On fige l'API Stripe à 2023-10-16 (les typings récents ne laissent
-    // passer que la version courante — cast nécessaire).
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       apiVersion: "2023-10-16" as any,
     });
 
-    // Client Supabase admin inlined (évite un import local qui n'est pas
-    // bundlé dans /var/task/ par Vercel).
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabaseAdmin = createClient(
-      process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    );
-
-    // 1. Récupère l'abonnement existant (customer éventuellement déjà créé).
     const { data: abonnement, error: fetchErr } = await supabaseAdmin
       .from("abonnements")
       .select("stripe_customer_id")
-      .eq("user_id", userId)
+      .eq("concession_id", concessionId)
       .maybeSingle();
 
     if (fetchErr) {
@@ -105,28 +126,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let customerId = abonnement?.stripe_customer_id ?? null;
 
-    // 2. Si aucun customer Stripe, on en crée un et on l'associe à l'user.
     if (!customerId) {
       const customer = await stripe.customers.create({
         email,
-        metadata: { user_id: userId },
+        metadata: { concession_id: concessionId, user_id: rawUserId },
       });
       customerId = customer.id;
-      const { error: upsertErr } = await supabaseAdmin
+
+      const { data: existingLegacy } = await supabaseAdmin
         .from("abonnements")
-        .upsert(
-          { user_id: userId, stripe_customer_id: customerId, plan: "gratuit" },
-          { onConflict: "user_id" },
-        );
-      if (upsertErr) {
-        return res.status(500).json({
-          error: `Supabase (upsert abonnement) : ${upsertErr.message}`,
-        });
+        .select("id")
+        .eq("user_id", rawUserId)
+        .maybeSingle();
+
+      const row = {
+        concession_id: concessionId,
+        user_id: rawUserId,
+        stripe_customer_id: customerId,
+        plan: "gratuit",
+        updated_at: new Date().toISOString(),
+      };
+
+      if (existingLegacy?.id) {
+        await supabaseAdmin.from("abonnements").update(row).eq("id", existingLegacy.id);
+      } else {
+        await supabaseAdmin.from("abonnements").insert(row);
       }
     }
 
-    // 3. URL de base. On privilégie l'URL de prod (forcée) ; en dev local on
-    //    retombe sur l'origin des headers pour tester.
     const origin =
       (req.headers.origin as string | undefined) ||
       (req.headers.referer as string | undefined)?.split("/").slice(0, 3).join("/") ||
@@ -134,7 +161,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const isLocalhost = origin.includes("localhost") || origin.includes("127.0.0.1");
     const baseUrl = isLocalhost ? origin : PROD_URL;
 
-    // 4. Création de la Checkout Session (abonnement).
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -142,8 +168,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       allow_promotion_codes: true,
       success_url: `${baseUrl}/abonnement?status=success&interval=${interval}`,
       cancel_url: `${baseUrl}/abonnement?status=cancel`,
-      metadata: { user_id: userId, interval },
-      subscription_data: { metadata: { user_id: userId, interval } },
+      metadata: {
+        concession_id: concessionId,
+        user_id: rawUserId,
+        interval,
+      },
+      subscription_data: {
+        metadata: {
+          concession_id: concessionId,
+          user_id: rawUserId,
+          interval,
+        },
+      },
     });
 
     if (!session.url) {
@@ -154,8 +190,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ url: session.url });
   } catch (err: unknown) {
-    // On renvoie le message exact en JSON pour faciliter le debug côté client
-    // (sinon Vercel répond FUNCTION_INVOCATION_FAILED sans détail).
     const message =
       err instanceof Error ? err.message : "Erreur inconnue côté serveur";
     console.error("[create-checkout] Erreur :", err);

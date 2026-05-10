@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId } from "@/lib/auth";
 import type { BonDraftData } from "@/utils/drafts";
 
 /**
@@ -70,12 +70,12 @@ function notifyClientsUpdated(): void {
  * Renvoie un tableau vide si l'utilisateur n'est pas connecté.
  */
 export async function getClients(): Promise<ClientData[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
   const { data, error } = await supabase
     .from("clients")
     .select("*")
-    .eq("concession_id", userId)
+    .eq("concession_id", concessionId)
     .order("nom", { ascending: true })
     .order("prenom", { ascending: true });
   if (error) {
@@ -93,8 +93,8 @@ export async function searchClients(query: string): Promise<ClientData[]> {
   const trimmed = query.trim();
   if (!trimmed) return getClients();
 
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
 
   // PostgREST `or` accepte une liste de filtres séparés par virgules. On
   // échappe la virgule et le pourcent pour éviter les injections de filtre.
@@ -104,7 +104,7 @@ export async function searchClients(query: string): Promise<ClientData[]> {
   const { data, error } = await supabase
     .from("clients")
     .select("*")
-    .eq("concession_id", userId)
+    .eq("concession_id", concessionId)
     .or(`nom.ilike.${pattern},prenom.ilike.${pattern},email.ilike.${pattern}`)
     .order("nom", { ascending: true })
     .order("prenom", { ascending: true });
@@ -124,8 +124,8 @@ export async function searchClientsAutocomplete(query: string): Promise<ClientDa
   const trimmed = query.trim();
   if (!trimmed) return [];
 
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
 
   const escaped = trimmed.replace(/[,%]/g, " ").trim();
   if (!escaped) return [];
@@ -134,7 +134,7 @@ export async function searchClientsAutocomplete(query: string): Promise<ClientDa
   const { data, error } = await supabase
     .from("clients")
     .select("*")
-    .eq("concession_id", userId)
+    .eq("concession_id", concessionId)
     .or(`nom.ilike.${pattern},prenom.ilike.${pattern}`)
     .order("nom", { ascending: true })
     .order("prenom", { ascending: true })
@@ -148,13 +148,13 @@ export async function searchClientsAutocomplete(query: string): Promise<ClientDa
 
 /** Récupère un client par son id. */
 export async function getClientById(id: string): Promise<ClientData | null> {
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return null;
   const { data, error } = await supabase
     .from("clients")
     .select("*")
     .eq("id", id)
-    .eq("concession_id", userId)
+    .eq("concession_id", concessionId)
     .maybeSingle();
   if (error) {
     console.error("getClientById:", error);
@@ -229,12 +229,12 @@ function resumeFromRow(row: BrouillonResumeRow): ClientBonResume {
 
 /** Liste les brouillons rattachés à un client (via FK `client_id`). */
 export async function getBonsForClient(clientId: string): Promise<ClientBonResume[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return [];
   const { data, error } = await supabase
     .from("brouillons")
     .select("id, created_at, updated_at, vehicle_field_values")
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .eq("client_id", clientId)
     .order("created_at", { ascending: false });
   if (error) {
@@ -257,8 +257,8 @@ export async function findClientByNomPrenom(
   nom: string,
   prenom: string,
 ): Promise<ClientData | null> {
-  const userId = await getCurrentUserId();
-  if (!userId) return null;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return null;
   const nomTrim = nom.trim();
   const prenomTrim = prenom.trim();
   if (!nomTrim || !prenomTrim) return null;
@@ -266,7 +266,7 @@ export async function findClientByNomPrenom(
   const { data, error } = await supabase
     .from("clients")
     .select("*")
-    .eq("concession_id", userId)
+    .eq("concession_id", concessionId)
     .ilike("nom", nomTrim)
     .ilike("prenom", prenomTrim)
     .limit(1);
@@ -293,8 +293,8 @@ export const findClientExactNomPrenom = findClientByNomPrenom;
 
 /** Crée une nouvelle fiche client. Renvoie la fiche créée. */
 export async function createClient(input: ClientUpsertData): Promise<ClientData> {
-  const userId = await getCurrentUserId();
-  if (!userId) {
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) {
     throw new Error("Session expirée. Reconnectez-vous pour créer un client.");
   }
   const nom = input.nom.trim();
@@ -304,7 +304,7 @@ export async function createClient(input: ClientUpsertData): Promise<ClientData>
   }
 
   const payload = {
-    concession_id: userId,
+    concession_id: concessionId,
     nom,
     prenom,
     email: input.email?.trim() || null,
@@ -331,8 +331,8 @@ export async function updateClient(
   id: string,
   input: ClientUpsertData,
 ): Promise<ClientData> {
-  const userId = await getCurrentUserId();
-  if (!userId) {
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) {
     throw new Error("Session expirée. Reconnectez-vous pour modifier le client.");
   }
   const nom = input.nom.trim();
@@ -354,7 +354,7 @@ export async function updateClient(
     .from("clients")
     .update(payload)
     .eq("id", id)
-    .eq("concession_id", userId)
+    .eq("concession_id", concessionId)
     .select("*")
     .single();
   if (error || !data) {
@@ -367,13 +367,13 @@ export async function updateClient(
 
 /** Supprime une fiche client (les bons de commande liés perdent juste le lien). */
 export async function deleteClient(id: string): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return;
   const { error } = await supabase
     .from("clients")
     .delete()
     .eq("id", id)
-    .eq("concession_id", userId);
+    .eq("concession_id", concessionId);
   if (error) {
     console.error("deleteClient:", error);
     throw new Error(error.message || "Impossible de supprimer le client.");
@@ -394,14 +394,14 @@ export type ClientStats = {
 };
 
 export async function getClientStats(): Promise<Map<string, ClientStats>> {
-  const userId = await getCurrentUserId();
+  const concessionId = await getCurrentConcessionId();
   const map = new Map<string, ClientStats>();
-  if (!userId) return map;
+  if (!concessionId) return map;
 
   const { data, error } = await supabase
     .from("brouillons")
     .select("client_id, created_at")
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .not("client_id", "is", null);
   if (error) {
     console.error("getClientStats:", error);
@@ -447,13 +447,13 @@ export async function attachDraftToClient(
   draftId: string,
   clientId: string | null,
 ): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) return;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) return;
   const { error } = await supabase
     .from("brouillons")
     .update({ client_id: clientId, updated_at: new Date().toISOString() })
     .eq("id", draftId)
-    .eq("user_id", userId);
+    .eq("concession_id", concessionId);
   if (error) {
     console.error("attachDraftToClient:", error);
     throw new Error(error.message || "Impossible de lier le brouillon au client.");

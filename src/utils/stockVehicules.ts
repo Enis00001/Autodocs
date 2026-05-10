@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { getCurrentConcessionId } from "@/lib/auth";
 
 /**
  * V2 — schéma libre. Un véhicule en stock est un sac de clé/valeur (`donnees`)
@@ -398,12 +398,12 @@ export async function markAsSold(id: string): Promise<void> {
 
 /**
  * Marque un véhicule du stock comme vendu après un bon de commande.
- * Filtre par `concession_id = auth.uid()` (défense en profondeur + RLS).
+ * Filtre par `concession_id` (défense en profondeur + RLS).
  * Renvoie `false` si aucune ligne n'a été mise à jour (id invalide / autre concession).
  */
 export async function markVehiculeVenduPourBon(vehiculeId: string): Promise<boolean> {
-  const uid = await getCurrentUserId();
-  if (!uid || !vehiculeId) return false;
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId || !vehiculeId) return false;
   const { data, error } = await supabase
     .from("stock_vehicules")
     .update({
@@ -412,7 +412,7 @@ export async function markVehiculeVenduPourBon(vehiculeId: string): Promise<bool
       updated_at: new Date().toISOString(),
     })
     .eq("id", vehiculeId)
-    .eq("concession_id", uid)
+    .eq("concession_id", concessionId)
     .select("id")
     .maybeSingle();
   if (error) {

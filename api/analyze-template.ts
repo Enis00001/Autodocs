@@ -631,6 +631,8 @@ export default async function handler(
   }
 
   const dealer_id = body.dealer_id as string | undefined;
+  const concession_id =
+    typeof body.concession_id === "string" ? body.concession_id.trim() : "";
   const template_name = body.template_name as string | undefined;
   const storage_path = body.storage_path as string | undefined;
   const template_id = body.template_id as string | undefined;
@@ -640,6 +642,8 @@ export default async function handler(
   if (!isReanalyze) {
     if (!dealer_id?.trim())
       return res.status(400).json({ error: "dealer_id manquant" });
+    if (!concession_id)
+      return res.status(400).json({ error: "concession_id manquant" });
     if (!template_name?.trim())
       return res.status(400).json({ error: "template_name manquant" });
     if (!storage_path?.trim() && !body.pdf_base64)
@@ -787,6 +791,7 @@ export default async function handler(
     .from("pdf_templates")
     .insert({
       dealer_id,
+      concession_id,
       template_name: template_name!.trim(),
       storage_path: (storage_path ?? "").trim(),
       field_mapping,

@@ -14,6 +14,10 @@ import {
   buildFactureHtml,
   type FactureTemplatePayload,
 } from "./_lib/facture-template.js";
+import {
+  assertIsAdminOfConcession,
+  getActiveConcessionIdForUser,
+} from "./_lib/concession.js";
 
 /* ==================================================================
  *  Bon-template inliné (ex api/_lib/bon-template.ts)
@@ -656,6 +660,30 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+async function authUserExistsByEmail(
+  admin: Awaited<ReturnType<typeof getSupabaseAdmin>>,
+  email: string,
+): Promise<boolean> {
+  const target = email.trim().toLowerCase();
+  let page = 1;
+  const perPage = 200;
+  const maxPages = 50;
+  while (page <= maxPages) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      console.error("[actions] authUserExistsByEmail listUsers:", error);
+      return false;
+    }
+    const batch = data.users ?? [];
+    for (const u of batch) {
+      if (u.email?.toLowerCase() === target) return true;
+    }
+    if (batch.length < perPage) break;
+    page += 1;
+  }
+  return false;
+}
+
 function escapeHtml(s: string): string {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -698,6 +726,16 @@ async function handleSendEmail(
 
   const userId = await getAuthUserId(req);
 
+  let concessionIdForSig: string | null = null;
+  try {
+    if (userId) {
+      const adm = await getSupabaseAdmin();
+      concessionIdForSig = await getActiveConcessionIdForUser(adm, userId);
+    }
+  } catch (err) {
+    console.warn("[actions/send-email] concession lookup:", err);
+  }
+
   let signatureToken: string | null = null;
   let expiresAtIso: string | null = null;
   try {
@@ -710,6 +748,7 @@ async function handleSendEmail(
       token: signatureToken,
       brouillon_id: brouillonId,
       user_id: userId,
+      concession_id: concessionIdForSig,
       client_email: clientEmail,
       client_nom: clientNom || null,
       client_prenom: clientPrenom || null,
@@ -1683,11 +1722,15 @@ async function handleGenerateFacture(
   if (!brouillonId) return res.status(400).json({ error: "brouillon_id requis" });
 
   const admin = await getSupabaseAdmin();
+  const concessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!concessionId) {
+    return res.status(403).json({ error: "Aucune concession active pour ce compte." });
+  }
 
   const { data: existingDup } = await admin
     .from("factures")
     .select("id, numero_facture, pdf_base64")
-    .eq("concession_id", userId)
+    .eq("concession_id", concessionId)
     .eq("brouillon_id", brouillonId)
     .maybeSingle();
 
@@ -1705,7 +1748,7 @@ async function handleGenerateFacture(
     .from("brouillons")
     .select("*")
     .eq("id", brouillonId)
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .maybeSingle();
 
   if (brErr) {
@@ -1755,7 +1798,7 @@ async function handleGenerateFacture(
   const { data: profil } = await admin
     .from("profil_concession")
     .select("*")
-    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
     .maybeSingle();
 
   const prof = profil as Record<string, unknown> | null;
@@ -1796,7 +1839,7 @@ async function handleGenerateFacture(
       .from("clients")
       .select("telephone, email, adresse")
       .eq("id", clientIdRow)
-      .eq("concession_id", userId)
+      .eq("concession_id", concessionId)
       .maybeSingle();
     if (cl && typeof cl === "object") {
       const cli = cl as Record<string, unknown>;
@@ -1873,7 +1916,7 @@ async function handleGenerateFacture(
   const { data: nums, error: numErr } = await admin
     .from("factures")
     .select("numero_facture")
-    .eq("concession_id", userId)
+    .eq("concession_id", concessionId)
     .like("numero_facture", `${prefix}%`);
 
   if (numErr) {
@@ -1951,7 +1994,8 @@ async function handleGenerateFacture(
   const pdfBase64 = pdfBuffer.toString("base64");
 
   const insertRow = {
-    concession_id: userId,
+    concession_id: concessionId,
+    created_by: userId,
     brouillon_id: brouillonId,
     client_id: clientIdRow,
     numero_facture: numeroFacture,
@@ -2013,6 +2057,300 @@ async function handleGenerateFacture(
   });
 }
 
+async function handleLookupInvitation(
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const token = String(data.token ?? "").trim();
+  if (!token) {
+    return res.status(400).json({ ok: false, error: "Token requis." });
+  }
+  try {
+    const admin = await getSupabaseAdmin();
+    const { data: inv, error } = await admin
+      .from("invitations")
+      .select("id, email, role, expires_at, accepted_at, concession_id, concessions ( nom )")
+      .eq("token", token)
+      .maybeSingle();
+    if (error || !inv) {
+      return res.status(404).json({ ok: false, error: "Invitation introuvable." });
+    }
+    const row = inv as Record<string, unknown>;
+    const concession_nom =
+      row.concessions && typeof row.concessions === "object"
+        ? String((row.concessions as { nom?: string }).nom ?? "").trim() || null
+        : null;
+    const base = {
+      ok: true as const,
+      email: String(row.email ?? ""),
+      role: row.role === "admin" ? ("admin" as const) : ("commercial" as const),
+      concession_id: String(row.concession_id ?? ""),
+      concession_nom,
+    };
+    if (row.accepted_at) {
+      return res.status(200).json({
+        ...base,
+        status: "accepted" as const,
+        has_account: true,
+      });
+    }
+    const exp = row.expires_at ? new Date(String(row.expires_at)) : null;
+    if (exp && exp.getTime() < Date.now()) {
+      return res.status(200).json({
+        ...base,
+        status: "expired" as const,
+        has_account: false,
+      });
+    }
+    const email = String(row.email ?? "");
+    const has_account = await authUserExistsByEmail(admin, email);
+    return res.status(200).json({
+      ...base,
+      status: "pending" as const,
+      has_account,
+    });
+  } catch (err) {
+    console.error("[actions/lookup-invitation]", err);
+    return res.status(500).json({ ok: false, error: "Erreur serveur." });
+  }
+}
+
+async function handleInviteMembre(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const userId = await getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Non autorisé" });
+
+  const emailRaw = String(data.email ?? "").trim().toLowerCase();
+  if (!emailRaw || !isValidEmail(emailRaw)) {
+    return res.status(400).json({ error: "Email invalide." });
+  }
+
+  const admin = await getSupabaseAdmin();
+  const concessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!concessionId || !(await assertIsAdminOfConcession(admin, userId, concessionId))) {
+    return res.status(403).json({ error: "Seul l'admin peut inviter des membres." });
+  }
+
+  const { data: authSelf } = await admin.auth.admin.getUserById(userId);
+  const selfEmail = authSelf?.user?.email?.trim().toLowerCase() ?? "";
+  if (emailRaw === selfEmail) {
+    return res.status(400).json({ error: "Vous ne pouvez pas vous inviter vous-même." });
+  }
+
+  const { data: membres } = await admin
+    .from("membres_concession")
+    .select("email")
+    .eq("concession_id", concessionId)
+    .eq("actif", true);
+
+  const emailTaken = (membres ?? []).some(
+    (m) => String((m as { email?: string }).email ?? "").trim().toLowerCase() === emailRaw,
+  );
+  if (emailTaken) {
+    return res.status(409).json({ error: "Ce collaborateur fait déjà partie de l'équipe." });
+  }
+
+  await admin
+    .from("invitations")
+    .delete()
+    .eq("concession_id", concessionId)
+    .eq("email", emailRaw)
+    .is("accepted_at", null);
+
+  const roleRaw = String(data.role ?? "commercial").trim();
+  const role = roleRaw === "admin" ? "admin" : "commercial";
+
+  const { data: inserted, error: insErr } = await admin
+    .from("invitations")
+    .insert({
+      concession_id: concessionId,
+      email: emailRaw,
+      role,
+      created_by: userId,
+    })
+    .select("token")
+    .single();
+
+  if (insErr || !inserted?.token) {
+    console.error("[invite-membre] insert", insErr);
+    return res.status(500).json({ error: insErr?.message ?? "Impossible de créer l'invitation." });
+  }
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "RESEND_API_KEY manquante." });
+  }
+
+  const { data: concRow } = await admin
+    .from("concessions")
+    .select("nom")
+    .eq("id", concessionId)
+    .maybeSingle();
+  const nomConcession =
+    String((concRow as { nom?: string } | null)?.nom ?? "").trim() || "AutoDocs";
+
+  const appUrl = getPublicAppUrl(req);
+  const inviteUrl = `${appUrl}/invitation/${inserted.token}`;
+
+  const resend = new Resend(apiKey);
+  const from = "AutoDocs <noreply@autodocs.services>";
+  const subject = `Vous êtes invité à rejoindre ${nomConcession} sur AutoDocs`;
+  const html = `
+    <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #1a1a2e;">
+      <p>Bonjour,</p>
+      <p>Vous avez été invité à rejoindre l'espace <strong>${escapeHtml(nomConcession)}</strong> sur AutoDocs.</p>
+      <p><a href="${inviteUrl}" style="display:inline-block;background:#2c3e8f;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600;">Accepter l'invitation</a></p>
+      <p style="font-size:12px;color:#666;">Ce lien est valable 7 jours :<br><a href="${inviteUrl}">${inviteUrl}</a></p>
+    </div>
+  `;
+
+  const { error: mailErr } = await resend.emails.send({
+    from,
+    to: emailRaw,
+    subject,
+    html,
+  });
+  if (mailErr) {
+    console.error("[invite-membre] resend", mailErr);
+    return res
+      .status(500)
+      .json({ error: "Invitation créée mais l'email n'a pas pu être envoyé." });
+  }
+
+  return res.status(200).json({ ok: true });
+}
+
+async function handleAcceptInvitation(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const token = String(data.token ?? "").trim();
+  if (!token) return res.status(400).json({ ok: false, error: "Token requis." });
+
+  const password = typeof data.password === "string" ? data.password : "";
+  const prenom = String(data.prenom ?? "").trim();
+  const nom = String(data.nom ?? "").trim();
+
+  const admin = await getSupabaseAdmin();
+  const { data: inv, error: invErr } = await admin
+    .from("invitations")
+    .select("*")
+    .eq("token", token)
+    .maybeSingle();
+
+  if (invErr || !inv) {
+    return res.status(404).json({ ok: false, error: "Invitation introuvable." });
+  }
+
+  const invitation = inv as Record<string, unknown>;
+  if (invitation.accepted_at) {
+    return res.status(409).json({ ok: false, error: "Invitation déjà acceptée." });
+  }
+  const exp = invitation.expires_at ? new Date(String(invitation.expires_at)) : null;
+  if (exp && exp.getTime() < Date.now()) {
+    return res.status(410).json({ ok: false, error: "Invitation expirée." });
+  }
+
+  const invitationEmail = String(invitation.email ?? "").trim().toLowerCase();
+  const concessionTarget = String(invitation.concession_id ?? "").trim();
+  const inviteRole = invitation.role === "admin" ? "admin" : "commercial";
+
+  let targetUserId: string | null = null;
+
+  if (password.length >= 6) {
+    if (!prenom || !nom) {
+      return res.status(400).json({ ok: false, error: "Prénom et nom requis." });
+    }
+    const exists = await authUserExistsByEmail(admin, invitationEmail);
+    if (exists) {
+      return res.status(409).json({
+        ok: false,
+        error: "Un compte existe déjà avec cet email — connectez-vous pour accepter.",
+      });
+    }
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email: invitationEmail,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        gerant_prenom: prenom,
+        gerant_nom: nom,
+      },
+    });
+    if (createErr || !created.user?.id) {
+      console.error("[accept-invitation] createUser", createErr);
+      return res.status(400).json({
+        ok: false,
+        error: createErr?.message ?? "Impossible de créer le compte.",
+      });
+    }
+    targetUserId = created.user.id;
+  } else {
+    const jwtUserId = await getAuthUserId(req);
+    if (!jwtUserId) {
+      return res.status(401).json({ ok: false, error: "Authentification requise." });
+    }
+    const { data: jwtUser } = await admin.auth.admin.getUserById(jwtUserId);
+    const jwtEmail = jwtUser?.user?.email?.trim().toLowerCase() ?? "";
+    if (jwtEmail !== invitationEmail) {
+      return res.status(403).json({ ok: false, error: "Connectez-vous avec l'email invité." });
+    }
+    targetUserId = jwtUserId;
+  }
+
+  if (!targetUserId) {
+    return res.status(500).json({ ok: false, error: "Erreur interne." });
+  }
+
+  const { data: conflict } = await admin
+    .from("membres_concession")
+    .select("concession_id")
+    .eq("user_id", targetUserId)
+    .eq("actif", true)
+    .maybeSingle();
+
+  const conflictCid =
+    conflict && typeof conflict === "object"
+      ? String((conflict as { concession_id?: string }).concession_id ?? "")
+      : "";
+  if (conflictCid && conflictCid !== concessionTarget) {
+    return res.status(409).json({
+      ok: false,
+      error:
+        "Vous êtes déjà rattaché à une autre concession. Quittez-la avant d'en rejoindre une nouvelle.",
+    });
+  }
+
+  const { error: upMembreErr } = await admin.from("membres_concession").upsert(
+    {
+      concession_id: concessionTarget,
+      user_id: targetUserId,
+      role: inviteRole,
+      email: invitationEmail,
+      prenom: prenom || null,
+      nom: nom || null,
+      actif: true,
+    },
+    { onConflict: "concession_id,user_id" },
+  );
+
+  if (upMembreErr) {
+    console.error("[accept-invitation] membres upsert", upMembreErr);
+    return res.status(500).json({ ok: false, error: "Impossible de finaliser l'inscription." });
+  }
+
+  await admin
+    .from("invitations")
+    .update({ accepted_at: new Date().toISOString() })
+    .eq("id", String(invitation.id ?? ""));
+
+  return res.status(200).json({ ok: true });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -2040,6 +2378,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleFillCerfa(req, data, res);
     case "generate-facture":
       return handleGenerateFacture(req, data, res);
+    case "lookup-invitation":
+      return handleLookupInvitation(data, res);
+    case "invite-membre":
+      return handleInviteMembre(req, data, res);
+    case "accept-invitation":
+      return handleAcceptInvitation(req, data, res);
     default:
       return res.status(400).json({ error: "Action inconnue" });
   }

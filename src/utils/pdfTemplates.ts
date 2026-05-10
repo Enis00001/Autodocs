@@ -33,12 +33,18 @@ async function loadPdfTemplatesViaApi(): Promise<PdfTemplateRow[] | null> {
   return json.templates ?? [];
 }
 
-/** Fallback : lecture directe Supabase (soumis aux RLS). */
-async function loadPdfTemplatesDirect(userId: string): Promise<PdfTemplateRow[]> {
+/**
+ * Fallback : lecture directe Supabase (soumis aux RLS).
+ *
+ * Le paramètre est désormais une `concessionId` (table `pdf_templates` filtrée
+ * par `concession_id`). On garde un fallback `dealer_id = concessionId` pour
+ * les bases pré-migration où la colonne `concession_id` n'existe pas encore.
+ */
+async function loadPdfTemplatesDirect(concessionId: string): Promise<PdfTemplateRow[]> {
   const { data, error } = await supabase
     .from("pdf_templates")
     .select("id, template_name, created_at")
-    .eq("dealer_id", userId)
+    .eq("concession_id", concessionId)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -51,14 +57,16 @@ async function loadPdfTemplatesDirect(userId: string): Promise<PdfTemplateRow[]>
 
 /**
  * Templates analysés (table `pdf_templates`).
- * Préfère l’API serveur (JWT + service role) pour éviter les listes vides si les RLS client bloquent.
+ * Préfère l'API serveur (JWT + service role) pour éviter les listes vides si les RLS client bloquent.
+ *
+ * @param concessionId — ID de la concession active (depuis `useAuth().concessionId`).
  */
-export async function loadPdfTemplates(userId: string): Promise<PdfTemplateRow[]> {
+export async function loadPdfTemplates(concessionId: string): Promise<PdfTemplateRow[]> {
   const viaApi = await loadPdfTemplatesViaApi();
   if (viaApi !== null) {
     return viaApi;
   }
-  return loadPdfTemplatesDirect(userId);
+  return loadPdfTemplatesDirect(concessionId);
 }
 
 /** Indique si la bibliothèque `templates` contient au moins une entrée (affiche un message plus précis si `pdf_templates` est vide). */

@@ -1,5 +1,5 @@
-import { supabase } from "@/lib/supabase";
-import { getCurrentUserId } from "@/lib/auth";
+import { supabase, getAccessToken } from "@/lib/supabase";
+import { getCurrentConcessionId } from "@/lib/auth";
 import { apiFetch } from "@/lib/apiClient";
 
 export type AbonnementPlan = "gratuit" | "pro";
@@ -17,8 +17,9 @@ export type AbonnementInfo = {
 export const QUOTA_GRATUIT = 10;
 
 /**
- * Charge l'abonnement courant de l'utilisateur. Si aucune ligne n'existe
- * encore (nouveau compte), on renvoie les valeurs par défaut (gratuit, 0 bons).
+ * Charge l'abonnement courant de la concession (partagé entre tous les
+ * commerciaux de l'équipe). Si aucune ligne n'existe encore, on renvoie
+ * les valeurs par défaut (gratuit, 0 bons).
  */
 export async function loadAbonnement(): Promise<AbonnementInfo | null> {
   const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -26,14 +27,25 @@ export async function loadAbonnement(): Promise<AbonnementInfo | null> {
     console.error("loadAbonnement:", authErr);
     return null;
   }
-  const uid = authData.user?.id ?? null;
-  if (!uid) return null;
+  if (!authData.user) return null;
   const isAdmin = authData.user?.user_metadata?.is_admin === true;
+
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) {
+    return {
+      plan: "gratuit",
+      bonsTotal: 0,
+      quota: QUOTA_GRATUIT,
+      dateRenouvellement: null,
+      actif: true,
+      isAdmin,
+    };
+  }
 
   const { data, error } = await supabase
     .from("abonnements")
     .select("plan, bons_total, date_renouvellement, actif")
-    .eq("user_id", uid)
+    .eq("concession_id", concessionId)
     .maybeSingle();
 
   if (error) {
@@ -70,16 +82,26 @@ export type CheckoutInterval = "monthly" | "annual";
 export async function startCheckout(
   interval: CheckoutInterval = "monthly",
 ): Promise<void> {
-  const uid = await getCurrentUserId();
-  if (!uid) throw new Error("Utilisateur non connecté.");
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) throw new Error("Concession introuvable.");
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) throw new Error("Utilisateur non connecté.");
 
+  const token = await getAccessToken();
   const res = await fetch("/api/create-checkout", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId: uid, email: user?.email, interval }),
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      concessionId,
+      userId: user.id,
+      email: user.email,
+      interval,
+    }),
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => "");
@@ -98,12 +120,12 @@ export async function consumeBonQuota(): Promise<{
   plan: AbonnementPlan;
   bonsTotal: number;
 }> {
-  const uid = await getCurrentUserId();
-  if (!uid) throw new Error("Utilisateur non connecté.");
+  const concessionId = await getCurrentConcessionId();
+  if (!concessionId) throw new Error("Concession introuvable.");
 
   const res = await apiFetch("/api/increment-bons", {
     method: "POST",
-    body: JSON.stringify({ userId: uid }),
+    body: JSON.stringify({ concessionId }),
   });
 
   if (res.status === 402) {

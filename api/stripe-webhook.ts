@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Stripe from "stripe";
+import { getActiveConcessionIdForUser } from "./_lib/concession.js";
 
 /**
  * POST /api/stripe-webhook
@@ -50,24 +51,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).send(`Webhook error: ${err instanceof Error ? err.message : "unknown"}`);
   }
 
-  // Client Supabase admin inlined (évite un import local qui n'est pas
-  // bundlé dans /var/task/ par Vercel).
   const { createClient } = await import("@supabase/supabase-js");
   const supabaseAdmin = createClient(
     process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
+  async function resolveConcessionId(
+    metaConcession: string | null | undefined,
+    metaUser: string | null | undefined,
+  ): Promise<string | null> {
+    const cid =
+      typeof metaConcession === "string" && metaConcession.trim().length > 0
+        ? metaConcession.trim()
+        : null;
+    if (cid) return cid;
+    const uid =
+      typeof metaUser === "string" && metaUser.trim().length > 0 ? metaUser.trim() : null;
+    if (!uid) return null;
+    return getActiveConcessionIdForUser(supabaseAdmin, uid);
+  }
+
   try {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        const userId = (session.metadata?.user_id as string) || null;
+        const concessionId = await resolveConcessionId(
+          session.metadata?.concession_id as string | undefined,
+          session.metadata?.user_id as string | undefined,
+        );
+        const legacyUserId = (session.metadata?.user_id as string) || null;
         const customerId = (session.customer as string) || null;
         const subscriptionId = (session.subscription as string) || null;
-        if (!userId) break;
+        if (!concessionId) break;
 
-        // On récupère la date de renouvellement depuis la subscription.
         let dateRenouvellement: string | null = null;
         if (subscriptionId) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
@@ -76,53 +93,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-        await supabaseAdmin.from("abonnements").upsert(
-          {
-            user_id: userId,
-            stripe_customer_id: customerId ?? undefined,
-            stripe_subscription_id: subscriptionId ?? undefined,
-            plan: "pro",
-            actif: true,
-            date_renouvellement: dateRenouvellement,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        );
+        const row = {
+          concession_id: concessionId,
+          user_id: legacyUserId ?? undefined,
+          stripe_customer_id: customerId ?? undefined,
+          stripe_subscription_id: subscriptionId ?? undefined,
+          plan: "pro",
+          actif: true,
+          date_renouvellement: dateRenouvellement,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: existingRow } = await supabaseAdmin
+          .from("abonnements")
+          .select("id")
+          .eq("concession_id", concessionId)
+          .maybeSingle();
+
+        if (existingRow?.id) {
+          await supabaseAdmin.from("abonnements").update(row).eq("id", existingRow.id);
+        } else {
+          await supabaseAdmin.from("abonnements").insert(row);
+        }
         break;
       }
 
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
-        const userId = (sub.metadata?.user_id as string) || null;
+        const concessionId = await resolveConcessionId(
+          sub.metadata?.concession_id as string | undefined,
+          sub.metadata?.user_id as string | undefined,
+        );
+        const legacyUserId = (sub.metadata?.user_id as string) || null;
         const customerId = (sub.customer as string) || null;
-        if (userId) {
-          await supabaseAdmin
-            .from("abonnements")
-            .update({
-              plan: "gratuit",
-              actif: false,
-              stripe_subscription_id: null,
-              date_renouvellement: null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("user_id", userId);
+
+        const patch = {
+          plan: "gratuit",
+          actif: false,
+          stripe_subscription_id: null,
+          date_renouvellement: null,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (concessionId) {
+          await supabaseAdmin.from("abonnements").update(patch).eq("concession_id", concessionId);
+        } else if (legacyUserId) {
+          await supabaseAdmin.from("abonnements").update(patch).eq("user_id", legacyUserId);
         } else if (customerId) {
-          await supabaseAdmin
-            .from("abonnements")
-            .update({
-              plan: "gratuit",
-              actif: false,
-              stripe_subscription_id: null,
-              date_renouvellement: null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("stripe_customer_id", customerId);
+          await supabaseAdmin.from("abonnements").update(patch).eq("stripe_customer_id", customerId);
         }
         break;
       }
 
       default:
-        // Events non gérés : on ignore.
         break;
     }
 

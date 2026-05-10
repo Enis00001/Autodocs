@@ -3,8 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
+import { useEffect, useRef } from "react";
 import { toast } from "@/hooks/use-toast";
 import AppLayout from "./components/layout/AppLayout";
 import NouveauBon from "./pages/NouveauBon";
@@ -26,7 +25,9 @@ import InscriptionPage from "./pages/Inscription";
 import ConfirmationEmailPage from "./pages/ConfirmationEmail";
 import ResetPasswordPage from "./pages/ResetPassword";
 import SignerDocument from "./pages/SignerDocument";
+import AccepterInvitation from "./pages/AccepterInvitation";
 import { supabase } from "./lib/supabase";
+import { useAuth } from "./context/AuthContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 /**
@@ -77,45 +78,37 @@ const LandingRedirect = () => {
 };
 
 const App = () => {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loadingSession, setLoadingSession] = useState(true);
+  const { session, loading: loadingSession, bootstrapping } = useAuth();
   const sessionExpiredHandledRef = useRef(false);
+  const inactivityCheckedRef = useRef(false);
 
-  // Auth bootstrap + onAuthStateChange. Inactivité 7 jours → signOut + toast
-  // « Session expirée ». Les visiteurs non connectés ne sont plus renvoyés
-  // vers /login d’office (zones protégées → landing).
+  // Inactivité 7 jours → signOut + toast « Session expirée ».
+  // L'auth elle-même est gérée par AuthContext ; ici on ne s'occupe que du
+  // sign-out forcé après 7 jours d'inactivité, et de la mise à jour de
+  // `LAST_ACTIVITY_KEY` à chaque changement d'état.
   useEffect(() => {
-    const checkInactivityAndBoot = async () => {
-      const lastActivity = Number(localStorage.getItem(LAST_ACTIVITY_KEY) ?? "0");
-      const now = Date.now();
-      const isExpired = lastActivity > 0 && now - lastActivity > SESSION_INACTIVITY_MS;
+    if (inactivityCheckedRef.current) return;
+    inactivityCheckedRef.current = true;
 
-      if (isExpired) {
-        await supabase.auth.signOut().catch(() => undefined);
-        sessionExpiredHandledRef.current = true;
-        setSession(null);
-        setLoadingSession(false);
-        toast({
-          title: "Session expirée",
-          description: "Vous avez été déconnecté après 7 jours d'inactivité.",
-        });
-        localStorage.removeItem(LAST_ACTIVITY_KEY);
-        return;
-      }
+    const lastActivity = Number(localStorage.getItem(LAST_ACTIVITY_KEY) ?? "0");
+    const now = Date.now();
+    const isExpired = lastActivity > 0 && now - lastActivity > SESSION_INACTIVITY_MS;
 
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-      setLoadingSession(false);
-      if (data.session) {
-        localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
-      }
-    };
-    void checkInactivityAndBoot();
+    if (isExpired) {
+      void supabase.auth.signOut().catch(() => undefined);
+      sessionExpiredHandledRef.current = true;
+      toast({
+        title: "Session expirée",
+        description: "Vous avez été déconnecté après 7 jours d'inactivité.",
+      });
+      localStorage.removeItem(LAST_ACTIVITY_KEY);
+    } else if (lastActivity > 0) {
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
+    }
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, currentSession) => {
-      setSession(currentSession);
       if (currentSession) {
         localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
         sessionExpiredHandledRef.current = false;
@@ -155,7 +148,7 @@ const App = () => {
   const effectiveSession = session && emailConfirmed ? session : null;
   const needsEmailConfirmation = !!session && !emailConfirmed;
 
-  if (loadingSession) {
+  if (loadingSession || bootstrapping) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0F1117] text-muted-foreground">
         <div className="flex flex-col items-center gap-4">
@@ -164,7 +157,11 @@ const App = () => {
             style={{ boxShadow: "0 0 32px rgba(99, 102, 241, 0.3)" }}
           />
           <div className="skeleton h-2 w-36 rounded-full" />
-          <p className="text-sm font-medium text-[#94A3B8]">Chargement d&apos;AutoDocs…</p>
+          <p className="text-sm font-medium text-[#94A3B8]">
+            {bootstrapping
+              ? "Préparation de votre concession…"
+              : "Chargement d'AutoDocs…"}
+          </p>
         </div>
       </div>
     );
@@ -188,6 +185,11 @@ const App = () => {
               {/* Page publique de signature électronique. Accessible SANS
                   authentification : le token UUID v4 sert de clé secrète. */}
               <Route path="/signer/:token" element={<SignerDocument />} />
+
+              {/* Page publique d'acceptation d'invitation. Si l'invité a déjà
+                  un compte, on l'authentifie ; sinon on lui propose de
+                  créer un compte. Le token UUID v4 sert de clé secrète. */}
+              <Route path="/invitation/:token" element={<AccepterInvitation />} />
 
               <Route
                 path="/login"
