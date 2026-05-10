@@ -12,7 +12,10 @@ export type MonthlyStatPoint = {
   sales: number;
   draftsSigned: number;
   draftsPending: number;
+  draftsInProgress: number;
 };
+
+export type DraftSignatureState = "signed" | "pending" | "in_progress";
 
 export type DashboardStats = {
   monthly: MonthlyStatPoint[];
@@ -21,6 +24,8 @@ export type DashboardStats = {
   draftsTotal: number;
   draftsSignedTotal: number;
   draftsPendingTotal: number;
+  draftsInProgressTotal: number;
+  draftStatusById: Record<string, DraftSignatureState>;
 };
 
 const MONTHS_FR = [
@@ -37,10 +42,6 @@ const MONTHS_FR = [
   "Nov",
   "Dec",
 ];
-
-type DraftVehicleFields = {
-  client_signed_at?: unknown;
-};
 
 type BrouillonVehicleFields = {
   vehicule_stock_id?: unknown;
@@ -83,15 +84,10 @@ function buildLastTwelveMonths(now: Date): MonthlyStatPoint[] {
       sales: 0,
       draftsSigned: 0,
       draftsPending: 0,
+      draftsInProgress: 0,
     });
   }
   return points;
-}
-
-function hasClientSignature(vehicleFieldValues: unknown): boolean {
-  if (!vehicleFieldValues || typeof vehicleFieldValues !== "object") return false;
-  const fields = vehicleFieldValues as DraftVehicleFields;
-  return typeof fields.client_signed_at === "string" && fields.client_signed_at.trim().length > 0;
 }
 
 function getVehiculeStockId(vehicleFieldValues: unknown): string | null {
@@ -128,6 +124,8 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
     draftsTotal: 0,
     draftsSignedTotal: 0,
     draftsPendingTotal: 0,
+    draftsInProgressTotal: 0,
+    draftStatusById: {},
   };
   if (!uid) return empty;
 
@@ -152,7 +150,7 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
       .eq("concession_id", uid),
     supabase
       .from("brouillons")
-      .select("created_at, vehicle_field_values")
+      .select("id, created_at")
       .eq("user_id", uid)
       .gte("created_at", historyStart),
   ]);
@@ -231,18 +229,54 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
     bucket.sales += 1;
   }
 
-  for (const row of draftsRes.data ?? []) {
+  const draftRows = (draftsRes.data ?? []) as Array<{ id: string; created_at: string | null }>;
+  const draftIds = draftRows
+    .map((row) => (typeof row.id === "string" ? row.id.trim() : ""))
+    .filter(Boolean);
+  const signatureByDraft = new Map<string, { hasSigned: boolean; hasPending: boolean }>();
+  if (draftIds.length > 0) {
+    const { data: signaturesData, error: signaturesError } = await supabase
+      .from("signature_requests")
+      .select("brouillon_id, signed_at")
+      .in("brouillon_id", draftIds);
+    if (signaturesError) {
+      console.error("loadDashboardStats signatures:", signaturesError);
+    }
+    for (const row of signaturesData ?? []) {
+      const draftId =
+        typeof row.brouillon_id === "string" ? row.brouillon_id.trim() : "";
+      if (!draftId) continue;
+      const current = signatureByDraft.get(draftId) ?? {
+        hasSigned: false,
+        hasPending: false,
+      };
+      if (row.signed_at) current.hasSigned = true;
+      else current.hasPending = true;
+      signatureByDraft.set(draftId, current);
+    }
+  }
+
+  const draftStatusById: Record<string, DraftSignatureState> = {};
+  for (const row of draftRows) {
+    const draftId = typeof row.id === "string" ? row.id.trim() : "";
+    if (!draftId) continue;
+    const signatureState = signatureByDraft.get(draftId);
+    const status: DraftSignatureState = signatureState?.hasSigned
+      ? "signed"
+      : signatureState?.hasPending
+        ? "pending"
+        : "in_progress";
+    draftStatusById[draftId] = status;
+
     const createdAt = typeof row.created_at === "string" ? row.created_at : "";
     if (!createdAt) continue;
     const d = new Date(createdAt);
     const key = getMonthKey(d);
     const bucket = byKey.get(key);
     if (!bucket) continue;
-    if (hasClientSignature(row.vehicle_field_values)) {
-      bucket.draftsSigned += 1;
-    } else {
-      bucket.draftsPending += 1;
-    }
+    if (status === "signed") bucket.draftsSigned += 1;
+    else if (status === "pending") bucket.draftsPending += 1;
+    else bucket.draftsInProgress += 1;
   }
 
   const stockRows = stockRes.data ?? [];
@@ -251,14 +285,17 @@ export async function loadDashboardStats(period: DashboardPeriod = "month"): Pro
 
   const draftsSignedTotal = monthly.reduce((acc, item) => acc + item.draftsSigned, 0);
   const draftsPendingTotal = monthly.reduce((acc, item) => acc + item.draftsPending, 0);
+  const draftsInProgressTotal = monthly.reduce((acc, item) => acc + item.draftsInProgress, 0);
 
   return {
     monthly,
     stockAvailableTotal,
     stockSoldTotal,
-    draftsTotal: draftsSignedTotal + draftsPendingTotal,
+    draftsTotal: draftsSignedTotal + draftsPendingTotal + draftsInProgressTotal,
     draftsSignedTotal,
     draftsPendingTotal,
+    draftsInProgressTotal,
+    draftStatusById,
   };
 }
 

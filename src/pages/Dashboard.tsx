@@ -19,7 +19,6 @@ import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
 import { BonDraftData, loadDrafts, deleteDraft } from "@/utils/drafts";
 import { isDraftFormComplete } from "@/utils/bonFormCompletion";
-import SignatureStatusBadge from "@/components/SignatureStatusBadge";
 import { cn } from "@/lib/utils";
 import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
 import {
@@ -127,6 +126,8 @@ const Dashboard = () => {
     draftsTotal: 0,
     draftsSignedTotal: 0,
     draftsPendingTotal: 0,
+    draftsInProgressTotal: 0,
+    draftStatusById: {},
   };
 
   const monthsForPeriod = getMonthsForPeriod(period);
@@ -138,7 +139,7 @@ const Dashboard = () => {
 
   const sum = (
     rows: typeof monthlyForPeriod,
-    key: "revenue" | "sales" | "draftsSigned" | "draftsPending",
+    key: "revenue" | "sales" | "draftsSigned" | "draftsPending" | "draftsInProgress",
   ) => rows.reduce((acc, row) => acc + row[key], 0);
 
   const currentRevenue = sum(monthlyForPeriod, "revenue");
@@ -147,6 +148,7 @@ const Dashboard = () => {
   const previousSales = sum(previousMonthlyForPeriod, "sales");
   const currentSigned = sum(monthlyForPeriod, "draftsSigned");
   const currentPending = sum(monthlyForPeriod, "draftsPending");
+  const currentInProgress = sum(monthlyForPeriod, "draftsInProgress");
   const previousPending = sum(previousMonthlyForPeriod, "draftsPending");
 
   const formatCurrency = (value: number) =>
@@ -222,10 +224,11 @@ const Dashboard = () => {
   ] as const;
 
   const pieData = [
-    { name: "Signes", value: currentSigned, color: "#22c55e" },
-    { name: "En attente", value: currentPending, color: "#f59e0b" },
-  ];
-  const noDataForPeriod = currentRevenue === 0 && currentSales === 0 && currentSigned === 0 && currentPending === 0;
+    { name: "Signés", value: currentSigned, color: "#10B981" },
+    { name: "En attente", value: currentPending, color: "#F59E0B" },
+    { name: "En cours", value: currentInProgress, color: "#94A3B8" },
+  ].filter((d) => d.value > 0);
+  const noDataForPeriod = currentRevenue === 0 && currentSales === 0 && currentSigned === 0 && currentPending === 0 && currentInProgress === 0;
 
   return (
     <>
@@ -485,7 +488,7 @@ const Dashboard = () => {
               </div>
               {loading ? (
                 <div className="skeleton h-72 w-full rounded-input" />
-              ) : currentSigned === 0 && currentPending === 0 ? (
+              ) : currentSigned === 0 && currentPending === 0 && currentInProgress === 0 ? (
                 <div className="flex h-72 flex-col items-center justify-center text-center">
                   <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                     <ClipboardList className="h-7 w-7" />
@@ -541,8 +544,13 @@ const Dashboard = () => {
                       Total
                     </span>
                     <span className="font-display text-2xl font-bold text-foreground">
-                      {currentSigned + currentPending}
+                      {currentSigned + currentPending + currentInProgress}
                     </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-1 text-[12px] md:grid-cols-3">
+                    <p className="text-emerald-500">🟢 Signés : {currentSigned} bons</p>
+                    <p className="text-amber-500">🟡 En attente de signature : {currentPending} bons</p>
+                    <p className="text-slate-400">⚫ En cours de rédaction : {currentInProgress} bons</p>
                   </div>
                 </div>
               )}
@@ -688,6 +696,7 @@ const Dashboard = () => {
                     {drafts.map((d) => {
                       const complet = isDraftFormComplete(d as unknown as Record<string, unknown>);
                       const isDownloading = downloadingDraftId === d.id;
+                      const signatureStatus = statsReady.draftStatusById[d.id] ?? "in_progress";
                       return (
                         <tr key={d.id} className="row-hover border-b border-border/50 last:border-0">
                           <td className="py-3 font-medium text-foreground">
@@ -719,7 +728,22 @@ const Dashboard = () => {
                               >
                                 {complet ? "Complet" : "En cours"}
                               </span>
-                              <SignatureStatusBadge draft={d} showResendButton />
+                              <span
+                                className={cn(
+                                  "inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                                  signatureStatus === "signed"
+                                    ? "bg-emerald-500/15 text-emerald-400"
+                                    : signatureStatus === "pending"
+                                      ? "bg-amber-500/15 text-amber-400"
+                                      : "bg-slate-500/15 text-slate-300",
+                                )}
+                              >
+                                {signatureStatus === "signed"
+                                  ? "Signé"
+                                  : signatureStatus === "pending"
+                                    ? "En attente"
+                                    : "En cours"}
+                              </span>
                             </div>
                           </td>
                           <td className="py-3 text-right">
