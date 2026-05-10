@@ -79,8 +79,8 @@ const Dashboard = () => {
       try {
         const [d, s, sales] = await Promise.all([
           loadDrafts(),
-          loadDashboardStats(),
-          loadRecentSales(5),
+          loadDashboardStats(period),
+          loadRecentSales(period, 5),
         ]);
         if (cancelled) return;
         setDrafts(d);
@@ -101,10 +101,20 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [period, reloadKey]);
 
   const handleRetry = useCallback(() => {
     setReloadKey((k) => k + 1);
+  }, []);
+
+  useEffect(() => {
+    const onFocus = () => setReloadKey((k) => k + 1);
+    const intervalId = window.setInterval(() => setReloadKey((k) => k + 1), 30000);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   const bonsCeMois = drafts.filter((d) => isCurrentMonth(d.createdAt)).length;

@@ -42,8 +42,31 @@ type DraftVehicleFields = {
   client_signed_at?: unknown;
 };
 
+type BrouillonVehicleFields = {
+  vehicule_stock_id?: unknown;
+};
+
+type StockSoldRow = {
+  id: string;
+  created_at: string | null;
+  updated_at: string | null;
+  disponible: boolean | null;
+};
+
 function getMonthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getPeriodStart(period: DashboardPeriod, now = new Date()): Date {
+  if (period === "month") return new Date(now.getFullYear(), now.getMonth(), 1);
+  if (period === "3m") return new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  if (period === "6m") return new Date(now.getFullYear(), now.getMonth() - 5, 1);
+  return new Date(now.getFullYear(), 0, 1);
+}
+
+function getHistoryStart(period: DashboardPeriod, now = new Date()): Date {
+  const months = getMonthsForPeriod(period);
+  return new Date(now.getFullYear(), now.getMonth() - months * 2 + 1, 1);
 }
 
 function buildLastTwelveMonths(now: Date): MonthlyStatPoint[] {
@@ -71,6 +94,14 @@ function hasClientSignature(vehicleFieldValues: unknown): boolean {
   return typeof fields.client_signed_at === "string" && fields.client_signed_at.trim().length > 0;
 }
 
+function getVehiculeStockId(vehicleFieldValues: unknown): string | null {
+  if (!vehicleFieldValues || typeof vehicleFieldValues !== "object") return null;
+  const fields = vehicleFieldValues as BrouillonVehicleFields;
+  if (typeof fields.vehicule_stock_id !== "string") return null;
+  const value = fields.vehicule_stock_id.trim();
+  return value.length > 0 ? value : null;
+}
+
 export function getMonthsForPeriod(period: DashboardPeriod): number {
   if (period === "month") return 1;
   if (period === "3m") return 3;
@@ -86,10 +117,12 @@ export function sliceMonthlyByPeriod(
   return monthly.slice(-months);
 }
 
-export async function loadDashboardStats(): Promise<DashboardStats> {
+export async function loadDashboardStats(period: DashboardPeriod = "month"): Promise<DashboardStats> {
   const uid = await getCurrentUserId();
+  const now = new Date();
+  const historyStart = getHistoryStart(period, now).toISOString();
   const empty: DashboardStats = {
-    monthly: buildLastTwelveMonths(new Date()),
+    monthly: buildLastTwelveMonths(now).slice(-getMonthsForPeriod(period) * 2),
     stockAvailableTotal: 0,
     stockSoldTotal: 0,
     draftsTotal: 0,
@@ -98,23 +131,21 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
   };
   if (!uid) return empty;
 
-  const now = new Date();
-  const since = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString();
-  const monthly = buildLastTwelveMonths(now);
+  const monthly = buildLastTwelveMonths(now).slice(-getMonthsForPeriod(period) * 2);
   const byKey = new Map(monthly.map((item) => [item.key, item]));
 
-  const [facturesRes, ventesRes, stockRes, draftsRes] = await Promise.all([
+  const [facturesRes, stockSoldRes, stockRes, draftsRes] = await Promise.all([
     supabase
       .from("factures")
-      .select("prix_ttc, created_at")
+      .select("id, prix_ttc, created_at, brouillon_id")
       .eq("concession_id", uid)
-      .gte("created_at", since),
+      .neq("statut", "annulee")
+      .gte("created_at", historyStart),
     supabase
       .from("stock_vehicules")
-      .select("statut, created_at")
+      .select("id, created_at, updated_at, disponible")
       .eq("concession_id", uid)
-      .eq("statut", "vendu")
-      .gte("created_at", since),
+      .eq("statut", "vendu"),
     supabase
       .from("stock_vehicules")
       .select("statut, disponible")
@@ -123,15 +154,62 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
       .from("brouillons")
       .select("created_at, vehicle_field_values")
       .eq("user_id", uid)
-      .gte("created_at", since),
+      .gte("created_at", historyStart),
   ]);
 
   if (facturesRes.error) console.error("loadDashboardStats factures:", facturesRes.error);
-  if (ventesRes.error) console.error("loadDashboardStats ventes:", ventesRes.error);
+  if (stockSoldRes.error) console.error("loadDashboardStats ventes:", stockSoldRes.error);
   if (stockRes.error) console.error("loadDashboardStats stock:", stockRes.error);
   if (draftsRes.error) console.error("loadDashboardStats brouillons:", draftsRes.error);
 
-  for (const row of facturesRes.data ?? []) {
+  const soldRows = (stockSoldRes.data ?? []) as StockSoldRow[];
+  const soldVehicleIds = new Set(
+    soldRows.map((row) => row.id).filter((id): id is string => typeof id === "string"),
+  );
+
+  const factureRows = facturesRes.data ?? [];
+  const brouillonIds = Array.from(
+    new Set(
+      factureRows
+        .map((row) =>
+          typeof row.brouillon_id === "string" && row.brouillon_id.trim()
+            ? row.brouillon_id
+            : null,
+        )
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  const draftById = new Map<string, string>();
+  if (brouillonIds.length > 0) {
+    const { data: brouillonsForFactures, error: brouillonsForFacturesError } = await supabase
+      .from("brouillons")
+      .select("id, vehicle_field_values")
+      .eq("user_id", uid)
+      .in("id", brouillonIds);
+    if (brouillonsForFacturesError) {
+      console.error(
+        "loadDashboardStats brouillons factures:",
+        brouillonsForFacturesError,
+      );
+    }
+    for (const row of brouillonsForFactures ?? []) {
+      const vehiculeId = getVehiculeStockId(row.vehicle_field_values);
+      if (vehiculeId && typeof row.id === "string") {
+        draftById.set(row.id, vehiculeId);
+      }
+    }
+  }
+
+  for (const row of factureRows) {
+    const brouillonId =
+      typeof row.brouillon_id === "string" && row.brouillon_id.trim()
+        ? row.brouillon_id
+        : null;
+    if (!brouillonId) continue;
+    const vehiculeId = draftById.get(brouillonId);
+    if (!vehiculeId || !soldVehicleIds.has(vehiculeId)) continue;
+
     const createdAt = typeof row.created_at === "string" ? row.created_at : "";
     if (!createdAt) continue;
     const d = new Date(createdAt);
@@ -142,10 +220,11 @@ export async function loadDashboardStats(): Promise<DashboardStats> {
     bucket.revenue += Number.isFinite(amount) ? amount : 0;
   }
 
-  for (const row of ventesRes.data ?? []) {
-    const createdAt = typeof row.created_at === "string" ? row.created_at : "";
-    if (!createdAt) continue;
-    const d = new Date(createdAt);
+  for (const row of soldRows) {
+    const eventDate = row.updated_at || row.created_at || "";
+    if (!eventDate) continue;
+    const d = new Date(eventDate);
+    if (Number.isNaN(d.getTime()) || d < new Date(historyStart)) continue;
     const key = getMonthKey(d);
     const bucket = byKey.get(key);
     if (!bucket) continue;
@@ -197,25 +276,71 @@ export type RecentSaleRow = {
  * véhicule + prix dans le même enregistrement (pas de jointure nécessaire).
  * RLS : `concession_id = auth.uid()`.
  */
-export async function loadRecentSales(limit = 5): Promise<RecentSaleRow[]> {
+export async function loadRecentSales(
+  period: DashboardPeriod = "month",
+  limit = 5,
+): Promise<RecentSaleRow[]> {
   const uid = await getCurrentUserId();
   if (!uid) return [];
+  const since = getPeriodStart(period).toISOString();
 
-  const { data, error } = await supabase
+  const { data: facturesData, error: facturesError } = await supabase
     .from("factures")
     .select(
-      "id, created_at, prix_ttc, client_nom, client_prenom, vehicule_marque, vehicule_modele, vehicule_version",
+      "id, created_at, prix_ttc, client_nom, client_prenom, vehicule_marque, vehicule_modele, vehicule_version, brouillon_id",
     )
     .eq("concession_id", uid)
+    .neq("statut", "annulee")
+    .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  if (error) {
-    console.error("loadRecentSales:", error);
-    throw new Error(error.message);
+  const { data: stockData, error: stockError } = await supabase
+    .from("stock_vehicules")
+    .select("id, donnees, marque, modele, prix, updated_at, created_at")
+    .eq("concession_id", uid)
+    .eq("statut", "vendu")
+    .order("updated_at", { ascending: false })
+    .limit(limit * 2);
+
+  if (facturesError) {
+    console.error("loadRecentSales factures:", facturesError);
+    throw new Error(facturesError.message);
+  }
+  if (stockError) {
+    console.error("loadRecentSales stock:", stockError);
+    throw new Error(stockError.message);
   }
 
-  return (data ?? []).map((row) => {
+  const factureRows = facturesData ?? [];
+  const brouillonIds = Array.from(
+    new Set(
+      factureRows
+        .map((row) =>
+          typeof row.brouillon_id === "string" && row.brouillon_id.trim()
+            ? row.brouillon_id
+            : null,
+        )
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const soldVehiculeIdsFromFactures = new Set<string>();
+  if (brouillonIds.length > 0) {
+    const { data: brouillonsRows, error: brouillonsError } = await supabase
+      .from("brouillons")
+      .select("id, vehicle_field_values")
+      .eq("user_id", uid)
+      .in("id", brouillonIds);
+    if (brouillonsError) {
+      console.error("loadRecentSales brouillons:", brouillonsError);
+    }
+    for (const row of brouillonsRows ?? []) {
+      const vehiculeId = getVehiculeStockId(row.vehicle_field_values);
+      if (vehiculeId) soldVehiculeIdsFromFactures.add(vehiculeId);
+    }
+  }
+
+  const fromFactures: RecentSaleRow[] = factureRows.map((row) => {
     const vehiculeParts = [row.vehicule_marque, row.vehicule_modele, row.vehicule_version]
       .map((v) => (typeof v === "string" ? v.trim() : ""))
       .filter(Boolean);
@@ -232,4 +357,40 @@ export async function loadRecentSales(limit = 5): Promise<RecentSaleRow[]> {
       prixTtc: Number.isFinite(prix) ? prix : 0,
     };
   });
+
+  const fromStock: RecentSaleRow[] = (stockData ?? [])
+    .filter((row) => !soldVehiculeIdsFromFactures.has(String(row.id)))
+    .map((row) => {
+      const d =
+        row.donnees && typeof row.donnees === "object"
+          ? (row.donnees as Record<string, unknown>)
+          : {};
+      const vehicule = [row.marque, row.modele, d.modele, d.version]
+        .map((v) => (typeof v === "string" ? v.trim() : ""))
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(" ");
+      const rawPrix = row.prix ?? d.prix ?? d["Prix TTC"] ?? d.prix_ttc;
+      const prix =
+        typeof rawPrix === "number" ? rawPrix : Number(String(rawPrix ?? "0").replace(",", "."));
+      const createdAt =
+        typeof row.updated_at === "string" && row.updated_at
+          ? row.updated_at
+          : (row.created_at ?? "");
+      return {
+        id: `stock-${row.id}`,
+        createdAt: typeof createdAt === "string" ? createdAt : "",
+        vehicule: vehicule || "—",
+        client: "—",
+        prixTtc: Number.isFinite(prix) ? prix : 0,
+      };
+    })
+    .filter((row) => {
+      if (!row.createdAt) return false;
+      const d = new Date(row.createdAt);
+      return !Number.isNaN(d.getTime()) && d >= new Date(since);
+    })
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+
+  return [...fromFactures, ...fromStock].slice(0, limit);
 }
