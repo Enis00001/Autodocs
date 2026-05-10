@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  FileText,
   Download,
   Car,
   FolderOpen,
@@ -9,15 +8,37 @@ import {
   FileEdit,
   Trash2,
   Inbox,
+  ChartNoAxesCombined,
+  BadgeEuro,
+  ClipboardList,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { BonDraftData, loadDrafts, deleteDraft } from "@/utils/drafts";
-import { getCurrentUserId } from "@/lib/auth";
-import { loadStockVehicules } from "@/utils/stockVehicules";
 import { isDraftFormComplete } from "@/utils/bonFormCompletion";
 import SignatureStatusBadge from "@/components/SignatureStatusBadge";
 import { cn } from "@/lib/utils";
 import { buildPdfFormDataFromDraft, generatePDF } from "@/utils/generatePDF";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  DashboardPeriod,
+  getMonthsForPeriod,
+  loadDashboardStats,
+  sliceMonthlyByPeriod,
+} from "@/utils/stats";
 
 const isCurrentMonth = (iso: string) => {
   const d = new Date(iso);
@@ -34,9 +55,10 @@ function vehiculeLabel(d: BonDraftData): string {
 
 const Dashboard = () => {
   const [drafts, setDrafts] = useState<BonDraftData[]>([]);
-  const [stockDispo, setStockDispo] = useState(0);
   const [loading, setLoading] = useState(true);
   const [downloadingDraftId, setDownloadingDraftId] = useState<string | null>(null);
+  const [period, setPeriod] = useState<DashboardPeriod>("month");
+  const [stats, setStats] = useState<Awaited<ReturnType<typeof loadDashboardStats>> | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -44,14 +66,10 @@ const Dashboard = () => {
     (async () => {
       setLoading(true);
       try {
-        const uid = await getCurrentUserId();
-        const [d, stock] = await Promise.all([
-          loadDrafts(),
-          uid ? loadStockVehicules(uid) : Promise.resolve([]),
-        ]);
+        const [d, s] = await Promise.all([loadDrafts(), loadDashboardStats()]);
         if (cancelled) return;
         setDrafts(d);
-        setStockDispo(stock.filter((v) => v.disponible).length);
+        setStats(s);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -63,36 +81,112 @@ const Dashboard = () => {
 
   const bonsCeMois = drafts.filter((d) => isCurrentMonth(d.createdAt)).length;
   const brouillonsEnCours = drafts.length;
+  const statsReady = stats ?? {
+    monthly: [],
+    stockAvailableTotal: 0,
+    stockSoldTotal: 0,
+    draftsTotal: 0,
+    draftsSignedTotal: 0,
+    draftsPendingTotal: 0,
+  };
 
-  const statCards = [
+  const monthsForPeriod = getMonthsForPeriod(period);
+  const monthlyForPeriod = sliceMonthlyByPeriod(statsReady.monthly, period);
+  const previousMonthlyForPeriod = statsReady.monthly.slice(
+    Math.max(0, statsReady.monthly.length - monthsForPeriod * 2),
+    Math.max(0, statsReady.monthly.length - monthsForPeriod),
+  );
+
+  const sum = (
+    rows: typeof monthlyForPeriod,
+    key: "revenue" | "sales" | "draftsSigned" | "draftsPending",
+  ) => rows.reduce((acc, row) => acc + row[key], 0);
+
+  const currentRevenue = sum(monthlyForPeriod, "revenue");
+  const previousRevenue = sum(previousMonthlyForPeriod, "revenue");
+  const currentSales = sum(monthlyForPeriod, "sales");
+  const previousSales = sum(previousMonthlyForPeriod, "sales");
+  const currentSigned = sum(monthlyForPeriod, "draftsSigned");
+  const currentPending = sum(monthlyForPeriod, "draftsPending");
+  const previousPending = sum(previousMonthlyForPeriod, "draftsPending");
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      maximumFractionDigits: 0,
+    }).format(value);
+
+  const formatPercent = (current: number, previous: number) => {
+    if (previous === 0) {
+      if (current === 0) return { text: "0%", positive: true };
+      return { text: "+100%", positive: true };
+    }
+    const pct = ((current - previous) / Math.abs(previous)) * 100;
+    const rounded = Math.round(pct);
+    const sign = rounded > 0 ? "+" : "";
+    return { text: `${sign}${rounded}%`, positive: rounded >= 0 };
+  };
+
+  const revenueDelta = formatPercent(currentRevenue, previousRevenue);
+  const salesDiff = currentSales - previousSales;
+  const pendingDelta = formatPercent(currentPending, previousPending);
+
+  const periodLabels: Record<DashboardPeriod, string> = {
+    month: "Ce mois",
+    "3m": "3 mois",
+    "6m": "6 mois",
+    year: "Cette annee",
+  };
+
+  const kpiCards = [
     {
-      label: "Bons ce mois",
-      value: loading ? "—" : String(bonsCeMois),
-      sub: "Brouillons créés",
-      icon: FileText,
+      label: "CA de la periode",
+      value: formatCurrency(currentRevenue),
+      sub: `vs periode precedente ${revenueDelta.text}`,
+      trendClass: revenueDelta.positive ? "text-success" : "text-destructive",
+      icon: BadgeEuro,
       className: "border-primary/20 bg-primary/5 text-primary",
       iconBox: "bg-primary/20 text-primary",
       numberClass: "stat-number-indigo",
     },
     {
-      label: "Véhicules en stock",
-      value: loading ? "—" : String(stockDispo),
-      sub: "Disponibles",
+      label: "Ventes de la periode",
+      value: `${currentSales}`,
+      sub: `vs periode precedente ${salesDiff >= 0 ? "+" : ""}${salesDiff} vehicules`,
+      trendClass: salesDiff >= 0 ? "text-success" : "text-destructive",
       icon: Car,
-      className: "border-success/25 bg-success/5 text-success",
-      iconBox: "bg-success/20 text-success",
+      className: "border-emerald-500/25 bg-emerald-500/5 text-emerald-400",
+      iconBox: "bg-emerald-500/20 text-emerald-400",
       numberClass: "stat-number-success",
     },
     {
-      label: "Brouillons en cours",
-      value: loading ? "—" : String(brouillonsEnCours),
-      sub: "Tous",
+      label: "Stock disponible",
+      value: `${statsReady.stockAvailableTotal}`,
+      sub: `${currentSales} vendus sur ${periodLabels[period].toLowerCase()}`,
+      trendClass: "text-muted-foreground",
       icon: FolderOpen,
+      className: "border-cyan-500/25 bg-cyan-500/5 text-cyan-300",
+      iconBox: "bg-cyan-500/20 text-cyan-300",
+      numberClass: "text-cyan-300",
+    },
+    {
+      label: "Bons en attente",
+      value: `${currentPending}`,
+      sub: `${currentSigned} signes sur ${periodLabels[period].toLowerCase()} (${pendingDelta.text})`,
+      trendClass: pendingDelta.positive ? "text-destructive" : "text-success",
+      icon: ClipboardList,
       className: "border-amber-500/25 bg-amber-500/5 text-amber-400",
       iconBox: "bg-amber-500/20 text-amber-400",
       numberClass: "stat-number-warning",
     },
   ] as const;
+
+  const pieData = [
+    { name: "Signes", value: currentSigned, color: "#22c55e" },
+    { name: "En attente", value: currentPending, color: "#f59e0b" },
+  ];
+  const noDataForPeriod = currentRevenue === 0 && currentSales === 0 && currentSigned === 0 && currentPending === 0;
 
   return (
     <>
@@ -123,8 +217,38 @@ const Dashboard = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-            {statCards.map((s) => (
+          <div className="card-autodocs">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display text-sm font-bold text-foreground">
+                  Statistiques avancees
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Analyse de vos ventes, de votre CA et des signatures.
+                </p>
+              </div>
+              <div className="inline-flex rounded-input border border-border bg-background p-1">
+                {(["month", "3m", "6m", "year"] as DashboardPeriod[]).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={cn(
+                      "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      period === p
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setPeriod(p)}
+                  >
+                    {periodLabels[p]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 md:gap-4">
+            {kpiCards.map((s) => (
               <div
                 key={s.label}
                 className={cn(
@@ -147,16 +271,125 @@ const Dashboard = () => {
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-muted-foreground">{s.label}</p>
                   {loading ? (
-                    <div className="skeleton mt-2 h-8 w-16 rounded" />
+                    <div className="skeleton mt-2 h-8 w-24 rounded" />
                   ) : (
                     <p className={cn("stat-number text-3xl", s.numberClass)}>
                       {s.value}
                     </p>
                   )}
-                  <p className="text-[11px] text-muted-foreground">{s.sub}</p>
+                  {loading ? (
+                    <div className="skeleton mt-2 h-3 w-28 rounded" />
+                  ) : (
+                    <p className={cn("text-[11px]", s.trendClass)}>{s.sub}</p>
+                  )}
                 </div>
               </div>
             ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="card-autodocs xl:col-span-2">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-display text-sm font-bold text-foreground">
+                  Evolution du chiffre d'affaires
+                </h3>
+                <span className="text-[11px] text-muted-foreground">12 derniers mois</span>
+              </div>
+              {loading ? (
+                <div className="skeleton h-72 w-full rounded-input" />
+              ) : (
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={monthlyForPeriod}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
+                      <XAxis dataKey="label" />
+                      <YAxis />
+                      <Tooltip
+                        formatter={(value: number) => formatCurrency(Number(value))}
+                        labelFormatter={(label) => `Mois: ${label}`}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke="#6366f1"
+                        strokeWidth={3}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+
+            <div className="card-autodocs">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-display text-sm font-bold text-foreground">
+                  Bons signes vs attente
+                </h3>
+                <span className="text-[11px] text-muted-foreground">{periodLabels[period]}</span>
+              </div>
+              {loading ? (
+                <div className="skeleton h-72 w-full rounded-input" />
+              ) : (
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={55}
+                        outerRadius={85}
+                        paddingAngle={2}
+                      >
+                        {pieData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card-autodocs">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-display text-sm font-bold text-foreground">
+                Ventes de vehicules par mois
+              </h3>
+              <span className="text-[11px] text-muted-foreground">12 derniers mois</span>
+            </div>
+            {loading ? (
+              <div className="skeleton h-72 w-full rounded-input" />
+            ) : noDataForPeriod ? (
+              <div className="flex h-72 flex-col items-center justify-center text-center">
+                <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <ChartNoAxesCombined className="h-7 w-7" />
+                </div>
+                <p className="font-display text-base font-bold text-foreground">
+                  Aucune vente pour cette periode
+                </p>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  Changez la periode pour voir plus d'historique.
+                </p>
+              </div>
+            ) : (
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyForPeriod}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
+                    <XAxis dataKey="label" />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="sales" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
 
           <div className="card-autodocs">
@@ -306,6 +539,27 @@ const Dashboard = () => {
               </div>
             )}
           </div>
+
+          {!loading && (
+            <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground md:grid-cols-4">
+              <div className="card-autodocs py-3">
+                <p className="font-medium text-foreground">{bonsCeMois}</p>
+                <p>Bons crees ce mois</p>
+              </div>
+              <div className="card-autodocs py-3">
+                <p className="font-medium text-foreground">{brouillonsEnCours}</p>
+                <p>Brouillons en cours</p>
+              </div>
+              <div className="card-autodocs py-3">
+                <p className="font-medium text-foreground">{statsReady.stockSoldTotal}</p>
+                <p>Vehicules deja vendus</p>
+              </div>
+              <div className="card-autodocs py-3">
+                <p className="font-medium text-foreground">{statsReady.draftsTotal}</p>
+                <p>Total bons suivis</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
