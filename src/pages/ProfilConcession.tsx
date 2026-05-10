@@ -440,18 +440,50 @@ const ProfilConcession = () => {
     }
     setSavingRelances(true);
     try {
-      const payload = {
-        concession_id: concessionId,
-        actif: relancesConfig.actif,
-        delai_premier_rappel: Math.max(0, Number(relancesConfig.delai_premier_rappel || 0)),
-        delai_deuxieme_rappel: Math.max(0, Number(relancesConfig.delai_deuxieme_rappel || 0)),
-        message_personnalise: relancesConfig.message_personnalise.trim() || null,
-        updated_at: new Date().toISOString(),
-      };
-      const { error } = await supabase
+      const actif = relancesConfig.actif;
+      const delai_premier_rappel = Math.max(
+        0,
+        Number(relancesConfig.delai_premier_rappel || 0),
+      );
+      const delai_deuxieme_rappel = Math.max(
+        0,
+        Number(relancesConfig.delai_deuxieme_rappel || 0),
+      );
+      const message_personnalise = relancesConfig.message_personnalise.trim() || null;
+
+      const { data: existing, error: existingError } = await supabase
         .from("relances_config")
-        .upsert(payload, { onConflict: "concession_id" });
-      if (error) throw error;
+        .select("id")
+        .eq("concession_id", concessionId)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from("relances_config")
+          .update({
+            actif,
+            delai_premier_rappel,
+            delai_deuxieme_rappel,
+            message_personnalise,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("concession_id", concessionId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("relances_config")
+          .insert({
+            concession_id: concessionId,
+            actif,
+            delai_premier_rappel,
+            delai_deuxieme_rappel,
+            message_personnalise,
+          });
+        if (error) throw error;
+      }
+
       toast({ title: "Relances automatiques sauvegardées ✓" });
     } catch (err) {
       toast({
