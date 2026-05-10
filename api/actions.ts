@@ -253,6 +253,95 @@ function pickStockField(donnees: Record<string, string>, aliases: string[]): str
   return "";
 }
 
+function normalizeVehiculeKey(raw: string): string {
+  return String(raw ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s_.\-]/g, "");
+}
+
+function extractVehiculeField(
+  donnees: Record<string, unknown>,
+  synonymes: string[],
+): string {
+  if (!donnees || typeof donnees !== "object") return "";
+
+  for (const synonyme of synonymes) {
+    const direct = donnees[synonyme];
+    if (direct !== undefined && direct !== null && String(direct).trim() !== "") {
+      return String(direct).trim();
+    }
+  }
+
+  const normalizedWanted = new Set(synonymes.map((s) => normalizeVehiculeKey(s)));
+  for (const [key, value] of Object.entries(donnees)) {
+    if (value === undefined || value === null || String(value).trim() === "") continue;
+    if (normalizedWanted.has(normalizeVehiculeKey(key))) {
+      return String(value).trim();
+    }
+  }
+
+  for (const [key, value] of Object.entries(donnees)) {
+    if (value === undefined || value === null || String(value).trim() === "") continue;
+    const normalized = normalizeVehiculeKey(key);
+    if (
+      normalized.includes("mec") ||
+      normalized.includes("miseencirculation") ||
+      (normalized.includes("immatriculation") && normalized.includes("date"))
+    ) {
+      return String(value).trim();
+    }
+  }
+
+  return "";
+}
+
+function extractPremiereMiseEnCirculation(donnees: Record<string, unknown>): string {
+  return (
+    extractVehiculeField(donnees, [
+      "mec",
+      "MEC",
+      "M.E.C",
+      "m.e.c",
+      "1ere_mec",
+      "1ère_mec",
+      "1ere mec",
+      "1ère mec",
+      "1ere_mise_en_circulation",
+      "1ère_mise_en_circulation",
+      "premiere_mise_en_circulation",
+      "première_mise_en_circulation",
+      "premiere mise en circulation",
+      "première mise en circulation",
+      "date_mise_en_circulation",
+      "date mise en circulation",
+      "date_mec",
+      "date mec",
+      "mise_en_circulation",
+      "mise en circulation",
+      "1er_mise_en_circulation",
+      "date_immatriculation",
+      "date immatriculation",
+      "annee_mise_en_circulation",
+      "année mise en circulation",
+      "date_1ere_immat",
+      "date_premiere_immat",
+      "1ere_immat",
+      "1ère immat",
+      "immat_date",
+      "DateMEC",
+      "dateMEC",
+      "Date MEC",
+      "Date M.E.C",
+      "Date 1ère MEC",
+      "1ère mise en circulation",
+      "1ere mise en circulation",
+      "premieremiseencirculation",
+    ]) || "Non renseignée"
+  );
+}
+
 function isoDateToFr(iso: string | undefined | null): string {
   const s = String(iso ?? "").trim();
   if (!s) return "—";
@@ -1747,26 +1836,50 @@ async function handleGenerateFacture(
   const vehModele = pickStockField(stockDonnees, ["modele", "modèle", "model"]);
   const vehVersion = pickStockField(stockDonnees, ["version", "finition"]);
   const vehType = pickStockField(stockDonnees, ["type", "genre", "carrosserie"]);
-  const vehPremCirc = pickStockField(stockDonnees, [
-    "mise en circulation",
-    "premiere mise en circulation",
-    "date mec",
-    "mec",
-  ]);
-  const vehKm = pickStockField(stockDonnees, [
+  const vehPremCirc = extractPremiereMiseEnCirculation(stockDonnees);
+  const vehKm = extractVehiculeField(stockDonnees, [
+    "km",
     "kilometrage",
     "kilométrage",
-    "km",
+    "kms",
+    "kilometre",
+    "kilomètres",
+    "nb_km",
     "compteur",
   ]);
-  const vehVin = pickStockField(stockDonnees, ["vin", "chassis", "châssis", "serie"]);
-  const vehImmat = pickStockField(stockDonnees, ["immatriculation", "plaque", "immat"]);
-  const vehCouleur = pickStockField(stockDonnees, ["couleur", "color"]);
-  const vehEnergie = pickStockField(stockDonnees, [
+  const vehVin = extractVehiculeField(stockDonnees, [
+    "vin",
+    "VIN",
+    "numero_serie",
+    "numéro de série",
+    "n_serie",
+    "serie",
+    "chassis",
+    "châssis",
+    "n_chassis",
+  ]);
+  const vehImmat = extractVehiculeField(stockDonnees, [
+    "immat",
+    "immatriculation",
+    "plaque",
+    "numero_immat",
+    "n_immat",
+    "plaque_immat",
+  ]);
+  const vehCouleur = extractVehiculeField(stockDonnees, [
+    "couleur",
+    "color",
+    "teinte",
+    "coloris",
+  ]);
+  const vehEnergie = extractVehiculeField(stockDonnees, [
     "energie",
     "énergie",
     "carburant",
     "motorisation",
+    "type_energie",
+    "fuel",
+    "combustible",
   ]);
 
   const repriseDesc =
@@ -1830,6 +1943,7 @@ async function handleGenerateFacture(
     vehicule_immatriculation: vehImmat || "—",
     vehicule_couleur: vehCouleur || "—",
     vehicule_energie: vehEnergie || "—",
+    vehicule_donnees: stockDonnees,
     prestations,
     prix_ht_vehicule_label: formatMoney(vehHt),
     prix_ht_prestations_label: formatMoney(sumPrestHt),

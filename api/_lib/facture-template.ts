@@ -33,6 +33,7 @@ export type FactureTemplatePayload = {
   vehicule_immatriculation: string;
   vehicule_couleur: string;
   vehicule_energie: string;
+  vehicule_donnees?: Record<string, unknown>;
 
   prestations: PrestationFacture[];
 
@@ -63,7 +64,150 @@ function formatMoneyFr(n: number): string {
   return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function normalizeVehiculeKey(raw: string): string {
+  return String(raw ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\s_.\-]/g, "");
+}
+
+function extractVehiculeField(
+  donnees: Record<string, unknown>,
+  synonymes: string[],
+): string {
+  if (!donnees || typeof donnees !== "object") return "";
+
+  for (const synonyme of synonymes) {
+    const direct = donnees[synonyme];
+    if (direct !== undefined && direct !== null && String(direct).trim() !== "") {
+      return String(direct).trim();
+    }
+  }
+
+  const normalizedWanted = new Set(synonymes.map((s) => normalizeVehiculeKey(s)));
+  for (const [key, value] of Object.entries(donnees)) {
+    if (value === undefined || value === null || String(value).trim() === "") continue;
+    if (normalizedWanted.has(normalizeVehiculeKey(key))) {
+      return String(value).trim();
+    }
+  }
+
+  for (const [key, value] of Object.entries(donnees)) {
+    if (value === undefined || value === null || String(value).trim() === "") continue;
+    const normalized = normalizeVehiculeKey(key);
+    if (
+      normalized.includes("mec") ||
+      normalized.includes("miseencirculation") ||
+      (normalized.includes("immatriculation") && normalized.includes("date"))
+    ) {
+      return String(value).trim();
+    }
+  }
+
+  return "";
+}
+
+function extractPremiereMiseEnCirculation(donnees: Record<string, unknown>): string {
+  return (
+    extractVehiculeField(donnees, [
+      "mec",
+      "MEC",
+      "M.E.C",
+      "m.e.c",
+      "1ere_mec",
+      "1ère_mec",
+      "1ere mec",
+      "1ère mec",
+      "1ere_mise_en_circulation",
+      "1ère_mise_en_circulation",
+      "premiere_mise_en_circulation",
+      "première_mise_en_circulation",
+      "premiere mise en circulation",
+      "première mise en circulation",
+      "date_mise_en_circulation",
+      "date mise en circulation",
+      "date_mec",
+      "date mec",
+      "mise_en_circulation",
+      "mise en circulation",
+      "1er_mise_en_circulation",
+      "date_immatriculation",
+      "date immatriculation",
+      "annee_mise_en_circulation",
+      "année mise en circulation",
+      "date_1ere_immat",
+      "date_premiere_immat",
+      "1ere_immat",
+      "1ère immat",
+      "immat_date",
+      "DateMEC",
+      "dateMEC",
+      "Date MEC",
+      "Date M.E.C",
+      "Date 1ère MEC",
+      "1ère mise en circulation",
+      "1ere mise en circulation",
+      "premieremiseencirculation",
+    ]) || "Non renseignée"
+  );
+}
+
 export function buildFactureHtml(p: FactureTemplatePayload): string {
+  const vehiculeDonnees = p.vehicule_donnees ?? {};
+  const resolvedPremiereCirculation =
+    String(p.vehicule_premiere_circulation ?? "").trim() ||
+    extractPremiereMiseEnCirculation(vehiculeDonnees);
+  const resolvedKilometrage =
+    String(p.vehicule_kilometrage ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, [
+      "km",
+      "kilometrage",
+      "kilométrage",
+      "kms",
+      "kilometre",
+      "kilomètres",
+      "nb_km",
+      "compteur",
+    ]);
+  const resolvedVin =
+    String(p.vehicule_vin ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, [
+      "vin",
+      "VIN",
+      "numero_serie",
+      "numéro de série",
+      "n_serie",
+      "serie",
+      "chassis",
+      "châssis",
+      "n_chassis",
+    ]);
+  const resolvedImmat =
+    String(p.vehicule_immatriculation ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, [
+      "immat",
+      "immatriculation",
+      "plaque",
+      "numero_immat",
+      "n_immat",
+      "plaque_immat",
+    ]);
+  const resolvedEnergie =
+    String(p.vehicule_energie ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, [
+      "energie",
+      "énergie",
+      "carburant",
+      "motorisation",
+      "type_energie",
+      "fuel",
+      "combustible",
+    ]);
+  const resolvedCouleur =
+    String(p.vehicule_couleur ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, ["couleur", "color", "teinte", "coloris"]);
+
   const livraisonRaw = String(p.date_livraison_label ?? "").trim();
   const livraisonLabel =
     livraisonRaw && livraisonRaw !== "—"
@@ -233,11 +377,11 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
     <table class="grid">
       <tr><th>Marque</th><td>${esc(p.vehicule_marque)}</td><th>Type / genre</th><td>${esc(p.vehicule_type)}</td></tr>
       <tr><th>Modèle</th><td>${esc(p.vehicule_modele)}</td><th>Version</th><td>${esc(p.vehicule_version)}</td></tr>
-      <tr><th>1ère mise en circulation</th><td colspan="3">${esc(p.vehicule_premiere_circulation)}</td></tr>
-      <tr><th>Kilométrage</th><td colspan="3">${p.vehicule_km_non_garanti ? "<strong>Non garanti</strong>" : esc(p.vehicule_kilometrage)}</td></tr>
-      <tr><th>N° VIN (numéro de série)</th><td colspan="3">${esc(p.vehicule_vin)}</td></tr>
-      <tr><th>N° d'immatriculation</th><td>${esc(p.vehicule_immatriculation)}</td><th>Couleur</th><td>${esc(p.vehicule_couleur)}</td></tr>
-      <tr><th>Énergie</th><td colspan="3">${esc(p.vehicule_energie)}</td></tr>
+      <tr><th>1ère mise en circulation</th><td colspan="3">${esc(resolvedPremiereCirculation || "Non renseignée")}</td></tr>
+      <tr><th>Kilométrage</th><td colspan="3">${p.vehicule_km_non_garanti ? "<strong>Non garanti</strong>" : esc(resolvedKilometrage || "Non renseigné")}</td></tr>
+      <tr><th>N° VIN (numéro de série)</th><td colspan="3">${esc(resolvedVin || "Non renseigné")}</td></tr>
+      <tr><th>N° d'immatriculation</th><td>${esc(resolvedImmat || "Non renseignée")}</td><th>Couleur</th><td>${esc(resolvedCouleur || "Non renseignée")}</td></tr>
+      <tr><th>Énergie</th><td colspan="3">${esc(resolvedEnergie || "Non renseignée")}</td></tr>
     </table>
   </div>
 
