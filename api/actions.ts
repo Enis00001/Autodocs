@@ -18,6 +18,7 @@ import {
   assertIsAdminOfConcession,
   getActiveConcessionIdForUser,
 } from "./_lib/concession.js";
+import { buildRelanceEmailHTML } from "./_lib/relance-template.js";
 
 /* ==================================================================
  *  Bon-template inliné (ex api/_lib/bon-template.ts)
@@ -640,6 +641,10 @@ type CompleteSignatureBody = {
 type ResendBody = {
   brouillonId?: string;
   token?: string;
+};
+
+type SendRelancesBody = {
+  concession_id?: string;
 };
 
 function parseRequestBody(req: VercelRequest): Record<string, unknown> | null {
@@ -1333,6 +1338,208 @@ async function handleResendSignatureEmail(
     signUrl,
     expiresAt,
   });
+}
+
+async function handleSendRelances(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "RESEND_API_KEY manquante." });
+  }
+
+  const body = data as SendRelancesBody;
+  const concessionFilter = String(body.concession_id ?? "").trim() || null;
+
+  const admin = await getSupabaseAdmin();
+  const configQuery = admin
+    .from("relances_config")
+    .select(
+      "concession_id, actif, delai_premier_rappel, delai_deuxieme_rappel, message_personnalise",
+    )
+    .eq("actif", true);
+
+  if (concessionFilter) configQuery.eq("concession_id", concessionFilter);
+
+  const { data: configs, error: cfgErr } = await configQuery;
+  if (cfgErr) {
+    console.error("[actions/send-relances] config read:", cfgErr);
+    return res.status(500).json({ error: "Impossible de lire la configuration des relances." });
+  }
+  if (!configs || configs.length === 0) {
+    return res.status(200).json({ sent: 0 });
+  }
+
+  const resend = new Resend(apiKey);
+  const appUrl = getPublicAppUrl(req);
+  const now = new Date();
+  let sent = 0;
+
+  for (const config of configs) {
+    const concessionId = String(config.concession_id ?? "").trim();
+    if (!concessionId) continue;
+
+    const premierDelai = Number(config.delai_premier_rappel ?? 3);
+    const deuxiemeDelai = Number(config.delai_deuxieme_rappel ?? 7);
+
+    const thresholdRelance1 = new Date(
+      now.getTime() - Math.max(0, premierDelai) * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const thresholdRelance2 = new Date(
+      now.getTime() - Math.max(0, deuxiemeDelai) * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
+    const { data: aRelancer1, error: r1Err } = await admin
+      .from("signature_requests")
+      .select(
+        "id, token, expires_at, client_email, client_nom, client_prenom, form_data, created_at, brouillons(form_data)",
+      )
+      .eq("concession_id", concessionId)
+      .is("signed_at", null)
+      .is("relance_1_sent_at", null)
+      .lte("created_at", thresholdRelance1);
+
+    if (r1Err) {
+      console.error("[actions/send-relances] relance1 read:", r1Err);
+      continue;
+    }
+
+    for (const sr of aRelancer1 ?? []) {
+      const token = String(sr.token ?? "").trim();
+      if (!token) continue;
+      const formData =
+        sr.form_data && typeof sr.form_data === "object"
+          ? (sr.form_data as Record<string, unknown>)
+          : sr.brouillons?.form_data && typeof sr.brouillons.form_data === "object"
+          ? (sr.brouillons.form_data as Record<string, unknown>)
+          : {};
+
+      const clientEmail =
+        String(sr.client_email ?? "").trim() ||
+        String(formData.email ?? "").trim() ||
+        String(formData.clientEmail ?? "").trim();
+      const clientNom =
+        String(sr.client_nom ?? "").trim() ||
+        String(formData.nom ?? "").trim() ||
+        String(formData.clientNom ?? "").trim() ||
+        "Client";
+      const clientPrenom =
+        String(sr.client_prenom ?? "").trim() ||
+        String(formData.prenom ?? "").trim() ||
+        String(formData.clientPrenom ?? "").trim();
+      if (!clientEmail || !isValidEmail(clientEmail)) continue;
+
+      const signatureUrl = `${appUrl}/signer/${token}`;
+      try {
+        const { error: mailErr } = await resend.emails.send({
+          from: "AutoDocs <noreply@autodocs.services>",
+          to: clientEmail,
+          subject: "Rappel : votre bon de commande attend votre signature",
+          html: buildRelanceEmailHTML({
+            clientNom,
+            clientPrenom,
+            signatureUrl,
+            expiresAt: sr.expires_at,
+            messagePersonnalise: String(config.message_personnalise ?? ""),
+            numeroRelance: 1,
+          }),
+        });
+        if (mailErr) {
+          console.error("[actions/send-relances] relance1 email:", mailErr);
+          continue;
+        }
+        const { error: markErr } = await admin
+          .from("signature_requests")
+          .update({ relance_1_sent_at: now.toISOString() })
+          .eq("id", sr.id);
+        if (markErr) {
+          console.error("[actions/send-relances] relance1 mark:", markErr);
+          continue;
+        }
+        sent += 1;
+      } catch (err) {
+        console.error("[actions/send-relances] relance1 exception:", err);
+      }
+    }
+
+    const { data: aRelancer2, error: r2Err } = await admin
+      .from("signature_requests")
+      .select(
+        "id, token, expires_at, client_email, client_nom, client_prenom, form_data, created_at, brouillons(form_data)",
+      )
+      .eq("concession_id", concessionId)
+      .is("signed_at", null)
+      .not("relance_1_sent_at", "is", null)
+      .is("relance_2_sent_at", null)
+      .lte("created_at", thresholdRelance2);
+
+    if (r2Err) {
+      console.error("[actions/send-relances] relance2 read:", r2Err);
+      continue;
+    }
+
+    for (const sr of aRelancer2 ?? []) {
+      const token = String(sr.token ?? "").trim();
+      if (!token) continue;
+      const formData =
+        sr.form_data && typeof sr.form_data === "object"
+          ? (sr.form_data as Record<string, unknown>)
+          : sr.brouillons?.form_data && typeof sr.brouillons.form_data === "object"
+          ? (sr.brouillons.form_data as Record<string, unknown>)
+          : {};
+
+      const clientEmail =
+        String(sr.client_email ?? "").trim() ||
+        String(formData.email ?? "").trim() ||
+        String(formData.clientEmail ?? "").trim();
+      const clientNom =
+        String(sr.client_nom ?? "").trim() ||
+        String(formData.nom ?? "").trim() ||
+        String(formData.clientNom ?? "").trim() ||
+        "Client";
+      const clientPrenom =
+        String(sr.client_prenom ?? "").trim() ||
+        String(formData.prenom ?? "").trim() ||
+        String(formData.clientPrenom ?? "").trim();
+      if (!clientEmail || !isValidEmail(clientEmail)) continue;
+
+      const signatureUrl = `${appUrl}/signer/${token}`;
+      try {
+        const { error: mailErr } = await resend.emails.send({
+          from: "AutoDocs <noreply@autodocs.services>",
+          to: clientEmail,
+          subject: "Rappel : votre bon de commande attend votre signature",
+          html: buildRelanceEmailHTML({
+            clientNom,
+            clientPrenom,
+            signatureUrl,
+            expiresAt: sr.expires_at,
+            messagePersonnalise: String(config.message_personnalise ?? ""),
+            numeroRelance: 2,
+          }),
+        });
+        if (mailErr) {
+          console.error("[actions/send-relances] relance2 email:", mailErr);
+          continue;
+        }
+        const { error: markErr } = await admin
+          .from("signature_requests")
+          .update({ relance_2_sent_at: now.toISOString() })
+          .eq("id", sr.id);
+        if (markErr) {
+          console.error("[actions/send-relances] relance2 mark:", markErr);
+          continue;
+        }
+        sent += 1;
+      } catch (err) {
+        console.error("[actions/send-relances] relance2 exception:", err);
+      }
+    }
+  }
+
+  return res.status(200).json({ sent });
 }
 
 /* ==================================================================
@@ -2374,6 +2581,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleCompleteSignature(data, res);
     case "resend-signature-email":
       return handleResendSignatureEmail(req, data, res);
+    case "send-relances":
+      return handleSendRelances(req, data, res);
     case "fill-cerfa":
       return handleFillCerfa(req, data, res);
     case "generate-facture":

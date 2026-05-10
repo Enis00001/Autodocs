@@ -22,6 +22,7 @@ import {
   Shield,
   Ban,
   CircleCheck,
+  BellRing,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
@@ -50,6 +51,20 @@ type GerantInfos = {
   prenom: string;
   nom: string;
   email: string;
+};
+
+type RelancesConfig = {
+  actif: boolean;
+  delai_premier_rappel: number;
+  delai_deuxieme_rappel: number;
+  message_personnalise: string;
+};
+
+const DEFAULT_RELANCES_CONFIG: RelancesConfig = {
+  actif: true,
+  delai_premier_rappel: 3,
+  delai_deuxieme_rappel: 7,
+  message_personnalise: "",
 };
 
 const ProfilConcession = () => {
@@ -102,6 +117,11 @@ const ProfilConcession = () => {
   const [abonnement, setAbonnement] = useState<AbonnementInfo | null>(null);
   const [abonnementLoading, setAbonnementLoading] = useState(true);
   const [submittingPlan, setSubmittingPlan] = useState<CheckoutInterval | null>(null);
+  const [relancesConfig, setRelancesConfig] = useState<RelancesConfig>(DEFAULT_RELANCES_CONFIG);
+  const [loadingRelances, setLoadingRelances] = useState(true);
+  const [savingRelances, setSavingRelances] = useState(false);
+  const [sendingRelances, setSendingRelances] = useState(false);
+  const [relancesResult, setRelancesResult] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -129,6 +149,43 @@ const ProfilConcession = () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!concessionId) {
+        if (mounted) {
+          setRelancesConfig(DEFAULT_RELANCES_CONFIG);
+          setLoadingRelances(false);
+        }
+        return;
+      }
+      setLoadingRelances(true);
+      const { data, error } = await supabase
+        .from("relances_config")
+        .select("actif, delai_premier_rappel, delai_deuxieme_rappel, message_personnalise")
+        .eq("concession_id", concessionId)
+        .maybeSingle();
+      if (!mounted) return;
+      if (error) {
+        console.error("[profil-concession] load relances_config:", error);
+        setRelancesConfig(DEFAULT_RELANCES_CONFIG);
+      } else if (data) {
+        setRelancesConfig({
+          actif: Boolean(data.actif),
+          delai_premier_rappel: Number(data.delai_premier_rappel ?? 3),
+          delai_deuxieme_rappel: Number(data.delai_deuxieme_rappel ?? 7),
+          message_personnalise: String(data.message_personnalise ?? ""),
+        });
+      } else {
+        setRelancesConfig(DEFAULT_RELANCES_CONFIG);
+      }
+      setLoadingRelances(false);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [concessionId]);
 
   // Auto-scroll vers la section Abonnement quand on arrive avec
   // /profil-concession#abonnement (depuis la sidebar mobile, un CTA ou
@@ -371,6 +428,74 @@ const ProfilConcession = () => {
       setSubmittingPlan(null);
     }
   }, []);
+
+  const handleSaveRelances = async () => {
+    if (!concessionId) {
+      toast({
+        title: "Configuration impossible",
+        description: "Concession introuvable pour ce compte.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSavingRelances(true);
+    try {
+      const payload = {
+        concession_id: concessionId,
+        actif: relancesConfig.actif,
+        delai_premier_rappel: Math.max(0, Number(relancesConfig.delai_premier_rappel || 0)),
+        delai_deuxieme_rappel: Math.max(0, Number(relancesConfig.delai_deuxieme_rappel || 0)),
+        message_personnalise: relancesConfig.message_personnalise.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase
+        .from("relances_config")
+        .upsert(payload, { onConflict: "concession_id" });
+      if (error) throw error;
+      toast({ title: "Relances automatiques sauvegardées ✓" });
+    } catch (err) {
+      toast({
+        title: "Sauvegarde impossible",
+        description: err instanceof Error ? err.message : "Une erreur est survenue.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingRelances(false);
+    }
+  };
+
+  const handleSendRelancesNow = async () => {
+    if (!concessionId) return;
+    setSendingRelances(true);
+    setRelancesResult(null);
+    try {
+      const response = await apiFetch("/api/actions", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "send-relances",
+          concession_id: concessionId,
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string; sent?: number };
+      if (!response.ok) {
+        throw new Error(body.error || "Envoi des relances impossible.");
+      }
+      const sentCount = Number(body.sent ?? 0);
+      setRelancesResult(sentCount);
+      toast({
+        title: "Relances traitées",
+        description: `${sentCount} email(s) de relance envoyé(s).`,
+      });
+    } catch (err) {
+      toast({
+        title: "Envoi impossible",
+        description: err instanceof Error ? err.message : "Réessayez dans un instant.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingRelances(false);
+    }
+  };
 
   const plan = abonnement?.plan ?? "gratuit";
   const isPro = plan === "pro";
@@ -855,6 +980,144 @@ const ProfilConcession = () => {
                   </div>
                 </div>
               ) : null}
+
+              {/* ============================================================
+                  Section 2ter — Relances automatiques
+                  ============================================================ */}
+              <section className="card-autodocs space-y-4">
+                <div className="card-title-autodocs mb-0 flex items-center gap-2">
+                  <BellRing className="h-5 w-5 text-primary" />
+                  Relances automatiques
+                </div>
+                {loadingRelances ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    <label className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={relancesConfig.actif}
+                        disabled={!isAdminMembre}
+                        onChange={(e) =>
+                          setRelancesConfig((prev) => ({
+                            ...prev,
+                            actif: e.target.checked,
+                          }))
+                        }
+                        className="h-4 w-4 accent-primary"
+                      />
+                      Activer les relances automatiques
+                    </label>
+
+                    {relancesConfig.actif ? (
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div className="flex flex-col gap-1.5">
+                          <label className="field-label">Premier rappel après</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              disabled={!isAdminMembre}
+                              value={relancesConfig.delai_premier_rappel}
+                              onChange={(e) =>
+                                setRelancesConfig((prev) => ({
+                                  ...prev,
+                                  delai_premier_rappel: Number(e.target.value || 0),
+                                }))
+                              }
+                              className="field-input"
+                            />
+                            <span className="text-sm text-muted-foreground">jours</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="field-label">Deuxième rappel après</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              disabled={!isAdminMembre}
+                              value={relancesConfig.delai_deuxieme_rappel}
+                              onChange={(e) =>
+                                setRelancesConfig((prev) => ({
+                                  ...prev,
+                                  delai_deuxieme_rappel: Number(e.target.value || 0),
+                                }))
+                              }
+                              className="field-input"
+                            />
+                            <span className="text-sm text-muted-foreground">jours</span>
+                          </div>
+                        </div>
+                        <div className="md:col-span-2 flex flex-col gap-1.5">
+                          <label className="field-label">Message personnalisé</label>
+                          <textarea
+                            value={relancesConfig.message_personnalise}
+                            disabled={!isAdminMembre}
+                            onChange={(e) =>
+                              setRelancesConfig((prev) => ({
+                                ...prev,
+                                message_personnalise: e.target.value,
+                              }))
+                            }
+                            placeholder="N'hésitez pas à nous contacter si vous avez des questions..."
+                            className="field-input min-h-24"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {isAdminMembre ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveRelances()}
+                        disabled={savingRelances}
+                        className="px-4 py-2.5 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
+                        style={{ boxShadow: "0 0 20px hsla(228,91%,64%,0.25)" }}
+                      >
+                        {savingRelances ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        {savingRelances ? "Sauvegarde…" : "Sauvegarder"}
+                      </button>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic">
+                        Seul l&apos;administrateur peut modifier les relances automatiques.
+                      </p>
+                    )}
+
+                    <div className="rounded-input border border-border/60 bg-secondary/20 p-3 space-y-2">
+                      <div className="text-sm font-semibold text-foreground">
+                        Envoyer les relances maintenant
+                      </div>
+                      <button
+                        type="button"
+                        disabled={sendingRelances || !isAdminMembre}
+                        onClick={() => void handleSendRelancesNow()}
+                        className="btn-secondary cursor-pointer inline-flex items-center gap-2 disabled:opacity-60"
+                      >
+                        {sendingRelances ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <BellRing className="h-4 w-4" />
+                        )}
+                        {sendingRelances
+                          ? "Envoi en cours…"
+                          : "Vérifier et envoyer les relances en attente"}
+                      </button>
+                      {relancesResult !== null ? (
+                        <p className="text-xs text-muted-foreground">
+                          {relancesResult} email(s) de relance envoyé(s)
+                        </p>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+              </section>
 
               {/* ============================================================
                   Section 3 — Abonnement

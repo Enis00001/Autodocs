@@ -179,6 +179,33 @@ BEGIN
   END IF;
 END $$;
 
+-- 3.f bis relances_config + colonnes de suivi de relance
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'signature_requests') THEN
+    EXECUTE '
+      CREATE TABLE IF NOT EXISTS relances_config (
+        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+        concession_id UUID REFERENCES concessions(id) ON DELETE CASCADE,
+        actif BOOLEAN DEFAULT true,
+        delai_premier_rappel INT DEFAULT 3,
+        delai_deuxieme_rappel INT DEFAULT 7,
+        message_personnalise TEXT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now(),
+        UNIQUE(concession_id)
+      )
+    ';
+    EXECUTE '
+      ALTER TABLE signature_requests
+      ADD COLUMN IF NOT EXISTS relance_1_sent_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS relance_2_sent_at TIMESTAMPTZ
+    ';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_signature_requests_relance_1_sent_at ON signature_requests (relance_1_sent_at)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_signature_requests_relance_2_sent_at ON signature_requests (relance_2_sent_at)';
+  END IF;
+END $$;
+
 -- 3.g vendeurs
 DO $$
 BEGIN

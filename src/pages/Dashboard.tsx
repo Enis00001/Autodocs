@@ -41,6 +41,7 @@ import {
   RecentSaleRow,
   sliceMonthlyByPeriod,
 } from "@/utils/stats";
+import { useAuth } from "@/context/AuthContext";
 
 type DashboardStatsResult = Awaited<ReturnType<typeof loadDashboardStats>>;
 
@@ -76,6 +77,7 @@ function vehiculeLabel(d: BonDraftData): string {
 }
 
 const Dashboard = () => {
+  const { concessionId } = useAuth();
   const [period, setPeriod] = useState<DashboardPeriod>("month");
   const initialCache = getCachedDashboard("month");
   const [drafts, setDrafts] = useState<BonDraftData[]>(initialCache?.drafts ?? []);
@@ -139,6 +141,27 @@ const Dashboard = () => {
   const handleRetry = useCallback(() => {
     setRefreshKey((k) => k + 1);
   }, []);
+
+  useEffect(() => {
+    if (!concessionId) return;
+    const storageKey = `lastRelanceCheck:${concessionId}`;
+    const lastCheck = localStorage.getItem(storageKey);
+    const now = Date.now();
+    if (!lastCheck || now - Number(lastCheck) > 60 * 60 * 1000) {
+      fetch("/api/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send-relances",
+          concession_id: concessionId,
+        }),
+      })
+        .then(() => {
+          localStorage.setItem(storageKey, now.toString());
+        })
+        .catch(() => {});
+    }
+  }, [concessionId]);
 
   useEffect(() => {
     const onFocus = () => setRefreshKey((k) => k + 1);

@@ -307,6 +307,26 @@ CREATE POLICY "abonnements_delete_admin" ON abonnements
   USING (public.is_admin_concession(concession_id));
 
 -- ----------------------------------------------------------------------------
+-- 11bis. relances_config (lecture membres, écriture admin)
+-- ----------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'relances_config') THEN
+    EXECUTE 'ALTER TABLE relances_config ENABLE ROW LEVEL SECURITY';
+
+    EXECUTE 'DROP POLICY IF EXISTS "relances_config_select" ON relances_config';
+    EXECUTE 'DROP POLICY IF EXISTS "relances_config_insert_admin" ON relances_config';
+    EXECUTE 'DROP POLICY IF EXISTS "relances_config_update_admin" ON relances_config';
+    EXECUTE 'DROP POLICY IF EXISTS "relances_config_delete_admin" ON relances_config';
+
+    EXECUTE 'CREATE POLICY "relances_config_select" ON relances_config FOR SELECT USING (public.is_membre_concession(concession_id))';
+    EXECUTE 'CREATE POLICY "relances_config_insert_admin" ON relances_config FOR INSERT WITH CHECK (public.is_admin_concession(concession_id))';
+    EXECUTE 'CREATE POLICY "relances_config_update_admin" ON relances_config FOR UPDATE USING (public.is_admin_concession(concession_id)) WITH CHECK (public.is_admin_concession(concession_id))';
+    EXECUTE 'CREATE POLICY "relances_config_delete_admin" ON relances_config FOR DELETE USING (public.is_admin_concession(concession_id))';
+  END IF;
+END $$;
+
+-- ----------------------------------------------------------------------------
 -- 12. vendeurs  (membre actif en écriture, partagé)
 -- ----------------------------------------------------------------------------
 DO $$
