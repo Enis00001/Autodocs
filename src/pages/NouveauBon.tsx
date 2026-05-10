@@ -118,6 +118,18 @@ function snapshotDraftForm(fs: DraftFormState): DraftFormState {
   };
 }
 
+/** Prépare un snapshot pour `upsertDraft` (fusion vehicleFieldValues → customFieldsValues). */
+function closureSnapshotForUpsert(ds: DraftFormState): Parameters<typeof upsertDraft>[0] {
+  const { vehicleFieldValues, ...base } = ds;
+  return {
+    ...base,
+    customFieldsValues: {
+      ...(base.customFieldsValues ?? {}),
+      ...(vehicleFieldValues ?? {}),
+    },
+  };
+}
+
 type ClosurePayload = {
   draftSnapshot: DraftFormState;
   vehiculeDisplayLabel: string;
@@ -295,36 +307,38 @@ const NouveauBon = () => {
   }, [closureModalOpen, closurePayload?.draftSnapshot.id]);
 
   const handleClosureOpenFactureModal = useCallback(async () => {
-    const id = closurePayload?.draftSnapshot.id?.trim();
-    if (!id) {
-      toast({
-        title: "Brouillon introuvable",
-        description: "Enregistrez le bon avant de générer une facture.",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!closurePayload) return;
     setClosureFactureOpening(true);
     try {
-      const d = await getDraft(id);
+      let draftId = closurePayload.draftSnapshot.id?.trim();
+      if (!draftId) {
+        const saved = await upsertDraft(closureSnapshotForUpsert(closurePayload.draftSnapshot));
+        draftId = saved.id;
+        setFormState((prev) => ({ ...prev, id: saved.id }));
+        setClosurePayload((prev) =>
+          prev
+            ? {
+                ...prev,
+                draftSnapshot: { ...prev.draftSnapshot, id: saved.id },
+              }
+            : null,
+        );
+      }
+      const d = await getDraft(draftId);
       if (!d) {
         toast({
           title: "Brouillon introuvable",
-          variant: "destructive",
-        });
-        return;
-      }
-      if (!d.clientSignedAt) {
-        toast({
-          title: "Signature client requise",
-          description:
-            "La facture peut être émise une fois le bon signé par le client.",
+          description: "Impossible de recharger le bon après enregistrement.",
           variant: "destructive",
         });
         return;
       }
       setClosureFactureDraft(d);
       setClosureFactureModalOpen(true);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Impossible de préparer la facture.";
+      toast({ title: "Facture", description: msg, variant: "destructive" });
     } finally {
       setClosureFactureOpening(false);
     }
@@ -838,6 +852,16 @@ const NouveauBon = () => {
                 <p className="mb-3 text-sm text-muted-foreground">
                   Créer la facture de vente pour ce bon de commande
                 </p>
+                {(() => {
+                  const ds = closurePayload.draftSnapshot;
+                  console.log("Données facture dispo:", {
+                    vehicule: closurePayload.vehiculeDisplayLabel,
+                    prix: ds.vehiculePrix,
+                    client: `${ds.clientPrenom ?? ""} ${ds.clientNom ?? ""}`.trim(),
+                    brouillonId: ds.id ?? null,
+                  });
+                  return null;
+                })()}
                 {closureFactureDone ? (
                   <div className="mt-auto flex flex-col gap-2">
                     <div
@@ -865,10 +889,7 @@ const NouveauBon = () => {
                 ) : (
                   <button
                     type="button"
-                    disabled={
-                      closureFactureOpening ||
-                      !closurePayload.draftSnapshot.id?.trim()
-                    }
+                    disabled={closureFactureOpening}
                     onClick={() => void handleClosureOpenFactureModal()}
                     className={cn(
                       "mt-auto inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 font-display text-sm font-bold transition-all btn-primary cursor-pointer border-0 disabled:cursor-not-allowed disabled:opacity-50",
