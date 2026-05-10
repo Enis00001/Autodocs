@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserId } from "@/lib/auth";
 
 /**
  * V2 — schéma libre. Un véhicule en stock est un sac de clé/valeur (`donnees`)
@@ -393,6 +394,36 @@ export async function deleteVehicule(id: string): Promise<void> {
 /** @deprecated remplacé par `updateStatut(id, "vendu")`. Conservé pour compat. */
 export async function markAsSold(id: string): Promise<void> {
   await updateStatut(id, "vendu");
+}
+
+/**
+ * Marque un véhicule du stock comme vendu après un bon de commande.
+ * Filtre par `concession_id = auth.uid()` (défense en profondeur + RLS).
+ * Renvoie `false` si aucune ligne n'a été mise à jour (id invalide / autre concession).
+ */
+export async function markVehiculeVenduPourBon(vehiculeId: string): Promise<boolean> {
+  const uid = await getCurrentUserId();
+  if (!uid || !vehiculeId) return false;
+  const { data, error } = await supabase
+    .from("stock_vehicules")
+    .update({
+      statut: "vendu",
+      disponible: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", vehiculeId)
+    .eq("concession_id", uid)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("markVehiculeVenduPourBon:", error);
+    return false;
+  }
+  if (!data) return false;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("autodocs_stock_updated"));
+  }
+  return true;
 }
 
 export async function clearStock(concessionId: string): Promise<void> {

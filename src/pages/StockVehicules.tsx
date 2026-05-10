@@ -261,6 +261,17 @@ const StockVehicules = () => {
     })();
   }, []);
 
+  useEffect(() => {
+    const onStockUpdated = () => {
+      void (async () => {
+        const uid = await getCurrentUserId();
+        if (uid) await refresh(uid);
+      })();
+    };
+    window.addEventListener("autodocs_stock_updated", onStockUpdated);
+    return () => window.removeEventListener("autodocs_stock_updated", onStockUpdated);
+  }, []);
+
   /* ------------------------------ derived ------------------------------ */
 
   const stats = useMemo(() => {
@@ -648,7 +659,11 @@ const StockVehicules = () => {
                     </button>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[11px] text-muted-foreground">
+                    Filtre : Tous, Disponible, Réservé ou Vendu — les lignes vendues sont grisées dans le tableau.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
                   <FilterPill
                     label="Tous"
                     count={stats.tous}
@@ -665,6 +680,7 @@ const StockVehicules = () => {
                       tone={s}
                     />
                   ))}
+                  </div>
                 </div>
               </div>
 
@@ -963,10 +979,28 @@ const VehiculeRow = ({
     "—";
   const prix = formatPrix(vehicule.prix, vehicule.donnees["Prix"]);
 
+  const isVendu = vehicule.statut === "vendu";
+
   return (
-    <tr className="border-t border-border/50 transition-colors hover:bg-secondary/30">
+    <tr
+      className={cn(
+        "border-t border-border/50 transition-colors",
+        isVendu
+          ? "bg-muted/25 opacity-[0.72] hover:bg-muted/35"
+          : "hover:bg-secondary/30",
+      )}
+    >
       <td className="px-4 py-3">
-        <div className="font-medium text-foreground">{title}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className={cn("font-medium", isVendu ? "text-muted-foreground" : "text-foreground")}>
+            {title}
+          </div>
+          {isVendu && (
+            <span className="inline-flex shrink-0 rounded-full border border-destructive/50 bg-destructive/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">
+              Vendu
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-3 py-3 font-mono text-[12px] uppercase tracking-wider text-foreground">
         {immat || <span className="text-muted-foreground">—</span>}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Loader2, Zap, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -39,6 +39,12 @@ type GenerateBarProps = {
    * (lien public envoyé au client). Reçoit le token unique.
    */
   onSignatureRequestSent?: (token: string) => void | Promise<void>;
+  /**
+   * Déclenché une fois lorsque le flux PDF est terminé avec succès (téléchargement
+   * / signature vendeur / email optionnel). Permet à la page parente d'afficher
+   * des actions rapides (CRM, marquer vendu, etc.).
+   */
+  onFlowSuccess?: () => void;
 };
 
 const MAX_DOTS = 6;
@@ -57,6 +63,7 @@ const GenerateBar = ({
   templateId: _templateId,
   onSigned,
   onSignatureRequestSent,
+  onFlowSuccess,
 }: GenerateBarProps) => {
   void _templateId;
   const [modalOpen, setModalOpen] = useState(false);
@@ -77,6 +84,19 @@ const GenerateBar = ({
     bonsTotal: number;
     quota: number;
   }>(null);
+
+  const flowSuccessFiredRef = useRef(false);
+  useEffect(() => {
+    if (isSuccess && !flowSuccessFiredRef.current) {
+      flowSuccessFiredRef.current = true;
+      try {
+        onFlowSuccess?.();
+      } catch (e) {
+        console.warn("[GenerateBar] onFlowSuccess:", e);
+      }
+    }
+    if (!isSuccess) flowSuccessFiredRef.current = false;
+  }, [isSuccess, onFlowSuccess]);
 
   const canGenerate = documentsUploaded > 0 || missingFieldsCount < 5;
 
