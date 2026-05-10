@@ -317,32 +317,30 @@ const DraftsListPage = ({
                         </td>
                         <td className="py-3 text-right">
                           <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2">
-                            {d.clientSignedAt ? (
-                              facturesByBrouillon.has(d.id) ? (
-                                <button
-                                  type="button"
-                                  className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5 border-primary/30 text-primary"
-                                  onClick={() => void handleVoirFacture(d.id)}
-                                  disabled={factureLoadingId === d.id}
-                                  aria-label="Voir la facture PDF"
-                                  title="Voir la facture"
-                                >
-                                  <FileCheck className="h-3.5 w-3.5" />
-                                  <span className="hidden sm:inline">Voir la facture</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
-                                  onClick={() => setFactureModalDraft(d)}
-                                  aria-label="Générer la facture"
-                                  title="Générer la facture"
-                                >
-                                  <Receipt className="h-3.5 w-3.5" />
-                                  <span className="hidden sm:inline">Générer la facture</span>
-                                </button>
-                              )
-                            ) : null}
+                            {facturesByBrouillon.has(d.id) ? (
+                              <button
+                                type="button"
+                                className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5 border-primary/30 text-primary"
+                                onClick={() => void handleVoirFacture(d.id)}
+                                disabled={factureLoadingId === d.id}
+                                aria-label="Voir la facture PDF"
+                                title="Voir la facture"
+                              >
+                                <FileCheck className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Voir la facture</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"
+                                onClick={() => setFactureModalDraft(d)}
+                                aria-label="Générer la facture"
+                                title="Générer la facture"
+                              >
+                                <Receipt className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Générer la facture</span>
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="btn-secondary cursor-pointer gap-1.5 px-2 py-1.5 text-xs md:px-2.5"

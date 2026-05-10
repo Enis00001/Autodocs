@@ -1634,13 +1634,6 @@ async function handleGenerateFacture(
   const kvStr: Record<string, string> = {};
   for (const [k, v] of Object.entries(kvRaw)) kvStr[k] = String(v ?? "");
 
-  if (!kvStr.client_signed_at?.trim()) {
-    return res.status(400).json({
-      error:
-        "Le bon doit etre signe par le client avant la generation de la facture.",
-    });
-  }
-
   const stockDonnees = parseStringDict(kvRaw.stock_donnees);
   const prix = parseNum(String(br.vehicule_prix ?? ""));
   const remise = parseNum(String(br.vehicule_remise ?? ""));
