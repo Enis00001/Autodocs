@@ -1953,6 +1953,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleResendSignatureEmail(req, data, res);
     case "fill-cerfa":
       return handleFillCerfa(req, data, res);
+    case "generate-facture":
+      return handleGenerateFacture(req, data, res);
     default:
       return res.status(400).json({ error: "Action inconnue" });
   }

@@ -296,3 +296,6 @@ export function buildFactureHtml(p: FactureTemplatePayload): string {
 </body>
 </html>`;
 }
+
+/** Alias camelCase / nom alternatif attendu par certains appels API. */
+export const buildFactureHTML = buildFactureHtml;
