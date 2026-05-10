@@ -1,6 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Plus, ClipboardList, Car, Settings, LogOut, CarFront, CreditCard, SlidersHorizontal, FileText, Building2, Users, FolderOpen } from "lucide-react";
+import {
+  LayoutDashboard,
+  Plus,
+  ClipboardList,
+  Car,
+  LogOut,
+  CarFront,
+  Settings2,
+  FileText,
+  Building2,
+  Users,
+  Receipt,
+  type LucideIcon,
+} from "lucide-react";
 import type { BonDraftData } from "@/utils/drafts";
 import { loadDrafts } from "@/utils/drafts";
 import { loadConcession, getConcessionInitials } from "@/utils/concession";
@@ -9,25 +22,89 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentUserIsAdmin } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
+type SidebarItem = {
+  title: string;
+  path: string;
+  icon: LucideIcon;
+  /** Met l'item en évidence (CTA principal — utilisé pour « Nouveau bon »). */
+  accent?: boolean;
+};
+
+/**
+ * Sidebar regroupée par familles fonctionnelles. Chaque sous-tableau forme
+ * un groupe ; un séparateur visuel est rendu entre eux.
+ *
+ * Note : « Brouillons », « Profil » et « Abonnement » ont été retirés.
+ *  - /brouillons est désormais redirigé vers /historique (qui contient tout)
+ *  - /parametres + /abonnement sont intégrés à /profil-concession
+ *  Les redirections sont définies dans App.tsx pour ne pas casser les liens
+ *  existants (Stripe, emails, anciens favoris).
+ */
+const SIDEBAR_GROUPS: SidebarItem[][] = [
+  [
+    { title: "Dashboard", path: "/app", icon: LayoutDashboard },
+    { title: "Nouveau bon", path: "/nouveau-bon", icon: Plus, accent: true },
+  ],
+  [
+    { title: "Historique", path: "/historique", icon: ClipboardList },
+    { title: "CERFA", path: "/cerfa", icon: FileText },
+    { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
+    { title: "Clients", path: "/clients", icon: Users },
+    { title: "Factures", path: "/factures", icon: Receipt },
+  ],
+  [
+    { title: "Modification des champs", path: "/preferences", icon: Settings2 },
+  ],
+];
+
+/** Item « Ma concession » épinglé tout en bas de la nav (avant le footer). */
+const FOOTER_NAV_ITEM: SidebarItem = {
+  title: "Ma concession",
+  path: "/profil-concession",
+  icon: Building2,
+};
+
+/** Liste à plat utilisée pour les tests / introspection externe éventuelle. */
 export const sidebarNavConfig = [
-  { title: "Dashboard", path: "/app", icon: LayoutDashboard },
-  { title: "Nouveau bon", path: "/nouveau-bon", icon: Plus },
-  { title: "Historique", path: "/historique", icon: ClipboardList },
-  { title: "Brouillons", path: "/brouillons", icon: FolderOpen },
-  { title: "CERFA", path: "/cerfa", icon: FileText },
-  { title: "Stock véhicules", path: "/stock-vehicules", icon: Car },
-  { title: "Clients", path: "/clients", icon: Users },
-  { title: "Factures", path: "/factures", icon: FileText },
-  { title: "Ma concession", path: "/profil-concession", icon: Building2 },
-  { title: "Abonnement", path: "/abonnement", icon: CreditCard },
-  { title: "Modification des champs", path: "/preferences", icon: SlidersHorizontal },
-  { title: "Profil", path: "/parametres", icon: Settings },
+  ...SIDEBAR_GROUPS.flat(),
+  FOOTER_NAV_ITEM,
 ] as const;
 
 const isCurrentMonth = (iso: string) => {
   const d = new Date(iso);
   const now = new Date();
   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+};
+
+/**
+ * Détermine si un item est actif. Centralise les cas particuliers :
+ *  - /nouveau-bon est actif sur /nouveau-bon/:id
+ *  - /clients est actif sur /clients/:id
+ *  - /historique est actif aussi sur l'ancien /brouillons (redirigé)
+ *  - /app est actif aussi sur /dashboard
+ *  - /profil-concession est actif aussi sur les anciens slugs profil/parametres/abonnement/ma-concession
+ */
+const matchActive = (itemPath: string, current: string): boolean => {
+  switch (itemPath) {
+    case "/nouveau-bon":
+      return current === "/nouveau-bon" || current.startsWith("/nouveau-bon/");
+    case "/clients":
+      return current === "/clients" || current.startsWith("/clients/");
+    case "/historique":
+      return current === "/historique" || current === "/brouillons";
+    case "/app":
+      return current === "/app" || current === "/dashboard";
+    case "/profil-concession":
+      return (
+        current === "/profil-concession" ||
+        current === "/ma-concession" ||
+        current === "/profil" ||
+        current === "/parametres" ||
+        current === "/abonnement"
+      );
+    default:
+      return current === itemPath;
+  }
 };
 
 type SidebarContentProps = {
@@ -79,6 +156,42 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
     navigate("/login", { replace: true });
   };
 
+  const renderItem = (item: SidebarItem) => {
+    const isActive = matchActive(item.path, location.pathname);
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        onClick={onNavigate}
+        className={cn(
+          "group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
+          isActive
+            ? "bg-[#6366F1]/10 text-[#6366F1] shadow-sm shadow-black/20"
+            : item.accent
+              ? "bg-[#6366F1]/15 text-[#6366F1] hover:bg-[#6366F1]/25"
+              : "text-[#94A3B8] hover:bg-white/[0.04] hover:text-[#F1F5F9]",
+        )}
+      >
+        {isActive && (
+          <span
+            className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-[#6366F1]"
+            aria-hidden
+          />
+        )}
+        <item.icon
+          className={cn(
+            "h-[18px] w-[18px] shrink-0 transition-colors duration-200",
+            isActive || item.accent
+              ? "text-[#6366F1]"
+              : "text-[#94A3B8] group-hover:text-[#F1F5F9]",
+          )}
+          strokeWidth={item.accent ? 2.4 : 2}
+        />
+        <span>{item.title}</span>
+      </Link>
+    );
+  };
+
   return (
     <div
       className={cn(
@@ -112,50 +225,26 @@ export function SidebarContent({ onNavigate, className }: SidebarContentProps) {
       </Link>
 
       <nav className="flex flex-1 flex-col gap-1" aria-label="Navigation principale">
-        {sidebarNavConfig.map((item) => {
-          const isActive =
-            item.path === "/nouveau-bon"
-              ? location.pathname === "/nouveau-bon" || location.pathname.startsWith("/nouveau-bon/")
-              : item.path === "/clients"
-                ? location.pathname === "/clients" || location.pathname.startsWith("/clients/")
-                : item.path === "/factures"
-                  ? location.pathname === "/factures"
-                  : item.path === "/brouillons"
-                    ? location.pathname === "/brouillons"
-                    : item.path === "/app"
-                      ? location.pathname === "/app" || location.pathname === "/dashboard"
-                      : location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={onNavigate}
-              className={cn(
-                "group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                isActive
-                  ? "bg-[#6366F1]/10 text-[#6366F1] shadow-sm shadow-black/20"
-                  : "text-[#94A3B8] hover:bg-white/[0.04] hover:text-[#F1F5F9]",
-              )}
-            >
-              {isActive && (
-                <span
-                  className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-[#6366F1]"
-                  aria-hidden
-                />
-              )}
-              <item.icon
-                className={cn(
-                  "h-[18px] w-[18px] shrink-0 transition-colors duration-200",
-                  isActive ? "text-[#6366F1]" : "text-[#94A3B8] group-hover:text-[#F1F5F9]",
-                )}
+        {SIDEBAR_GROUPS.map((group, idx) => (
+          <div key={`group-${idx}`} className="flex flex-col gap-1">
+            {idx > 0 && (
+              <div
+                aria-hidden
+                className="my-2 h-px w-full bg-white/[0.06]"
               />
-              <span>{item.title}</span>
-            </Link>
-          );
-        })}
+            )}
+            {group.map(renderItem)}
+          </div>
+        ))}
+
+        {/* « Ma concession » épinglée tout en bas, séparée du reste. */}
+        <div className="mt-auto flex flex-col gap-1 pt-2">
+          <div aria-hidden className="my-2 h-px w-full bg-white/[0.06]" />
+          {renderItem(FOOTER_NAV_ITEM)}
+        </div>
       </nav>
 
-      <div className="mt-auto border-t border-white/[0.06] pt-4">
+      <div className="mt-4 border-t border-white/[0.06] pt-4">
         <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-[#1A1D27] px-3 py-3 shadow-lg shadow-black/20">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg font-display text-xs font-bold text-white gradient-primary">
             {concession.logoBase64 ? (

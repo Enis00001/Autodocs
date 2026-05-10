@@ -64,9 +64,9 @@ const AppLayout = () => {
         </Link>
 
         <Link
-          to="/parametres"
+          to="/profil-concession"
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-[#1A1D27] text-[#F1F5F9] transition-all duration-200 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366F1] active:scale-[0.98]"
-          aria-label="Paramètres du profil"
+          aria-label="Ma concession et mon compte"
         >
           <User className="h-5 w-5" />
         </Link>

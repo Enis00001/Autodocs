@@ -1,5 +1,23 @@
-import { useEffect, useState } from "react";
-import { Building2, MapPin, Hash, Phone, Loader2, Save, Mail } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
+import {
+  Building2,
+  MapPin,
+  Hash,
+  Phone,
+  Loader2,
+  Save,
+  Mail,
+  Upload,
+  User as UserIcon,
+  KeyRound,
+  CreditCard,
+  Sparkles,
+  Zap,
+  Check,
+  ArrowRight,
+  Star,
+} from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -8,34 +26,154 @@ import {
   saveProfilConcession,
   type ProfilConcession as ProfilConcessionData,
 } from "@/utils/profilConcession";
+import { loadConcession, saveConcession, type ConcessionData } from "@/utils/concession";
+import {
+  loadAbonnement,
+  startCheckout,
+  QUOTA_GRATUIT,
+  type AbonnementInfo,
+  type CheckoutInterval,
+} from "@/utils/abonnement";
+import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
+
+const ACCEPT_LOGO = "image/jpeg,image/png,image/svg+xml,.jpg,.jpeg,.png,.svg";
+
+type GerantInfos = {
+  prenom: string;
+  nom: string;
+  email: string;
+};
 
 const ProfilConcession = () => {
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const abonnementSectionRef = useRef<HTMLDivElement>(null);
+
+  // ---- Section 1 — Identité légale + logo
   const [profil, setProfil] = useState<ProfilConcessionData>(emptyProfilConcession);
+  const [concession, setConcession] = useState<ConcessionData>({
+    name: "",
+    address: "",
+  });
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // ---- Section 2 — Mon compte (gérant)
+  const [gerant, setGerant] = useState<GerantInfos>({
+    prenom: "",
+    nom: "",
+    email: "",
+  });
+  const [savingGerant, setSavingGerant] = useState(false);
+  const [sendingResetMail, setSendingResetMail] = useState(false);
+
+  // ---- Section 3 — Abonnement
+  const [abonnement, setAbonnement] = useState<AbonnementInfo | null>(null);
+  const [abonnementLoading, setAbonnementLoading] = useState(true);
+  const [submittingPlan, setSubmittingPlan] = useState<CheckoutInterval | null>(null);
+
   useEffect(() => {
     let active = true;
-    void loadProfilConcession().then((data) => {
+    (async () => {
+      const [profilData, concessionData, abonnementData, userResult] = await Promise.all([
+        loadProfilConcession(),
+        loadConcession(),
+        loadAbonnement(),
+        supabase.auth.getUser(),
+      ]);
       if (!active) return;
-      if (data) setProfil(data);
+      if (profilData) setProfil(profilData);
+      setConcession(concessionData);
+      setAbonnement(abonnementData);
+      const meta = (userResult.data.user?.user_metadata ?? {}) as Record<string, unknown>;
+      setGerant({
+        prenom: typeof meta.gerant_prenom === "string" ? meta.gerant_prenom : "",
+        nom: typeof meta.gerant_nom === "string" ? meta.gerant_nom : "",
+        email: userResult.data.user?.email ?? "",
+      });
+      setAbonnementLoading(false);
       setLoading(false);
-    });
+    })();
     return () => {
       active = false;
     };
   }, []);
 
-  const update = <K extends keyof ProfilConcessionData>(
+  // Auto-scroll vers la section Abonnement quand on arrive avec
+  // /profil-concession#abonnement (depuis la sidebar mobile, un CTA ou
+  // un redirect /abonnement → /profil-concession#abonnement).
+  useEffect(() => {
+    if (loading) return;
+    if (location.hash !== "#abonnement") return;
+    const el = abonnementSectionRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [loading, location.hash]);
+
+  // Feedback retour Stripe lorsqu'un utilisateur revient ici avec
+  // ?status=success / ?status=cancel (cas du redirect depuis /abonnement
+  // s'il n'y a pas de ?plan à consommer).
+  useEffect(() => {
+    const status = searchParams.get("status");
+    if (status === "success") {
+      toast({
+        title: "Merci !",
+        description: "Votre abonnement Pro est en cours d'activation.",
+      });
+      searchParams.delete("status");
+      searchParams.delete("interval");
+      setSearchParams(searchParams, { replace: true });
+    } else if (status === "cancel") {
+      toast({
+        title: "Paiement annulé",
+        description: "Vous pouvez reprendre quand vous voulez.",
+      });
+      searchParams.delete("status");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  // ---- Section 1 helpers
+  const updateProfil = <K extends keyof ProfilConcessionData>(
     key: K,
     value: ProfilConcessionData[K],
   ) => setProfil((p) => ({ ...p, [key]: value }));
 
-  const handleSave = async () => {
+  const handleLogoClick = () => logoInputRef.current?.click();
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setConcession((prev) => ({ ...prev, logoBase64: dataUrl }));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleSaveConcession = async () => {
     setSaving(true);
     try {
-      await saveProfilConcession(profil);
-      toast({ title: "Profil sauvegardé ✓" });
+      // Le `nom` court de la table `concession` (utilisé par la sidebar/avatar)
+      // est aligné sur le nom officiel saisi dans le profil. L'`adresse` courte
+      // reprend "adresse — CP ville" tronqué pour rester lisible dans la nav.
+      const shortAddress = [profil.adresse, [profil.codePostal, profil.ville].filter(Boolean).join(" ")]
+        .filter(Boolean)
+        .join(", ");
+      await Promise.all([
+        saveProfilConcession(profil),
+        saveConcession({
+          name: profil.nomConcession.trim() || concession.name,
+          address: shortAddress || concession.address,
+          logoBase64: concession.logoBase64,
+        }),
+      ]);
+      toast({ title: "Concession sauvegardée ✓" });
     } catch (err) {
       toast({
         title: "Échec de la sauvegarde",
@@ -48,11 +186,97 @@ const ProfilConcession = () => {
     }
   };
 
+  // ---- Section 2 helpers
+  const handleSaveGerant = async () => {
+    setSavingGerant(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          gerant_prenom: gerant.prenom.trim(),
+          gerant_nom: gerant.nom.trim(),
+        },
+      });
+      if (error) throw error;
+      toast({ title: "Compte mis à jour ✓" });
+    } catch (err) {
+      toast({
+        title: "Mise à jour impossible",
+        description:
+          err instanceof Error ? err.message : "Réessayez dans un instant.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingGerant(false);
+    }
+  };
+
+  const handleSendResetPasswordMail = async () => {
+    if (!gerant.email) {
+      toast({
+        title: "Email indisponible",
+        description: "Aucune adresse email associée à ce compte.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSendingResetMail(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(gerant.email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error && !/rate.?limit|too.?many/i.test(error.message)) {
+        throw error;
+      }
+      toast({
+        title: "Email envoyé ✓",
+        description: `Un lien de réinitialisation a été envoyé à ${gerant.email}.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Envoi impossible",
+        description:
+          err instanceof Error ? err.message : "Réessayez dans quelques minutes.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingResetMail(false);
+    }
+  };
+
+  // ---- Section 3 helpers
+  const handleUpgrade = useCallback(async (interval: CheckoutInterval) => {
+    setSubmittingPlan(interval);
+    try {
+      await startCheckout(interval);
+    } catch (err) {
+      toast({
+        title: "Paiement indisponible",
+        description: err instanceof Error ? err.message : "Réessayez plus tard.",
+        variant: "destructive",
+      });
+      setSubmittingPlan(null);
+    }
+  }, []);
+
+  const plan = abonnement?.plan ?? "gratuit";
+  const isPro = plan === "pro";
+  const isAdmin = abonnement?.isAdmin ?? false;
+  const bons = abonnement?.bonsTotal ?? 0;
+  const remainingFreeBons = Math.max(0, QUOTA_GRATUIT - bons);
+  const percent = Math.min(100, (bons / QUOTA_GRATUIT) * 100);
+  const renewal = abonnement?.dateRenouvellement
+    ? new Date(abonnement.dateRenouvellement).toLocaleDateString("fr-FR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      })
+    : null;
+
   return (
     <>
       <TopBar
         title="Ma concession"
-        subtitle="CERFA, bons de commande et factures (identité légale)"
+        subtitle="Identité légale, compte gérant et abonnement"
       />
       <div className="page-shell">
         <div className="page-content space-y-5 max-w-3xl">
@@ -62,8 +286,17 @@ const ProfilConcession = () => {
             </div>
           ) : (
             <>
-              <div className="card-autodocs space-y-4">
-                <div className="card-title-autodocs">🏢 Identité concession</div>
+              {/* ============================================================
+                  Section 1 — Informations de la concession
+                  ============================================================ */}
+              <section
+                id="concession"
+                aria-labelledby="section-concession-title"
+                className="card-autodocs space-y-4"
+              >
+                <div id="section-concession-title" className="card-title-autodocs">
+                  🏢 Informations de la concession
+                </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="flex flex-col gap-1.5 md:col-span-2">
@@ -75,7 +308,7 @@ const ProfilConcession = () => {
                       <input
                         type="text"
                         value={profil.nomConcession}
-                        onChange={(e) => update("nomConcession", e.target.value)}
+                        onChange={(e) => updateProfil("nomConcession", e.target.value)}
                         placeholder="SARL Garage Dupont"
                         className="field-input pl-10"
                         autoComplete="organization"
@@ -92,7 +325,7 @@ const ProfilConcession = () => {
                       <input
                         type="text"
                         value={profil.adresse}
-                        onChange={(e) => update("adresse", e.target.value)}
+                        onChange={(e) => updateProfil("adresse", e.target.value)}
                         placeholder="12 rue de la République"
                         className="field-input pl-10"
                         autoComplete="street-address"
@@ -107,7 +340,7 @@ const ProfilConcession = () => {
                     <input
                       type="text"
                       value={profil.codePostal}
-                      onChange={(e) => update("codePostal", e.target.value)}
+                      onChange={(e) => updateProfil("codePostal", e.target.value)}
                       placeholder="69001"
                       className="field-input"
                       inputMode="numeric"
@@ -123,7 +356,7 @@ const ProfilConcession = () => {
                     <input
                       type="text"
                       value={profil.ville}
-                      onChange={(e) => update("ville", e.target.value)}
+                      onChange={(e) => updateProfil("ville", e.target.value)}
                       placeholder="Lyon"
                       className="field-input"
                       autoComplete="address-level2"
@@ -137,7 +370,7 @@ const ProfilConcession = () => {
                       <input
                         type="text"
                         value={profil.siren}
-                        onChange={(e) => update("siren", e.target.value)}
+                        onChange={(e) => updateProfil("siren", e.target.value)}
                         placeholder="123 456 789"
                         className="field-input pl-10"
                         inputMode="numeric"
@@ -152,7 +385,7 @@ const ProfilConcession = () => {
                       <input
                         type="text"
                         value={profil.siret}
-                        onChange={(e) => update("siret", e.target.value)}
+                        onChange={(e) => updateProfil("siret", e.target.value)}
                         placeholder="123 456 789 00012"
                         className="field-input pl-10"
                         inputMode="numeric"
@@ -165,7 +398,7 @@ const ProfilConcession = () => {
                     <input
                       type="text"
                       value={profil.tvaIntracommunautaire}
-                      onChange={(e) => update("tvaIntracommunautaire", e.target.value)}
+                      onChange={(e) => updateProfil("tvaIntracommunautaire", e.target.value)}
                       placeholder="FR XX XXX XXX XXX"
                       className="field-input"
                       autoComplete="off"
@@ -179,7 +412,7 @@ const ProfilConcession = () => {
                       <input
                         type="email"
                         value={profil.emailContact}
-                        onChange={(e) => update("emailContact", e.target.value)}
+                        onChange={(e) => updateProfil("emailContact", e.target.value)}
                         placeholder="contact@ma-concession.fr"
                         className="field-input pl-10"
                         autoComplete="email"
@@ -194,18 +427,47 @@ const ProfilConcession = () => {
                       <input
                         type="tel"
                         value={profil.telephone}
-                        onChange={(e) => update("telephone", e.target.value)}
+                        onChange={(e) => updateProfil("telephone", e.target.value)}
                         placeholder="04 00 00 00 00"
                         className="field-input pl-10"
                         autoComplete="tel"
                       />
                     </div>
                   </div>
+
+                  <div className="col-span-1 flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">Logo de la concession</label>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept={ACCEPT_LOGO}
+                      className="hidden"
+                      onChange={handleLogoChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleLogoClick}
+                      className="border-2 border-dashed border-border rounded-lg p-6 flex items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-primary transition-colors bg-transparent w-full interactive-lift"
+                    >
+                      {concession.logoBase64 ? (
+                        <img
+                          src={concession.logoBase64}
+                          alt="Logo concession"
+                          className="max-h-14 max-w-[200px] object-contain"
+                        />
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" />
+                          <span className="text-sm">Uploader un logo</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() => void handleSave()}
+                  onClick={() => void handleSaveConcession()}
                   disabled={saving}
                   className="px-4 py-2.5 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
                   style={{ boxShadow: "0 0 20px hsla(228,91%,64%,0.25)" }}
@@ -215,15 +477,316 @@ const ProfilConcession = () => {
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-                  {saving ? "Sauvegarde…" : "Sauvegarder"}
+                  {saving ? "Sauvegarde…" : "Sauvegarder la concession"}
                 </button>
-              </div>
 
-              <div className="card-autodocs text-sm text-muted-foreground">
-                Ces informations sont utilisées pour pré-remplir le CERFA 15776*01,
-                les bons de commande et les factures PDF (SIRET, TVA, coordonnées).
-                Elles restent privées et ne sont visibles que par vous.
-              </div>
+                <p className="text-xs text-muted-foreground">
+                  Ces informations pré-remplissent le CERFA 15776*01, les bons de
+                  commande et les factures PDF (SIRET, TVA, coordonnées). Le logo
+                  apparaît sur vos documents.
+                </p>
+              </section>
+
+              {/* ============================================================
+                  Section 2 — Mon compte (gérant)
+                  ============================================================ */}
+              <section
+                id="compte"
+                aria-labelledby="section-compte-title"
+                className="card-autodocs space-y-4"
+              >
+                <div id="section-compte-title" className="card-title-autodocs">
+                  👤 Mon compte
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Prénom du gérant</label>
+                    <div className="relative">
+                      <UserIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="text"
+                        value={gerant.prenom}
+                        onChange={(e) => setGerant((g) => ({ ...g, prenom: e.target.value }))}
+                        placeholder="Jean"
+                        className="field-input pl-10"
+                        autoComplete="given-name"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="field-label">Nom du gérant</label>
+                    <div className="relative">
+                      <UserIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="text"
+                        value={gerant.nom}
+                        onChange={(e) => setGerant((g) => ({ ...g, nom: e.target.value }))}
+                        placeholder="Dupont"
+                        className="field-input pl-10"
+                        autoComplete="family-name"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 md:col-span-2">
+                    <label className="field-label">
+                      Email de connexion <span className="text-muted-foreground/70 text-[11px]">(non modifiable)</span>
+                    </label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="email"
+                        value={gerant.email}
+                        readOnly
+                        disabled
+                        className="field-input pl-10 cursor-not-allowed opacity-70"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveGerant()}
+                    disabled={savingGerant}
+                    className="px-4 py-2.5 rounded-lg text-[13px] font-medium gradient-primary text-primary-foreground cursor-pointer transition-all hover:-translate-y-0.5 border-0 inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:hover:translate-y-0"
+                    style={{ boxShadow: "0 0 20px hsla(228,91%,64%,0.25)" }}
+                  >
+                    {savingGerant ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    {savingGerant ? "Sauvegarde…" : "Sauvegarder le compte"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleSendResetPasswordMail()}
+                    disabled={sendingResetMail || !gerant.email}
+                    className="btn-secondary cursor-pointer inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {sendingResetMail ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <KeyRound className="h-4 w-4" />
+                    )}
+                    {sendingResetMail ? "Envoi…" : "Changer le mot de passe"}
+                  </button>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Le changement de mot de passe se fait par email sécurisé : un
+                  lien de réinitialisation est envoyé à votre adresse de
+                  connexion.
+                </p>
+              </section>
+
+              {/* ============================================================
+                  Section 3 — Abonnement
+                  ============================================================ */}
+              <section
+                id="abonnement"
+                ref={abonnementSectionRef}
+                aria-labelledby="section-abonnement-title"
+                className="space-y-4 scroll-mt-20"
+              >
+                <div className="flex items-center justify-between">
+                  <h2
+                    id="section-abonnement-title"
+                    className="font-display text-base font-bold tracking-tight text-foreground"
+                  >
+                    💳 Abonnement
+                  </h2>
+                </div>
+
+                {abonnementLoading ? (
+                  <div className="card-autodocs space-y-3">
+                    <div className="skeleton h-6 w-40 rounded" />
+                    <div className="skeleton h-4 w-full rounded" />
+                    <div className="skeleton h-4 w-3/4 rounded" />
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className={cn(
+                        "card-autodocs flex flex-col gap-4 border md:flex-row md:items-center md:justify-between",
+                        isPro ? "border-primary/30 bg-primary/5" : "border-border/60",
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={cn(
+                            "flex h-12 w-12 items-center justify-center rounded-input",
+                            isPro
+                              ? "bg-primary/20 text-primary"
+                              : "bg-secondary text-muted-foreground",
+                          )}
+                        >
+                          {isPro ? (
+                            <Sparkles className="h-6 w-6" />
+                          ) : (
+                            <CreditCard className="h-6 w-6" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-display text-lg font-bold text-foreground">
+                              {isPro ? "Plan Pro" : "Plan Gratuit"}
+                            </h3>
+                            {isPro && (
+                              <span className="rounded-full bg-primary/15 px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wider text-primary">
+                                Pro
+                              </span>
+                            )}
+                            {!isPro && isAdmin && (
+                              <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-wider text-violet-300">
+                                Admin
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {isPro
+                              ? renewal
+                                ? `Renouvellement le ${renewal}`
+                                : "Abonnement actif"
+                              : isAdmin
+                                ? "Bons de commande illimités (compte administrateur)"
+                                : `${QUOTA_GRATUIT} bons de commande offerts`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {!isPro && !isAdmin && (
+                        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+                          <button
+                            type="button"
+                            className="btn-secondary w-full cursor-pointer md:w-auto"
+                            onClick={() => handleUpgrade("monthly")}
+                            disabled={submittingPlan !== null}
+                          >
+                            <Zap className="h-4 w-4" />
+                            {submittingPlan === "monthly" ? "Redirection…" : "Mensuel — 49 €/mois"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-primary w-full cursor-pointer md:w-auto"
+                            onClick={() => handleUpgrade("annual")}
+                            disabled={submittingPlan !== null}
+                          >
+                            <Star className="h-4 w-4 fill-current" />
+                            {submittingPlan === "annual"
+                              ? "Redirection…"
+                              : "Annuel — 399 €/an · 2 mois offerts"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {!isPro && !isAdmin && (
+                      <div className="card-autodocs space-y-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-semibold text-foreground">Quota gratuit</span>
+                          <span className="tabular-nums text-muted-foreground">
+                            {bons} / {QUOTA_GRATUIT} bons utilisés
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all",
+                              percent >= 100
+                                ? "bg-destructive"
+                                : percent >= 80
+                                  ? "bg-amber-500"
+                                  : "bg-primary",
+                            )}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {percent >= 100
+                            ? "Limite atteinte — passez au Pro pour des bons illimités."
+                            : `Il vous reste ${remainingFreeBons} bon${remainingFreeBons > 1 ? "s" : ""} gratuit${remainingFreeBons > 1 ? "s" : ""}.`}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <PlanCard
+                        name="Gratuit"
+                        price="0 €"
+                        cadence=""
+                        current={!isPro}
+                        features={[
+                          `${QUOTA_GRATUIT} bons de commande offerts`,
+                          "Import CSV / Excel du stock",
+                          "Génération PDF",
+                        ]}
+                      />
+                      <PlanCard
+                        name="Pro mensuel"
+                        price="49 €"
+                        cadence="/ mois"
+                        highlight
+                        current={isPro}
+                        features={[
+                          "Bons de commande illimités",
+                          "Support prioritaire",
+                          "Toutes les fonctionnalités",
+                        ]}
+                        cta={
+                          !isPro && !isAdmin ? (
+                            <button
+                              type="button"
+                              className="btn-secondary w-full cursor-pointer"
+                              onClick={() => handleUpgrade("monthly")}
+                              disabled={submittingPlan !== null}
+                            >
+                              {submittingPlan === "monthly" ? "Redirection…" : "Choisir Mensuel"}
+                              <ArrowRight className="h-4 w-4" />
+                            </button>
+                          ) : undefined
+                        }
+                      />
+                      <PlanCard
+                        name="Pro annuel"
+                        price="399 €"
+                        cadence="/ an"
+                        badge="⭐ Meilleure offre"
+                        featured
+                        current={isPro}
+                        features={[
+                          "Tout le Pro mensuel",
+                          "= 33 €/mois seulement",
+                          "🎁 2 mois offerts",
+                          "💰 Économisez 189 € / an",
+                        ]}
+                        cta={
+                          !isPro && !isAdmin ? (
+                            <button
+                              type="button"
+                              className="btn-primary w-full cursor-pointer"
+                              onClick={() => handleUpgrade("annual")}
+                              disabled={submittingPlan !== null}
+                            >
+                              {submittingPlan === "annual" ? "Redirection…" : "Choisir Annuel"}
+                              <ArrowRight className="h-4 w-4" />
+                            </button>
+                          ) : isPro ? (
+                            <div className="rounded-input border border-success/30 bg-success/10 px-3 py-2 text-center text-sm font-semibold text-success">
+                              Plan actif
+                            </div>
+                          ) : undefined
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+              </section>
             </>
           )}
         </div>
@@ -231,5 +794,75 @@ const ProfilConcession = () => {
     </>
   );
 };
+
+const PlanCard = ({
+  name,
+  price,
+  cadence,
+  features,
+  highlight,
+  featured,
+  badge,
+  current,
+  cta,
+}: {
+  name: string;
+  price: string;
+  cadence: string;
+  features: string[];
+  /** Card mise en avant discrètement (bord indigo léger). */
+  highlight?: boolean;
+  /** Card "meilleure offre" : bord indigo brillant + badge + scale légère. */
+  featured?: boolean;
+  /** Badge affiché en haut de la card (ex: "⭐ Meilleure offre"). */
+  badge?: string;
+  current?: boolean;
+  cta?: React.ReactNode;
+}) => (
+  <div
+    className={cn(
+      "card-autodocs relative flex flex-col gap-4",
+      highlight && !featured && "border-primary/40 shadow-indigo",
+      featured &&
+        "border-2 border-primary/70 shadow-[0_0_0_1px_rgba(99,102,241,0.25),0_24px_60px_-20px_rgba(99,102,241,0.5)] plan-card-featured md:scale-[1.02]",
+      current && !highlight && !featured && "border-success/30",
+    )}
+  >
+    {featured && (
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-card plan-card-shine"
+      />
+    )}
+    {badge && (
+      <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-[#4F46E5] to-[#6366F1] px-3 py-1 font-display text-[10px] font-bold uppercase tracking-wider text-white shadow-lg shadow-indigo-500/30">
+        {badge}
+      </span>
+    )}
+    <div className="flex items-start justify-between">
+      <div>
+        <h3 className="font-display text-base font-bold text-foreground">{name}</h3>
+        <div className="mt-1 flex items-baseline gap-1">
+          <span className="font-display text-3xl font-semibold text-foreground">{price}</span>
+          <span className="text-xs text-muted-foreground">{cadence}</span>
+        </div>
+      </div>
+      {current && (
+        <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">
+          Actuel
+        </span>
+      )}
+    </div>
+    <ul className="space-y-1.5 text-sm text-muted-foreground">
+      {features.map((f) => (
+        <li key={f} className="flex items-start gap-2">
+          <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
+          <span>{f}</span>
+        </li>
+      ))}
+    </ul>
+    {cta && <div className="mt-auto pt-2">{cta}</div>}
+  </div>
+);
 
 export default ProfilConcession;

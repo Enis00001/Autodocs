@@ -355,7 +355,7 @@ const GenerateBar = ({
                 </p>
                 <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
                   <Link
-                    to="/abonnement"
+                    to="/profil-concession#abonnement"
                     className="btn-primary w-full cursor-pointer sm:w-auto"
                     onClick={() => setModalOpen(false)}
                   >

@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { toast } from "@/hooks/use-toast";
@@ -10,14 +10,12 @@ import AppLayout from "./components/layout/AppLayout";
 import NouveauBon from "./pages/NouveauBon";
 import Dashboard from "./pages/Dashboard";
 import Historique from "./pages/Historique";
-import Brouillons from "./pages/Brouillons";
 import TemplatesPage from "./pages/Templates";
 import VehicleFieldsPage from "./pages/VehicleFields";
 import StockVehicules from "./pages/StockVehicules";
 import Clients from "./pages/Clients";
 import ClientDetail from "./pages/ClientDetail";
 import Factures from "./pages/Factures";
-import Parametres from "./pages/Parametres";
 import Preferences from "./pages/Preferences";
 import Abonnement from "./pages/Abonnement";
 import CERFA from "./pages/CERFA";
@@ -30,6 +28,30 @@ import ResetPasswordPage from "./pages/ResetPassword";
 import SignerDocument from "./pages/SignerDocument";
 import { supabase } from "./lib/supabase";
 import ErrorBoundary from "./components/ErrorBoundary";
+
+/**
+ * Wrapper de la route /abonnement.
+ *
+ * - Si l'URL contient des query params Stripe (?status=success|cancel) ou
+ *   le paramètre d'auto-checkout (?plan=monthly|annual), on rend la page
+ *   Abonnement.tsx telle quelle pour que toute la mécanique Stripe (toast
+ *   de confirmation, redirection auto vers Checkout) continue à fonctionner.
+ * - Sinon, on redirige vers /profil-concession#abonnement où la même UI
+ *   est désormais intégrée. Ainsi, la sidebar n'expose plus /abonnement
+ *   mais les liens existants (emails, anciens favoris, webhooks Stripe
+ *   qui renvoient sur /abonnement?status=...) ne sont pas cassés.
+ */
+const AbonnementRoute = () => {
+  const [searchParams] = useSearchParams();
+  const hasStripeParams =
+    searchParams.has("status") ||
+    searchParams.get("plan") === "monthly" ||
+    searchParams.get("plan") === "annual";
+  if (hasStripeParams) {
+    return <Abonnement />;
+  }
+  return <Navigate to="/profil-concession#abonnement" replace />;
+};
 
 const queryClient = new QueryClient();
 
@@ -214,8 +236,15 @@ const App = () => {
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/nouveau-bon" element={<NouveauBon />} />
                 <Route path="/nouveau-bon/:id" element={<NouveauBon />} />
+
+                {/* Historique = page unique pour tous les bons (brouillons,
+                    complets, signés). /brouillons devient un alias. */}
                 <Route path="/historique" element={<Historique />} />
-                <Route path="/brouillons" element={<Brouillons />} />
+                <Route
+                  path="/brouillons"
+                  element={<Navigate to="/historique" replace />}
+                />
+
                 <Route path="/cerfa" element={<CERFA />} />
                 <Route path="/templates" element={<TemplatesPage />} />
                 <Route path="/infos-vehicule" element={<VehicleFieldsPage />} />
@@ -223,10 +252,32 @@ const App = () => {
                 <Route path="/clients" element={<Clients />} />
                 <Route path="/clients/:id" element={<ClientDetail />} />
                 <Route path="/factures" element={<Factures />} />
-                <Route path="/parametres" element={<Parametres />} />
                 <Route path="/preferences" element={<Preferences />} />
+
+                {/* « Ma concession » = page unique qui regroupe l'identité
+                    légale, le compte gérant et l'abonnement. /profil-concession
+                    reste la route canonique (utilisée par CERFA.tsx et
+                    référencée dans les commentaires utils). /ma-concession,
+                    /profil et /parametres y redirigent. */}
                 <Route path="/profil-concession" element={<ProfilConcession />} />
-                <Route path="/abonnement" element={<Abonnement />} />
+                <Route
+                  path="/ma-concession"
+                  element={<Navigate to="/profil-concession" replace />}
+                />
+                <Route
+                  path="/profil"
+                  element={<Navigate to="/profil-concession" replace />}
+                />
+                <Route
+                  path="/parametres"
+                  element={<Navigate to="/profil-concession" replace />}
+                />
+
+                {/* /abonnement reste actif pour ne pas casser les retours
+                    Stripe (?status=success|cancel) et le flux d'auto-checkout
+                    après signup (?plan=monthly|annual). Sans query params,
+                    on redirige vers /profil-concession#abonnement. */}
+                <Route path="/abonnement" element={<AbonnementRoute />} />
               </Route>
               <Route
                 path="*"
