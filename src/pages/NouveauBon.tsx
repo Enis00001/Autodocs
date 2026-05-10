@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { User, Car, Wallet, CreditCard, CheckCircle2, Loader2, Receipt } from "lucide-react";
+import {
+  User,
+  Car,
+  Wallet,
+  CreditCard,
+  CheckCircle2,
+  Loader2,
+  Receipt,
+  Search,
+  X,
+} from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import ProfilClient from "@/components/nouveau-bon/ProfilClient";
 import ScanCni from "@/components/nouveau-bon/ScanCni";
@@ -17,7 +27,12 @@ import {
   upsertDraft,
 } from "@/utils/drafts";
 import { supabase } from "@/lib/supabase";
-import { isFieldEnabled, isStockColumnVisible, type FormFieldPrefs } from "@/utils/formPreferences";
+import {
+  getCustomFieldsBySection,
+  isFieldEnabled,
+  isStockColumnVisible,
+  type FormFieldPrefs,
+} from "@/utils/formPreferences";
 import { cn } from "@/lib/utils";
 import {
   getVehicule,
@@ -28,6 +43,8 @@ import {
   attachDraftToClient,
   createClient,
   findClientExactNomPrenom,
+  searchClientsAutocomplete,
+  type ClientData,
 } from "@/utils/clients";
 import FactureGenerateModal from "@/components/FactureGenerateModal";
 import { getFactureByBrouillonId } from "@/utils/factures";
@@ -89,6 +106,22 @@ function extractClientTelephone(custom: Record<string, string> | undefined): str
     }
   }
   return "";
+}
+
+/** Première métadonnée de champ personnalisé « client » dont la clé ou le libellé évoque un téléphone. */
+function findFirstClientPhoneCustomKey(prefs: FormFieldPrefs): string | null {
+  for (const f of getCustomFieldsBySection(prefs, "client")) {
+    const nk = stripDiacritics(`${f.key} ${f.label}`);
+    if (
+      nk.includes("telephone") ||
+      nk.includes("tel") ||
+      nk.includes("mobile") ||
+      nk.includes("phone")
+    ) {
+      return f.key;
+    }
+  }
+  return null;
 }
 
 function vehiculeTitreFromForm(form: DraftFormState): string {
@@ -202,6 +235,13 @@ const NouveauBon = () => {
     Array<"clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse">
   >([]);
 
+  const [crmSearchInput, setCrmSearchInput] = useState("");
+  const [crmSearchDebounced, setCrmSearchDebounced] = useState("");
+  const [crmSearchResults, setCrmSearchResults] = useState<ClientData[]>([]);
+  const [crmSearchLoading, setCrmSearchLoading] = useState(false);
+  const [crmPickerOpen, setCrmPickerOpen] = useState(false);
+  const crmSearchWrapRef = useRef<HTMLDivElement>(null);
+
   /** Modal « Clôturer la vente » — ouverte après fermeture de la popup GenerateBar en succès. */
   const [closureModalOpen, setClosureModalOpen] = useState(false);
   const [closurePayload, setClosurePayload] = useState<ClosurePayload | null>(null);
@@ -222,6 +262,39 @@ const NouveauBon = () => {
   } | null>(null);
 
   const { formPrefs } = usePreferencesFormulaire();
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setCrmSearchDebounced(crmSearchInput.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [crmSearchInput]);
+
+  useEffect(() => {
+    if (!crmSearchDebounced) {
+      setCrmSearchResults([]);
+      setCrmSearchLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCrmSearchLoading(true);
+    void searchClientsAutocomplete(crmSearchDebounced).then((rows) => {
+      if (cancelled) return;
+      setCrmSearchResults(rows);
+      setCrmSearchLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [crmSearchDebounced]);
+
+  useEffect(() => {
+    function onDocMouseDown(ev: MouseEvent) {
+      if (!crmSearchWrapRef.current?.contains(ev.target as Node)) {
+        setCrmPickerOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -452,6 +525,46 @@ const NouveauBon = () => {
     [],
   );
 
+  const handleCrmClientSelect = useCallback(
+    (c: ClientData) => {
+      const phoneKey = findFirstClientPhoneCustomKey(formPrefs);
+      const tel = c.telephone?.trim() ?? "";
+      setFormState((prev) => {
+        const next: DraftFormState = {
+          ...prev,
+          clientId: c.id,
+          clientNom: c.nom ?? "",
+          clientPrenom: c.prenom ?? "",
+          clientDateNaissance: c.dateNaissance ?? "",
+          clientEmail: c.email ?? "",
+        };
+        if (phoneKey && tel) {
+          next.customFieldsValues = { ...(prev.customFieldsValues ?? {}), [phoneKey]: tel };
+          next.vehicleFieldValues = { ...(prev.vehicleFieldValues ?? {}), [phoneKey]: tel };
+        }
+        return next;
+      });
+      setAutoFilledClientFields([]);
+      setCrmSearchInput("");
+      setCrmSearchResults([]);
+      setCrmPickerOpen(false);
+    },
+    [formPrefs],
+  );
+
+  const handleCrmClientClear = useCallback(() => {
+    setFormState((prev) => ({ ...prev, clientId: null }));
+    setCrmSearchInput("");
+    setCrmSearchResults([]);
+    setCrmPickerOpen(false);
+  }, []);
+
+  const crmSelectedLabel =
+    `${formState.clientPrenom ?? ""} ${formState.clientNom ?? ""}`.trim() || "Client";
+
+  const showCrmDropdown =
+    !formState.clientId && crmPickerOpen && (!!crmSearchDebounced || crmSearchLoading);
+
   const handleSaveDraft = async () => {
     try {
       const saved = await upsertDraft(formState);
@@ -651,6 +764,83 @@ const NouveauBon = () => {
                   onScannedChange={handleCniScannedChange}
                   onExtracted={handleCniExtracted}
                 />
+                {formState.clientId ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-input border border-success/35 bg-success/15 px-3 py-2.5 text-sm text-foreground">
+                    <span className="font-medium text-success">
+                      Client sélectionné : {crmSelectedLabel}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCrmClientClear}
+                      className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground cursor-pointer"
+                      aria-label="Désélectionner le client"
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                    </button>
+                  </div>
+                ) : (
+                  <div ref={crmSearchWrapRef} className="space-y-1.5">
+                    <label className="field-label" htmlFor="crm-client-search">
+                      Rechercher un client existant (CRM)
+                    </label>
+                    <div className="relative">
+                      <Search
+                        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                        aria-hidden
+                      />
+                      <input
+                        id="crm-client-search"
+                        type="search"
+                        autoComplete="off"
+                        value={crmSearchInput}
+                        onChange={(e) => setCrmSearchInput(e.target.value)}
+                        onFocus={() => setCrmPickerOpen(true)}
+                        placeholder="Rechercher un client existant…"
+                        className="field-input w-full pl-9"
+                      />
+                      {crmSearchLoading ? (
+                        <Loader2
+                          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground"
+                          aria-hidden
+                        />
+                      ) : null}
+                      {showCrmDropdown ? (
+                        <div
+                          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-auto rounded-input border border-border bg-card py-1 shadow-lg"
+                          role="listbox"
+                        >
+                          {crmSearchLoading ? (
+                            <div className="px-3 py-2 text-xs text-muted-foreground">Recherche…</div>
+                          ) : crmSearchResults.length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-muted-foreground">
+                              Aucun client trouvé
+                            </div>
+                          ) : (
+                            crmSearchResults.map((c) => {
+                              const line = `${c.prenom} ${c.nom}`.trim();
+                              const email = c.email?.trim() || "—";
+                              const phone = c.telephone?.trim() || "—";
+                              return (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  role="option"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => handleCrmClientSelect(c)}
+                                  className="flex w-full cursor-pointer flex-col gap-0.5 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/80"
+                                >
+                                  <span className="font-medium text-foreground">
+                                    {line} — {email} — {phone}
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
                 <ProfilClient
                   form={formState}
                   onChange={updateForm}

@@ -111,6 +111,37 @@ export async function searchClients(query: string): Promise<ClientData[]> {
   return (data ?? []).map((row) => rowToClient(row as ClientRow));
 }
 
+/**
+ * Autocomplétion CRM (nom / prénom uniquement), max 10 résultats.
+ * Query vide → aucun appel réseau (tableau vide).
+ * Équivalent SQL : … WHERE concession_id = … AND (nom ILIKE … OR prenom ILIKE …) LIMIT 10
+ */
+export async function searchClientsAutocomplete(query: string): Promise<ClientData[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
+  const escaped = trimmed.replace(/[,%]/g, " ").trim();
+  if (!escaped) return [];
+  const pattern = `%${escaped}%`;
+
+  const { data, error } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("concession_id", userId)
+    .or(`nom.ilike.${pattern},prenom.ilike.${pattern}`)
+    .order("nom", { ascending: true })
+    .order("prenom", { ascending: true })
+    .limit(10);
+  if (error) {
+    console.error("searchClientsAutocomplete:", error);
+    return [];
+  }
+  return (data ?? []).map((row) => rowToClient(row as ClientRow));
+}
+
 /** Récupère un client par son id. */
 export async function getClientById(id: string): Promise<ClientData | null> {
   const userId = await getCurrentUserId();
