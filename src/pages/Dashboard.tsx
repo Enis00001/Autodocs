@@ -25,9 +25,6 @@ import {
   Line,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -146,7 +143,6 @@ const Dashboard = () => {
   const previousSales = sum(previousMonthlyForPeriod, "sales");
   const currentSigned = sum(monthlyForPeriod, "draftsSigned");
   const currentPending = sum(monthlyForPeriod, "draftsPending");
-  const currentInProgress = sum(monthlyForPeriod, "draftsInProgress");
   const previousPending = sum(previousMonthlyForPeriod, "draftsPending");
 
   const formatCurrency = (value: number) =>
@@ -221,12 +217,9 @@ const Dashboard = () => {
     },
   ] as const;
 
-  const pieData = [
-    { name: "Signés", value: currentSigned, color: "#10B981" },
-    { name: "En attente", value: currentPending, color: "#F59E0B" },
-    { name: "En cours", value: currentInProgress, color: "#6366F1" },
-  ].filter((d) => d.value > 0);
-  const noDataForPeriod = currentRevenue === 0 && currentSales === 0 && currentSigned === 0 && currentPending === 0 && currentInProgress === 0;
+  const latestDrafts = [...drafts]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 5);
 
   return (
     <>
@@ -474,103 +467,6 @@ const Dashboard = () => {
                 </div>
               )}
             </div>
-
-            <div className="card-autodocs">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-display text-sm font-bold text-foreground">
-                  État des bons de commande
-                </h3>
-                <span className="text-[11px] text-muted-foreground">
-                  {periodLabels[period]}
-                </span>
-              </div>
-              {loading ? (
-                <div className="skeleton h-72 w-full rounded-input" />
-              ) : currentSigned === 0 && currentPending === 0 && currentInProgress === 0 ? (
-                <div className="flex h-48 items-center justify-center text-gray-500">
-                  Aucun bon de commande
-                </div>
-              ) : (
-                <div className="relative h-72 w-full">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        dataKey="value"
-                        innerRadius={70}
-                        outerRadius={95}
-                        paddingAngle={3}
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={index} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(value: number, name: string) => [`${value} bons`, name]}
-                        contentStyle={{
-                          backgroundColor: "#1F2937",
-                          border: "none",
-                          borderRadius: "8px",
-                          color: "#F9FAFB",
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "50%",
-                      left: "50%",
-                      transform: "translate(-50%, -50%)",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: "#9CA3AF",
-                        textTransform: "uppercase",
-                        letterSpacing: "1px",
-                      }}
-                    >
-                      TOTAL
-                    </div>
-                    <div style={{ fontSize: "28px", fontWeight: "bold", color: "#F9FAFB" }}>
-                      {currentSigned + currentPending + currentInProgress}
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap justify-center gap-6">
-                    {[
-                      { label: "Signés", value: currentSigned, color: "#10B981" },
-                      { label: "En attente", value: currentPending, color: "#F59E0B" },
-                      { label: "En cours", value: currentInProgress, color: "#6366F1" },
-                    ].map((item) => (
-                      <div key={item.label} className="flex items-center gap-2">
-                        <div
-                          style={{
-                            width: "10px",
-                            height: "10px",
-                            borderRadius: "50%",
-                            backgroundColor: item.color,
-                            flexShrink: 0,
-                          }}
-                        />
-                        <span style={{ fontSize: "13px", color: "#D1D5DB" }}>
-                          {item.label} : <strong style={{ color: "#F9FAFB" }}>{item.value}</strong>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-2 grid grid-cols-1 gap-1 text-[12px] md:grid-cols-3">
-                    <p className="text-emerald-500">🟢 Signés : {currentSigned} bons</p>
-                    <p className="text-amber-500">🟡 En attente de signature : {currentPending} bons</p>
-                    <p className="text-indigo-400">⚫ En cours de rédaction : {currentInProgress} bons</p>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="card-autodocs">
@@ -678,7 +574,7 @@ const Dashboard = () => {
                   <div key={i} className="skeleton h-12 w-full rounded-input" />
                 ))}
               </div>
-            ) : drafts.length === 0 ? (
+            ) : latestDrafts.length === 0 ? (
               <div className="flex flex-col items-center py-10 text-center">
                 <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <Inbox className="h-8 w-8" />
@@ -709,7 +605,7 @@ const Dashboard = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {drafts.map((d) => {
+                    {latestDrafts.map((d) => {
                       const isDownloading = downloadingDraftId === d.id;
                       const signatureStatus = statsReady.draftStatusById[d.id] ?? "in_progress";
                       return (
@@ -739,14 +635,14 @@ const Dashboard = () => {
                                   ? "bg-emerald-500/15 text-emerald-400"
                                   : signatureStatus === "pending"
                                     ? "bg-amber-500/15 text-amber-400"
-                                    : "bg-amber-400/15 text-amber-300",
+                                    : "bg-slate-500/15 text-slate-300",
                               )}
                             >
                               {signatureStatus === "signed"
                                 ? "Signé"
                                 : signatureStatus === "pending"
                                   ? "En attente"
-                                  : "En cours"}
+                                  : "Brouillon"}
                             </span>
                           </td>
                           <td className="py-3 text-right">
