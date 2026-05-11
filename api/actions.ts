@@ -2129,6 +2129,8 @@ async function handleGenerateFacture(
   data: Record<string, unknown>,
   res: VercelResponse,
 ) {
+  console.log("generate-facture body reçu:", data);
+
   const userId = await getAuthUserId(req);
   if (!userId) return res.status(401).json({ error: "Non autorise" });
 
@@ -2140,6 +2142,17 @@ async function handleGenerateFacture(
   if (!concessionId) {
     return res.status(403).json({ error: "Aucune concession active pour ce compte." });
   }
+
+  const clientConcessionId = data.concession_id != null ? String(data.concession_id).trim() : "";
+  if (clientConcessionId && clientConcessionId !== concessionId) {
+    console.warn(
+      "[generate-facture] concession_id client ≠ serveur:",
+      clientConcessionId,
+      "vs",
+      concessionId,
+    );
+  }
+  console.log("[generate-facture] userId:", userId, "concessionId (serveur):", concessionId);
 
   const { data: existingDup } = await admin
     .from("factures")
@@ -2326,27 +2339,8 @@ async function handleGenerateFacture(
   const dateFactureIso = today.toISOString().slice(0, 10);
 
   const year = today.getFullYear();
-  const prefix = `FAC-${year}-`;
-  const { data: nums, error: numErr } = await admin
-    .from("factures")
-    .select("numero_facture")
-    .eq("concession_id", concessionId)
-    .like("numero_facture", `${prefix}%`);
-
-  if (numErr) {
-    console.error("[generate-facture] numerotation:", numErr);
-    return res.status(500).json({ error: "Erreur numerotation facture" });
-  }
-
-  let maxSeq = 0;
-  for (const n of nums ?? []) {
-    const nr = n as { numero_facture?: string };
-    const num = String(nr.numero_facture ?? "");
-    const m = /^FAC-(\d{4})-(\d+)$/.exec(num);
-    if (m && Number(m[1]) === year) maxSeq = Math.max(maxSeq, parseInt(m[2], 10));
-  }
-
-  const numeroFacture = `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
+  const timestamp = Date.now().toString().slice(-4);
+  const numeroFacture = `FAC-${year}-${timestamp}`;
 
   const templatePayload: FactureTemplatePayload = {
     numero_facture: numeroFacture,
@@ -2455,11 +2449,20 @@ async function handleGenerateFacture(
     .select("id")
     .single();
 
+  console.log("Facture insérée:", inserted);
+  console.log("Erreur insert:", insErr);
+
   if (insErr) {
     console.error("[generate-facture] insert:", insErr);
-    return res
-      .status(500)
-      .json({ error: insErr.message || "Erreur enregistrement facture" });
+    return res.status(500).json({
+      error: insErr.message || "Erreur enregistrement facture",
+      details: {
+        message: insErr.message,
+        code: insErr.code,
+        details: insErr.details,
+        hint: insErr.hint,
+      },
+    });
   }
 
   return res.status(200).json({

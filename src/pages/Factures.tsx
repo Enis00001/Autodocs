@@ -68,6 +68,7 @@ function statutBadge(statut: FactureStatut): { label: string; className: string 
 const Factures = () => {
   const [rows, setRows] = useState<FactureRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filterStatut, setFilterStatut] = useState<FactureStatut | "all">("all");
   const [filterDate, setFilterDate] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -76,9 +77,17 @@ const Factures = () => {
 
   const refresh = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const list = await getFactures();
-      setRows(list);
+      console.log("Factures dans le composant:", list);
+      setRows(list ?? []);
+    } catch (err) {
+      console.error("Erreur chargement factures:", err);
+      setLoadError(
+        err instanceof Error ? err.message : "Impossible de charger les factures.",
+      );
+      setRows([]);
     } finally {
       setLoading(false);
     }
@@ -228,6 +237,15 @@ const Factures = () => {
               </button>
             ) : null}
           </div>
+
+          {loadError ? (
+            <div
+              className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              role="alert"
+            >
+              {loadError}
+            </div>
+          ) : null}
 
           <div className="card-autodocs -mx-4 overflow-x-auto px-4 md:mx-0 md:px-5">
             {loading ? (

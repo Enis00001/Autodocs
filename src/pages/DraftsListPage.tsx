@@ -98,7 +98,10 @@ const DraftsListPage = ({
     const [d, c, facts] = await Promise.all([
       loadDrafts(),
       getClients(),
-      getFactures(),
+      getFactures().catch((err) => {
+        console.error("DraftsListPage getFactures:", err);
+        return [];
+      }),
     ]);
     setDrafts(d);
     setClients(c);

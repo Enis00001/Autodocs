@@ -83,9 +83,20 @@ const FACTURE_SELECT_COLS =
 export async function generateFacture(
   payload: GenerateFacturePayload,
 ): Promise<GenerateFactureResult> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
+  const concessionId = await getCurrentConcessionId();
+  console.log("generateFacture — userId:", userId, "concession_id:", concessionId);
+
   const res = await apiFetch("/api/actions", {
     method: "POST",
-    body: JSON.stringify({ action: "generate-facture", ...payload }),
+    body: JSON.stringify({
+      action: "generate-facture",
+      concession_id: concessionId ?? undefined,
+      ...payload,
+    }),
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
@@ -106,16 +117,31 @@ export async function generateFacture(
 }
 
 export async function getFactures(): Promise<FactureRecord[]> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  console.log("getFactures - userId:", session?.user?.id);
+
   const concessionId = await getCurrentConcessionId();
-  if (!concessionId) return [];
+  console.log("getFactures - concessionId (filtre):", concessionId);
+
+  if (!concessionId) {
+    console.log("getFactures — aucune concession active, retour [].");
+    return [];
+  }
+
   const { data, error } = await supabase
     .from("factures")
     .select(FACTURE_SELECT_COLS)
     .eq("concession_id", concessionId)
     .order("created_at", { ascending: false });
+
+  console.log("Factures trouvées:", data);
+  console.log("Erreur getFactures:", error);
+
   if (error) {
     console.error("getFactures:", error);
-    return [];
+    throw new Error(error.message || "Impossible de charger les factures.");
   }
   return (data ?? []) as FactureRecord[];
 }
