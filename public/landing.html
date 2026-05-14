@@ -1,43 +1,40 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>AutoDocs — L'IA qui libère vos commerciaux pour vendre plus</title>
+    <title>AutoDocs — Le bon de commande automobile en 30 secondes</title>
     <meta
       name="description"
-      content="AutoDocs automatise l'administration post-vente des concessions automobiles grâce à l'IA. ~15 min économisées par vente, livre de police, CERFA, facturation. Essai gratuit."
+      content="AutoDocs automatise les bons de commande pour les concessions : scan CNI, stock intégré, PDF instantané. Vos commerciaux se concentrent sur la vente."
     />
-    <meta property="og:title" content="AutoDocs — Votre équipe vend. L'IA gère le reste." />
+    <meta property="og:title" content="AutoDocs — Bons de commande automobile automatisés" />
     <meta
       property="og:description"
-      content="SaaS B2B pour concessions françaises : agent IA post-vente, signature électronique, livre de police conforme. 3× moins cher que Spider VO."
+      content="Scannez les documents client, sélectionnez le véhicule, générez le PDF. AutoDocs s'occupe de la paperasse."
     />
     <meta property="og:type" content="website" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@700;800&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap"
     />
+
     <style>
+      /* ====================================================================
+         Palette AutoDocs — alignée avec src/index.css
+         ==================================================================== */
       :root {
-        --bg: #0f0f1a;
-        --bg-card: #111127;
-        --bg-card-hover: #1a1a35;
-        --border: rgba(99, 102, 241, 0.15);
-        --indigo: #6366f1;
-        --indigo-light: #818cf8;
-        --indigo-dark: #4f46e5;
-        --purple: #8b5cf6;
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --primary: #6366f1;
+        --primary-hover: #4f46e5;
         --text: #f1f5f9;
-        --text-muted: #94a3b8;
-        --green: #10b981;
-        --glow: 0 0 40px rgba(99, 102, 241, 0.35);
-        --radius: 14px;
-        --radius-sm: 10px;
-        --nav-h: 72px;
+        --muted: #94a3b8;
+        --border: rgba(255, 255, 255, 0.08);
+        --success: #22c55e;
       }
 
       *,
@@ -52,11 +49,20 @@
 
       body {
         margin: 0;
-        font-family: "Inter", system-ui, -apple-system, sans-serif;
+        font-family: "DM Sans", system-ui, sans-serif;
         background: var(--bg);
         color: var(--text);
-        line-height: 1.6;
         -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      h1,
+      h2,
+      h3,
+      h4 {
+        font-family: "Syne", system-ui, sans-serif;
+        letter-spacing: -0.01em;
+        margin: 0;
       }
 
       a {
@@ -64,1507 +70,930 @@
         text-decoration: none;
       }
 
-      img,
-      svg {
-        display: block;
-        max-width: 100%;
+      button {
+        font-family: inherit;
+        cursor: pointer;
+      }
+
+      /* ====================================================================
+         Halos ambiance
+         ==================================================================== */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(ellipse 80% 50% at 100% 0%, rgba(99, 102, 241, 0.18), transparent 55%),
+          radial-gradient(ellipse 60% 40% at 0% 100%, rgba(99, 102, 241, 0.1), transparent 50%);
+        z-index: 0;
       }
 
       .container {
-        width: min(1120px, 100% - 40px);
-        margin-inline: auto;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 24px;
+        position: relative;
+        z-index: 1;
       }
 
-      @media (max-width: 640px) {
-        .container {
-          width: min(1120px, 100% - 24px);
-        }
+      /* ====================================================================
+         NAV
+         ==================================================================== */
+      .nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        backdrop-filter: blur(12px);
+        background: rgba(15, 17, 23, 0.72);
+        border-bottom: 1px solid var(--border);
       }
-
-      /* ---------- Nav ---------- */
-      nav {
-        position: fixed;
-        inset: 0 0 auto 0;
-        z-index: 100;
-        min-height: var(--nav-h);
-        padding: 0.55rem 0;
-        display: flex;
-        align-items: center;
-        transition: background 0.25s ease, backdrop-filter 0.25s ease, border-bottom 0.25s ease;
-        background: transparent;
-        border-bottom: 1px solid transparent;
-      }
-
       .nav-inner {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 0.65rem 1rem;
-        width: 100%;
+        height: 72px;
       }
-
-      .logo {
+      .brand {
         display: flex;
         align-items: center;
-        gap: 0.55rem;
+        gap: 10px;
+        font-family: "Syne", sans-serif;
         font-weight: 800;
-        font-size: 1.1rem;
-        letter-spacing: -0.02em;
+        font-size: 18px;
       }
-
-      .logo-mark {
-        width: 34px;
-        height: 34px;
+      .brand-icon {
+        width: 36px;
+        height: 36px;
         border-radius: 10px;
-        background: linear-gradient(135deg, var(--indigo), var(--purple));
-        box-shadow: var(--glow);
-      }
-
-      .nav-links {
+        background: rgba(99, 102, 241, 0.18);
+        color: var(--primary);
         display: flex;
         align-items: center;
-        gap: 1.75rem;
+        justify-content: center;
       }
-
-      .nav-links a:not(.btn) {
-        font-size: 0.9rem;
-        font-weight: 500;
-        color: var(--text-muted);
-        transition: color 0.2s;
+      .brand-icon svg {
+        width: 20px;
+        height: 20px;
       }
-
-      .nav-links a:not(.btn):hover {
+      .brand .accent {
+        color: var(--primary);
+      }
+      .nav-links {
+        display: none;
+        align-items: center;
+        gap: 32px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .nav-links a {
+        transition: color 180ms ease;
+      }
+      .nav-links a:hover {
         color: var(--text);
       }
-
-      .nav-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.65rem;
-      }
-
-      @media (max-width: 900px) {
+      @media (min-width: 768px) {
         .nav-links {
-          order: 3;
-          width: 100%;
-          justify-content: center;
-          gap: 1.1rem;
-          padding-top: 0.35rem;
-          border-top: 1px solid rgba(99, 102, 241, 0.12);
-        }
-
-        .nav-actions {
-          margin-left: auto;
-        }
-
-        .nav-actions .btn {
-          padding: 0.55rem 0.85rem;
-          font-size: 0.8rem;
+          display: flex;
         }
       }
+      .nav-cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 18px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+        transition: transform 200ms ease, box-shadow 200ms ease;
+        min-height: 44px;
+      }
+      .nav-cta:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 28px rgba(99, 102, 241, 0.45);
+      }
 
-      .btn {
+      /* ====================================================================
+         HERO
+         ==================================================================== */
+      .hero {
+        padding: 72px 0 96px;
+        text-align: center;
+      }
+      @media (min-width: 768px) {
+        .hero {
+          padding: 120px 0 140px;
+        }
+      }
+      .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(99, 102, 241, 0.35);
+        background: rgba(99, 102, 241, 0.08);
+        color: var(--primary);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        margin-bottom: 24px;
+      }
+      .hero-badge::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        background: var(--success);
+        border-radius: 999px;
+        box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+      }
+      .hero h1 {
+        font-size: clamp(32px, 6vw, 64px);
+        font-weight: 600;
+        line-height: 1.05;
+        max-width: 900px;
+        margin: 0 auto 24px;
+      }
+      .hero h1 .grad {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .hero p {
+        font-size: clamp(15px, 2vw, 18px);
+        font-weight: 400;
+        color: var(--muted);
+        max-width: 640px;
+        margin: 0 auto 40px;
+        line-height: 1.6;
+      }
+      .hero-ctas {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+        justify-content: center;
+      }
+      @media (min-width: 640px) {
+        .hero-ctas {
+          flex-direction: row;
+        }
+      }
+      .btn-primary {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 0.35rem;
-        padding: 0.65rem 1.15rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-        border-radius: 999px;
-        border: 1px solid transparent;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s, background 0.2s, border-color 0.2s;
-        white-space: nowrap;
+        gap: 8px;
+        padding: 14px 28px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+        color: #fff;
+        font-family: "Syne", sans-serif;
+        font-weight: 700;
+        font-size: 15px;
+        border: 0;
+        box-shadow: 0 4px 24px rgba(99, 102, 241, 0.35);
+        transition: transform 200ms ease, box-shadow 200ms ease;
+        min-height: 52px;
+        min-width: 240px;
       }
-
-      .btn:active {
-        transform: scale(0.98);
-      }
-
-      .btn-outline {
-        background: transparent;
-        border-color: rgba(255, 255, 255, 0.35);
-        color: var(--text);
-      }
-
-      .btn-outline:hover {
-        border-color: rgba(255, 255, 255, 0.6);
-        background: rgba(255, 255, 255, 0.04);
-      }
-
-      .btn-primary {
-        background: linear-gradient(135deg, var(--indigo-dark), var(--indigo));
-        color: white;
-        border-color: rgba(99, 102, 241, 0.5);
-        box-shadow: 0 4px 24px rgba(99, 102, 241, 0.25);
-      }
-
       .btn-primary:hover {
-        box-shadow: var(--glow), 0 8px 28px rgba(99, 102, 241, 0.35);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 32px rgba(99, 102, 241, 0.5);
+      }
+      .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 28px;
+        border-radius: 12px;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text);
+        font-family: "Syne", sans-serif;
+        font-weight: 600;
+        font-size: 15px;
+        transition: border-color 200ms ease, background 200ms ease, transform 200ms ease;
+        min-height: 52px;
+        min-width: 240px;
+      }
+      .btn-secondary:hover {
+        border-color: var(--muted);
+        background: rgba(255, 255, 255, 0.03);
         transform: translateY(-1px);
       }
 
-      .btn-primary-lg {
-        padding: 0.85rem 1.5rem;
-        font-size: 0.95rem;
-      }
-
-      /* ---------- Hero mesh ---------- */
-      .hero {
-        position: relative;
-        padding: calc(var(--nav-h) + 3.75rem) 0 4.5rem;
-        overflow: hidden;
-      }
-
-      @media (max-width: 900px) {
-        .hero {
-          padding-top: 6.25rem;
-        }
-      }
-
-      .hero-mesh {
-        pointer-events: none;
-        position: absolute;
-        inset: -20% -10% auto;
-        height: 70%;
-        background:
-          radial-gradient(ellipse 80% 50% at 20% 20%, rgba(99, 102, 241, 0.22), transparent 55%),
-          radial-gradient(ellipse 60% 40% at 80% 10%, rgba(139, 92, 246, 0.18), transparent 50%),
-          radial-gradient(ellipse 50% 35% at 50% 60%, rgba(79, 70, 229, 0.12), transparent 55%);
-        animation: meshShift 14s ease-in-out infinite alternate;
-      }
-
-      @keyframes meshShift {
-        0% {
-          transform: translate(0, 0) scale(1);
-          opacity: 1;
-        }
-        100% {
-          transform: translate(2%, 3%) scale(1.04);
-          opacity: 0.92;
-        }
-      }
-
-      .hero-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 3rem;
-        align-items: center;
-        position: relative;
-        z-index: 1;
-      }
-
-      @media (max-width: 960px) {
-        .hero-grid {
-          grid-template-columns: 1fr;
-          gap: 2.5rem;
-        }
-      }
-
-      .badge-animated {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        padding: 0.4rem 0.85rem 0.4rem 0.65rem;
-        border-radius: 999px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: var(--indigo-light);
-        background: rgba(99, 102, 241, 0.12);
+      .hero-preview {
+        margin: 72px auto 0;
+        max-width: 880px;
+        border-radius: 16px;
         border: 1px solid var(--border);
-        backdrop-filter: blur(10px);
-        margin-bottom: 1.25rem;
-        animation: badgePulse 3s ease-in-out infinite;
+        background: linear-gradient(180deg, rgba(26, 29, 39, 0.9), rgba(15, 17, 23, 0.95));
+        padding: 18px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+      }
+      .hero-preview-bar {
+        display: flex;
+        gap: 6px;
+        padding: 2px 4px 12px;
+      }
+      .hero-preview-bar span {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .hero-preview-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      @media (min-width: 768px) {
+        .hero-preview-grid {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+      .hero-preview-item {
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        text-align: left;
+      }
+      .hero-preview-item-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      .hero-preview-item-value {
+        font-family: "Inter", sans-serif;
+        font-weight: 800;
+        font-size: 28px;
+        margin-top: 6px;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .hero-preview-item.green .hero-preview-item-value {
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .hero-preview-item-sub {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
       }
 
-      @keyframes badgePulse {
+      /* ====================================================================
+         SECTION TITLES
+         ==================================================================== */
+      .section {
+        padding: 80px 0;
+      }
+      .section-head {
+        text-align: center;
+        margin-bottom: 56px;
+      }
+      .section-eyebrow {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--primary);
+        margin-bottom: 14px;
+      }
+      .section-title {
+        font-size: clamp(28px, 4vw, 42px);
+        font-weight: 800;
+        max-width: 700px;
+        margin: 0 auto 16px;
+        line-height: 1.15;
+      }
+      .section-title.light-subtitle {
+        font-size: clamp(24px, 3.4vw, 36px);
+        font-weight: 400;
+      }
+      .section-subtitle {
+        color: var(--muted);
+        max-width: 560px;
+        margin: 0 auto;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      /* ====================================================================
+         FEATURES
+         ==================================================================== */
+      .features-grid {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 768px) {
+        .features-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      .feature-card {
+        padding: 32px 28px;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(26, 29, 39, 0.7), rgba(26, 29, 39, 0.4));
+        transition: transform 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
+      }
+      .feature-card:hover {
+        transform: translateY(-4px);
+        border-color: rgba(99, 102, 241, 0.4);
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.4);
+      }
+      .feature-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        background: rgba(99, 102, 241, 0.15);
+        color: var(--primary);
+        font-size: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+      }
+      .feature-card h3 {
+        font-size: 19px;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+      .feature-card p {
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.6;
+        margin: 0;
+      }
+
+      /* ====================================================================
+         PRICING
+         ==================================================================== */
+      .pricing-grid {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: 1fr;
+        max-width: 1120px;
+        margin: 0 auto;
+        align-items: stretch;
+      }
+      @media (min-width: 768px) {
+        .pricing-grid {
+          /* Colonne annuelle plus large pour la mettre en avant. */
+          grid-template-columns: 1fr 1fr 1.15fr;
+          gap: 24px;
+        }
+      }
+      .pricing-card {
+        padding: 36px 32px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(26, 29, 39, 0.75), rgba(26, 29, 39, 0.45));
+        display: flex;
+        flex-direction: column;
+        transition: transform 260ms ease, border-color 260ms ease;
+        position: relative;
+      }
+      .pricing-card.featured {
+        border-color: rgba(99, 102, 241, 0.55);
+        background: linear-gradient(
+          180deg,
+          rgba(99, 102, 241, 0.08) 0%,
+          rgba(26, 29, 39, 0.7) 55%
+        );
+        padding: 44px 34px 40px;
+        /* Bord brillant animé (box-shadow pulsé). */
+        animation: pricing-glow 2800ms ease-in-out infinite;
+      }
+      @media (min-width: 768px) {
+        .pricing-card.featured {
+          transform: scale(1.04);
+        }
+      }
+      @keyframes pricing-glow {
         0%,
         100% {
-          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.25);
+          box-shadow:
+            0 0 0 1px rgba(99, 102, 241, 0.35),
+            0 30px 70px -25px rgba(99, 102, 241, 0.55);
         }
         50% {
-          box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+          box-shadow:
+            0 0 0 2px rgba(99, 102, 241, 0.7),
+            0 36px 90px -20px rgba(99, 102, 241, 0.85);
+        }
+      }
+      /* Reflet qui traverse la bordure. */
+      .pricing-card.featured::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        overflow: hidden;
+        pointer-events: none;
+        background: linear-gradient(
+          100deg,
+          transparent 35%,
+          rgba(255, 255, 255, 0.1) 48%,
+          rgba(255, 255, 255, 0.18) 50%,
+          rgba(255, 255, 255, 0.1) 52%,
+          transparent 65%
+        );
+        background-size: 250% 100%;
+        background-position: -150% 0;
+        animation: pricing-shine 3600ms ease-in-out infinite;
+        animation-delay: 800ms;
+        mix-blend-mode: screen;
+      }
+      @keyframes pricing-shine {
+        0% {
+          background-position: -150% 0;
+        }
+        60% {
+          background-position: 250% 0;
+        }
+        100% {
+          background-position: 250% 0;
+        }
+      }
+      .pricing-badge {
+        position: absolute;
+        top: -14px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 6px 14px;
+        background: linear-gradient(135deg, #4f46e5, #6366f1);
+        color: #fff;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        white-space: nowrap;
+        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.45);
+      }
+      .pricing-card:hover {
+        transform: translateY(-3px);
+      }
+      @media (min-width: 768px) {
+        .pricing-card.featured:hover {
+          transform: scale(1.04) translateY(-3px);
         }
       }
 
-      .hero h1 {
-        margin: 0 0 1rem;
-        font-size: clamp(2.25rem, 5vw, 3.35rem);
+      .plan-name {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+      .pricing-card.featured .plan-name {
+        color: var(--primary);
+      }
+      .plan-price {
+        font-family: "Inter", sans-serif;
+        font-size: 46px;
         font-weight: 800;
-        letter-spacing: -0.035em;
-        line-height: 1.08;
+        line-height: 1;
+      }
+      .plan-price .suffix {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--muted);
+        margin-left: 4px;
+      }
+      .plan-tagline {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 12px 0 20px;
       }
 
-      .hero h1 span {
-        background: linear-gradient(90deg, var(--text), var(--indigo-light));
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
+      /* Bloc "argumentaire économique" sous le prix annuel. */
+      .plan-savings {
+        margin: 0 0 24px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: rgba(99, 102, 241, 0.1);
+        border: 1px solid rgba(99, 102, 241, 0.2);
+        display: grid;
+        gap: 8px;
+        font-size: 13px;
       }
-
-      .hero-lead {
-        margin: 0 0 1.75rem;
-        font-size: 1.05rem;
-        color: var(--text-muted);
-        max-width: 34rem;
-        line-height: 1.65;
-      }
-
-      .hero-ctas {
+      .plan-savings-line {
         display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-bottom: 1.5rem;
-      }
-
-      .proof-line {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem 1.25rem;
-        font-size: 0.85rem;
-        color: var(--text-muted);
-      }
-
-      .proof-line span {
-        display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
+        gap: 8px;
+        color: var(--text);
       }
-
-      .proof-line .ok {
-        color: var(--green);
+      .plan-savings-line.strong {
+        font-weight: 700;
+        color: #fff;
+      }
+      .plan-savings-line .em {
+        color: var(--primary);
         font-weight: 700;
       }
 
-      /* Hero visual */
-      .hero-visual-wrap {
-        position: relative;
+      .plan-features {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 28px;
+        display: grid;
+        gap: 12px;
+      }
+      .plan-features li {
         display: flex;
-        justify-content: center;
         align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        color: var(--text);
+      }
+      .plan-features li::before {
+        content: "";
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: rgba(34, 197, 94, 0.15);
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2322c55e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+        background-repeat: no-repeat;
+        background-position: center;
+        flex-shrink: 0;
+      }
+      .plan-cta {
+        margin-top: auto;
       }
 
-      .hero-glow-ring {
-        position: absolute;
-        inset: 8%;
-        border-radius: 24px;
-        background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.35), transparent 65%);
-        filter: blur(28px);
-        z-index: 0;
+      @media (prefers-reduced-motion: reduce) {
+        .pricing-card.featured {
+          animation: none;
+        }
+        .pricing-card.featured::after {
+          animation: none;
+          display: none;
+        }
       }
 
-      .hero-svg {
-        position: relative;
-        z-index: 1;
-        width: min(100%, 440px);
-        height: auto;
-        border-radius: 20px;
-        border: 1px solid var(--border);
-        background: linear-gradient(160deg, rgba(17, 17, 39, 0.95), rgba(15, 15, 26, 0.6));
-        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45), var(--glow);
+      /* ====================================================================
+         FOOTER
+         ==================================================================== */
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 40px 0;
+        margin-top: 40px;
       }
-
-      /* ---------- Sections ---------- */
-      section {
-        padding: 4rem 0;
-      }
-
-      .section-title {
+      .footer-inner {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        align-items: center;
+        justify-content: space-between;
         text-align: center;
-        margin: 0 auto 0.65rem;
-        font-size: clamp(1.65rem, 3.5vw, 2.15rem);
-        font-weight: 800;
-        letter-spacing: -0.03em;
+      }
+      @media (min-width: 768px) {
+        .footer-inner {
+          flex-direction: row;
+          text-align: left;
+        }
+      }
+      .footer-brand {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 24px;
+        font-size: 13px;
+      }
+      .footer-links a {
+        color: var(--muted);
+        transition: color 180ms ease;
+      }
+      .footer-links a:hover {
+        color: var(--text);
       }
 
-      .section-sub {
-        text-align: center;
-        margin: 0 auto 2.5rem;
-        max-width: 36rem;
-        color: var(--text-muted);
-        font-size: 1rem;
-      }
-
+      /* ====================================================================
+         FADE IN ON SCROLL
+         ==================================================================== */
       .reveal {
         opacity: 0;
-        transform: translateY(18px);
-        transition: opacity 0.55s ease, transform 0.55s ease;
+        transform: translateY(24px);
+        transition: opacity 600ms ease-out, transform 600ms ease-out;
+        transition-delay: var(--reveal-delay, 0ms);
       }
-
       .reveal.visible {
         opacity: 1;
         transform: translateY(0);
       }
 
-      /* ---------- ROI ---------- */
-      #roi {
-        padding-top: 2rem;
-      }
-
-      .roi-card {
-        max-width: 520px;
-        margin: 0 auto;
-        padding: 1.75rem 1.5rem;
-        border-radius: var(--radius);
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-      }
-
-      .roi-slider-wrap {
-        margin-bottom: 1.5rem;
-      }
-
-      .roi-slider-wrap label {
-        display: block;
-        font-weight: 600;
-        margin-bottom: 0.75rem;
-        font-size: 0.95rem;
-      }
-
-      input[type="range"] {
-        width: 100%;
-        accent-color: var(--indigo);
-        height: 6px;
-        border-radius: 999px;
-      }
-
-      .roi-value-pill {
-        display: inline-block;
-        margin-top: 0.5rem;
-        padding: 0.25rem 0.65rem;
-        border-radius: 8px;
-        background: rgba(99, 102, 241, 0.15);
-        color: var(--indigo-light);
-        font-weight: 700;
-        font-size: 0.9rem;
-      }
-
-      .roi-stats {
-        font-size: 0.95rem;
-        line-height: 1.85;
-      }
-
-      .roi-stats strong {
-        color: var(--text);
-        font-weight: 700;
-      }
-
-      .roi-stats .row {
-        display: flex;
-        gap: 0.5rem;
-        align-items: flex-start;
-      }
-
-      .roi-cta-wrap {
-        text-align: center;
-        margin-top: 1.5rem;
-      }
-
-      /* ---------- Timeline ---------- */
-      .timeline-wrap {
-        overflow-x: auto;
-        padding-bottom: 0.5rem;
-        -webkit-overflow-scrolling: touch;
-      }
-
-      .timeline {
-        display: flex;
-        align-items: stretch;
-        gap: 0;
-        min-width: min(100%, 980px);
-        margin: 0 auto;
-        padding: 0.5rem 0;
-      }
-
-      .tl-step {
-        flex: 1;
-        min-width: 120px;
-        padding: 1rem 0.75rem;
-        text-align: center;
-        position: relative;
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        transition: background 0.2s, transform 0.2s;
-      }
-
-      .tl-step:hover {
-        background: var(--bg-card-hover);
-        transform: translateY(-2px);
-      }
-
-      .tl-step .emoji {
-        font-size: 1.5rem;
-        margin-bottom: 0.35rem;
-      }
-
-      .tl-step p {
-        margin: 0;
-        font-size: 0.78rem;
-        color: var(--text-muted);
-        line-height: 1.35;
-      }
-
-      .tl-step strong {
-        display: block;
-        font-size: 0.82rem;
-        color: var(--text);
-        margin-bottom: 0.25rem;
-      }
-
-      .tl-arrow {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--indigo);
-        font-size: 1.1rem;
-        padding: 0 0.15rem;
-        flex-shrink: 0;
-      }
-
-      @media (max-width: 720px) {
-        .timeline {
-          flex-direction: column;
-          min-width: 100%;
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
         }
-
-        .tl-arrow {
-          transform: rotate(90deg);
-          padding: 0.25rem 0;
+        .reveal {
+          opacity: 1;
+          transform: none;
         }
       }
 
-      .timeline-tagline {
-        text-align: center;
-        margin-top: 1.75rem;
-        font-size: 1.05rem;
-        font-weight: 600;
-        color: var(--indigo-light);
-      }
-
-      /* ---------- Feature grid ---------- */
-      .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1.25rem;
-      }
-
-      @media (max-width: 900px) {
-        .feature-grid {
-          grid-template-columns: 1fr;
+      /* iOS : empêche le zoom auto sur inputs (aucun ici mais par prudence) */
+      @media (max-width: 767px) {
+        input,
+        select,
+        textarea {
+          font-size: 16px;
         }
       }
 
-      .feature-card {
-        padding: 1.35rem 1.25rem;
-        border-radius: var(--radius);
-        background: var(--bg-card);
-        border: 1px solid rgba(99, 102, 241, 0.12);
-        transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s, background 0.2s;
-      }
-
-      .feature-card:hover {
-        transform: translateY(-4px);
-        border-color: rgba(99, 102, 241, 0.35);
-        background: var(--bg-card-hover);
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
-      }
-
-      .feature-card .ic {
-        font-size: 1.75rem;
-        margin-bottom: 0.65rem;
-      }
-
-      .feature-card h3 {
-        margin: 0 0 0.5rem;
-        font-size: 1.05rem;
-        font-weight: 700;
-      }
-
-      .feature-card p {
-        margin: 0;
-        font-size: 0.88rem;
-        color: var(--text-muted);
-        line-height: 1.55;
-      }
-
-      /* ---------- Compare table ---------- */
-      .compare-wrap {
-        overflow-x: auto;
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
-      }
-
-      table.compare {
-        width: 100%;
-        border-collapse: collapse;
-        min-width: 520px;
-        font-size: 0.9rem;
-      }
-
-      .compare th,
-      .compare td {
-        padding: 0.85rem 1rem;
-        text-align: left;
-        border-bottom: 1px solid rgba(99, 102, 241, 0.1);
-      }
-
-      .compare thead th {
-        font-weight: 700;
-        background: rgba(17, 17, 39, 0.8);
-      }
-
-      .compare .col-ad {
-        background: linear-gradient(180deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.06));
-        border-left: 1px solid rgba(99, 102, 241, 0.25);
-        border-right: 1px solid rgba(99, 102, 241, 0.15);
-      }
-
-      .compare .col-sp {
-        background: rgba(15, 15, 26, 0.5);
-        color: var(--text-muted);
-      }
-
-      .compare tbody tr:last-child td {
-        border-bottom: none;
-      }
-
-      .compare-badge {
-        display: inline-flex;
-        margin: 1.25rem auto 0;
-        padding: 0.55rem 1rem;
-        border-radius: 999px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        background: rgba(99, 102, 241, 0.12);
-        border: 1px solid var(--border);
-        backdrop-filter: blur(8px);
-        color: var(--text);
-      }
-
-      /* ---------- Testimonials ---------- */
-      .test-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1.25rem;
-      }
-
-      @media (max-width: 900px) {
-        .test-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .test-card {
-        padding: 1.35rem;
-        border-radius: var(--radius);
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        transition: border-color 0.2s, transform 0.2s;
-      }
-
-      .test-card:hover {
-        border-color: rgba(99, 102, 241, 0.35);
-        transform: translateY(-2px);
-      }
-
-      .test-card blockquote {
-        margin: 0 0 1rem;
-        font-size: 0.92rem;
-        color: var(--text-muted);
-        line-height: 1.6;
-      }
-
-      .test-card cite {
-        font-style: normal;
-        font-size: 0.82rem;
-        color: var(--text);
-        font-weight: 600;
-      }
-
-      /* ---------- Pricing ---------- */
-      .price-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1.5rem;
-        max-width: 820px;
-        margin: 0 auto;
-      }
-
-      @media (max-width: 700px) {
-        .price-grid {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .price-card {
-        position: relative;
-        padding: 1.75rem 1.5rem;
-        border-radius: var(--radius);
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        display: flex;
-        flex-direction: column;
-        transition: transform 0.2s, border-color 0.2s;
-      }
-
-      .price-card:hover {
-        transform: translateY(-3px);
-        border-color: rgba(99, 102, 241, 0.35);
-      }
-
-      .price-card.pro {
-        border-color: rgba(99, 102, 241, 0.45);
-        box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.15), var(--glow);
-      }
-
-      .price-badge {
-        position: absolute;
-        top: -12px;
-        right: 1.25rem;
-        padding: 0.3rem 0.65rem;
-        border-radius: 999px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        background: linear-gradient(135deg, var(--indigo), var(--purple));
-        color: white;
-        box-shadow: 0 4px 16px rgba(99, 102, 241, 0.45);
-      }
-
-      .price-card h3 {
-        margin: 0 0 0.25rem;
-        font-size: 1.35rem;
-      }
-
-      .price-amount {
-        font-size: 2rem;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        margin: 0.5rem 0 1rem;
-      }
-
-      .price-card.pro .price-amount {
-        background: linear-gradient(90deg, var(--indigo-light), var(--purple));
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-      }
-
-      .price-list {
-        list-style: none;
-        margin: 0 0 1.5rem;
-        padding: 0;
-        flex: 1;
-      }
-
-      .price-list li {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.5rem;
-        margin-bottom: 0.55rem;
-        font-size: 0.9rem;
-        color: var(--text-muted);
-      }
-
-      .price-list li::before {
-        content: "✅";
-        flex-shrink: 0;
-        font-size: 0.85rem;
-      }
-
-      .price-footnote {
-        text-align: center;
-        margin-top: 2rem;
-        font-size: 0.85rem;
-        color: var(--text-muted);
-      }
-
-      /* ---------- FAQ ---------- */
-      .faq {
-        max-width: 680px;
-        margin: 0 auto;
-      }
-
-      .faq-item {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        margin-bottom: 0.65rem;
-        overflow: hidden;
-        background: var(--bg-card);
-      }
-
-      .faq-q {
-        width: 100%;
-        text-align: left;
-        padding: 1rem 1.1rem;
-        font-size: 0.95rem;
-        font-weight: 600;
-        font-family: inherit;
-        color: var(--text);
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
-      }
-
-      .faq-q:hover {
-        background: rgba(99, 102, 241, 0.06);
-      }
-
-      .faq-icon {
-        font-size: 1.25rem;
-        color: var(--indigo-light);
-        transition: transform 0.25s;
-        flex-shrink: 0;
-      }
-
-      .faq-item.open .faq-icon {
-        transform: rotate(45deg);
-      }
-
-      .faq-a {
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.35s ease;
-      }
-
-      .faq-a-inner {
-        padding: 0 1.1rem 1rem;
-        font-size: 0.9rem;
-        color: var(--text-muted);
-        line-height: 1.6;
-      }
-
-      /* ---------- Final CTA ---------- */
-      .cta-final {
-        margin: 2rem 0 0;
-        padding: 4rem 0;
-        background: linear-gradient(135deg, #1e1b4b 0%, #0f0f1a 45%, #312e81 100%);
-        position: relative;
-        overflow: hidden;
-      }
-
-      .cta-final::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(circle at 30% 50%, rgba(99, 102, 241, 0.25), transparent 50%);
-        pointer-events: none;
-      }
-
-      .cta-inner {
-        position: relative;
-        z-index: 1;
-        text-align: center;
-        max-width: 36rem;
-        margin: 0 auto;
-      }
-
-      .cta-final h2 {
-        margin: 0 0 0.75rem;
-        font-size: clamp(1.6rem, 4vw, 2.25rem);
-        font-weight: 800;
-        letter-spacing: -0.03em;
-      }
-
-      .cta-final p {
-        margin: 0 0 1.5rem;
-        color: rgba(241, 245, 249, 0.85);
-      }
-
-      .cta-note {
-        margin-top: 0.85rem !important;
-        font-size: 0.85rem;
-        color: var(--text-muted) !important;
-      }
-
-      /* ---------- Footer ---------- */
-      footer {
-        padding: 2.5rem 0;
-        border-top: 1px solid var(--border);
-      }
-
-      .foot-inner {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1.25rem;
-      }
-
-      .foot-links {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 1.25rem;
-        font-size: 0.88rem;
-        color: var(--text-muted);
-      }
-
-      .foot-links a:hover {
-        color: var(--indigo-light);
-      }
-
-      .foot-copy {
-        font-size: 0.82rem;
-        color: var(--text-muted);
-        width: 100%;
-        text-align: center;
-        margin-top: 0.5rem;
-      }
-
-      @media (max-width: 640px) {
-        .foot-inner {
-          flex-direction: column;
-          text-align: center;
+      /* Touch targets 44px minimum */
+      @media (hover: none) {
+        .nav-links a,
+        .footer-links a {
+          padding: 8px 0;
         }
       }
     </style>
   </head>
   <body>
-    <nav id="site-nav" aria-label="Principale">
+    <!-- =================================================================
+         NAV
+         ================================================================= -->
+    <nav class="nav">
       <div class="container nav-inner">
-        <a href="#" class="logo" aria-label="AutoDocs accueil">
-          <span class="logo-mark" aria-hidden="true"></span>
-          AutoDocs
+        <a class="brand" href="/" aria-label="AutoDocs accueil">
+          <span class="brand-icon" aria-hidden="true">
+            <!-- icône voiture -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 16H9m10 0h3v-3.15a1 1 0 0 0-.84-.99L16 11l-2.7-3.6a1 1 0 0 0-.8-.4H5.24a2 2 0 0 0-1.8 1.1l-.8 1.63A6 6 0 0 0 2 12.42V16h2" />
+              <circle cx="6.5" cy="16.5" r="2.5" />
+              <circle cx="16.5" cy="16.5" r="2.5" />
+            </svg>
+          </span>
+          <span>Auto<span class="accent">Docs</span></span>
         </a>
-        <div class="nav-links">
+
+        <div class="nav-links" role="navigation">
           <a href="#features">Fonctionnalités</a>
-          <a href="#roi">ROI</a>
-          <a href="#tarifs">Tarifs</a>
+          <a href="#pricing">Tarifs</a>
+          <a href="/login">Connexion</a>
         </div>
-        <div class="nav-actions">
-          <a class="btn btn-outline" href="https://autodocs-eight.vercel.app/login">Se connecter</a>
-          <a class="btn btn-primary" href="https://autodocs-eight.vercel.app/inscription"
-            >Essayer gratuitement →</a
-          >
-        </div>
+
+        <a class="nav-cta" href="/login">Essayer gratuitement</a>
       </div>
     </nav>
 
+    <!-- =================================================================
+         HERO
+         ================================================================= -->
     <header class="hero">
-      <div class="hero-mesh" aria-hidden="true"></div>
-      <div class="container hero-grid">
-        <div class="reveal" data-reveal>
-          <div class="badge-animated">🤖 Propulsé par l'IA — Agent de vente intégré</div>
-          <h1>Votre équipe vend.<br /><span>L'IA gère le reste.</span></h1>
-          <p class="hero-lead">
-            AutoDocs automatise toute l'administration post-vente grâce à l'intelligence artificielle. Vos
-            commerciaux récupèrent 15 minutes par vente — soit plus de 1&nbsp;000&nbsp;€ de CA supplémentaire
-            par mois.
-          </p>
-          <div class="hero-ctas">
-            <a class="btn btn-primary" href="#roi">Calculer mon gain →</a>
-            <a class="btn btn-outline" href="https://autodocs-eight.vercel.app/inscription">Essayer gratuitement</a>
-          </div>
-          <div class="proof-line">
-            <span><span class="ok">✓</span> Sans carte bancaire</span>
-            <span><span class="ok">✓</span> Actif en 2 minutes</span>
-            <span><span class="ok">✓</span> 3× moins cher que Spider VO</span>
-          </div>
+      <div class="container">
+        <span class="hero-badge reveal">SaaS · Concessions automobiles</span>
+        <h1 class="reveal" style="--reveal-delay: 80ms">
+          Le bon de commande automobile
+          <span class="grad">en 30 secondes</span>.
+        </h1>
+        <p class="reveal" style="--reveal-delay: 160ms">
+          Scannez les documents client, sélectionnez le véhicule, générez le PDF.
+          AutoDocs automatise la paperasse pour que vos commerciaux se
+          concentrent sur la vente.
+        </p>
+        <div class="hero-ctas reveal" style="--reveal-delay: 240ms">
+          <a class="btn-primary" href="/login">
+            Démarrer gratuitement
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </a>
+          <a class="btn-secondary" href="#features">Voir la démo</a>
         </div>
-        <div class="hero-visual-wrap reveal" data-reveal>
-          <div class="hero-glow-ring" aria-hidden="true"></div>
-          <svg class="hero-svg" viewBox="0 0 400 320" role="img" aria-labelledby="hero-svg-title">
-            <title id="hero-svg-title">Illustration : agent IA automatisant documents et validations</title>
-            <defs>
-              <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#6366f1" />
-                <stop offset="100%" stop-color="#8b5cf6" />
-              </linearGradient>
-              <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-                <path d="M0,0 L8,4 L0,8 Z" fill="#6366f1" />
-              </marker>
-              <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="4" result="b" />
-                <feMerge>
-                  <feMergeNode in="b" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-            <!-- Robot / agent -->
-            <rect x="148" y="48" width="104" height="120" rx="18" fill="#111127" stroke="url(#g1)" stroke-width="2" />
-            <circle cx="184" cy="95" r="10" fill="#818cf8" />
-            <circle cx="216" cy="95" r="10" fill="#818cf8" />
-            <path d="M175 118 Q200 132 225 118" stroke="#94a3b8" stroke-width="3" fill="none" stroke-linecap="round" />
-            <rect x="168" y="138" width="64" height="8" rx="4" fill="#4f46e5" opacity="0.8" />
-            <!-- Arrows from docs -->
-            <g stroke="#6366f1" stroke-width="2" fill="none" opacity="0.9">
-              <path d="M80 100 L135 95" marker-end="url(#arr)" />
-              <path d="M80 165 L140 130" marker-end="url(#arr)" />
-              <path d="M320 105 L265 100" marker-end="url(#arr)" />
-              <path d="M320 175 L260 145" marker-end="url(#arr)" />
-            </g>
-            <!-- Floating docs left -->
-            <g transform="translate(28,72)">
-              <rect width="52" height="64" rx="6" fill="#1a1a35" stroke="rgba(99,102,241,0.4)" />
-              <line x1="10" y1="18" x2="42" y2="18" stroke="#64748b" stroke-width="2" />
-              <line x1="10" y1="28" x2="36" y2="28" stroke="#64748b" stroke-width="2" />
-              <line x1="10" y1="38" x2="40" y2="38" stroke="#64748b" stroke-width="2" />
-            </g>
-            <g transform="translate(18,150)">
-              <rect width="56" height="40" rx="6" fill="#1a1a35" stroke="rgba(139,92,246,0.45)" />
-              <text x="28" y="26" text-anchor="middle" fill="#94a3b8" font-size="11" font-family="Inter, sans-serif">
-                PDF
-              </text>
-            </g>
-            <!-- Floating docs right -->
-            <g transform="translate(318,78)">
-              <rect width="48" height="56" rx="6" fill="#1a1a35" stroke="rgba(99,102,241,0.4)" />
-              <path d="M14 40 L24 48 L36 28" stroke="#10b981" stroke-width="3" fill="none" stroke-linecap="round" />
-            </g>
-            <g transform="translate(308,152)">
-              <rect width="58" height="44" rx="6" fill="#1a1a35" stroke="rgba(99,102,241,0.35)" />
-              <rect x="8" y="12" width="42" height="6" rx="2" fill="#4f46e5" opacity="0.6" />
-              <rect x="8" y="24" width="28" height="6" rx="2" fill="#64748b" />
-            </g>
-            <!-- Checklist bottom -->
-            <g transform="translate(72,230)" filter="url(#softGlow)">
-              <rect width="256" height="72" rx="12" fill="#111127" stroke="rgba(99,102,241,0.35)" />
-              <g transform="translate(14,16)">
-                <circle cx="10" cy="10" r="8" fill="rgba(16,185,129,0.2)" stroke="#10b981" />
-                <path d="M6 10 L9 13 L14 7" stroke="#10b981" stroke-width="2" fill="none" />
-                <text x="28" y="14" fill="#e2e8f0" font-size="11" font-family="Inter, sans-serif">Stock mis à jour</text>
-              </g>
-              <g transform="translate(14,40)">
-                <circle cx="10" cy="10" r="8" fill="rgba(99,102,241,0.15)" stroke="#818cf8" />
-                <text x="28" y="14" fill="#94a3b8" font-size="11" font-family="Inter, sans-serif">Facture &amp; CERFA…</text>
-              </g>
-            </g>
-          </svg>
+
+        <div class="hero-preview reveal" style="--reveal-delay: 320ms" aria-hidden="true">
+          <div class="hero-preview-bar">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="hero-preview-grid">
+            <div class="hero-preview-item">
+              <div class="hero-preview-item-label">Bons ce mois</div>
+              <div class="hero-preview-item-value">247</div>
+              <div class="hero-preview-item-sub">Brouillons créés</div>
+            </div>
+            <div class="hero-preview-item green">
+              <div class="hero-preview-item-label">Véhicules stock</div>
+              <div class="hero-preview-item-value">38</div>
+              <div class="hero-preview-item-sub">Disponibles</div>
+            </div>
+            <div class="hero-preview-item">
+              <div class="hero-preview-item-label">Temps moyen</div>
+              <div class="hero-preview-item-value">28s</div>
+              <div class="hero-preview-item-sub">Par bon</div>
+            </div>
+          </div>
         </div>
       </div>
     </header>
 
-    <main>
-      <section id="roi" class="reveal" data-reveal>
-        <div class="container">
-          <h2 class="section-title">Combien AutoDocs peut vous rapporter&nbsp;?</h2>
-          <p class="section-sub">Basé sur 15&nbsp;min économisées par vente et une valeur horaire commercial de 135&nbsp;€/h.</p>
-          <div class="roi-card">
-            <div class="roi-slider-wrap">
-              <label for="sales-slider">Nombre de ventes par mois</label>
-              <input type="range" id="sales-slider" min="5" max="100" value="30" step="1" aria-valuemin="5" aria-valuemax="100" />
-              <div><span class="roi-value-pill" id="sales-display">30 ventes</span></div>
-            </div>
-            <div class="roi-stats" id="roi-output" aria-live="polite"></div>
-            <div class="roi-cta-wrap">
-              <a class="btn btn-primary btn-primary-lg" href="https://autodocs-eight.vercel.app/inscription"
-                >Obtenir ce gain → Essayer gratuitement</a
-              >
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="ia-flow" class="reveal" data-reveal>
-        <div class="container">
-          <h2 class="section-title">Un agent IA qui travaille après chaque vente</h2>
-          <p class="section-sub">Du bon signé aux obligations légales : tout s'enchaîne sans ressaisie.</p>
-          <div class="timeline-wrap">
-            <div class="timeline" role="list">
-              <div class="tl-step" role="listitem">
-                <div class="emoji" aria-hidden="true">🖊️</div>
-                <strong>1. Bon signé</strong>
-                <p>Le commercial signe le bon de commande.</p>
-              </div>
-              <div class="tl-arrow" aria-hidden="true">→</div>
-              <div class="tl-step" role="listitem">
-                <div class="emoji" aria-hidden="true">🤖</div>
-                <strong>2. Agent IA</strong>
-                <p>Déclenché automatiquement à la signature.</p>
-              </div>
-              <div class="tl-arrow" aria-hidden="true">→</div>
-              <div class="tl-step" role="listitem">
-                <div class="emoji" aria-hidden="true">✅</div>
-                <strong>3. Stock</strong>
-                <p>Véhicule marqué vendu.</p>
-              </div>
-              <div class="tl-arrow" aria-hidden="true">→</div>
-              <div class="tl-step" role="listitem">
-                <div class="emoji" aria-hidden="true">👤</div>
-                <strong>4. CRM</strong>
-                <p>Fiche client créée ou mise à jour.</p>
-              </div>
-              <div class="tl-arrow" aria-hidden="true">→</div>
-              <div class="tl-step" role="listitem">
-                <div class="emoji" aria-hidden="true">🧾</div>
-                <strong>5. Facture</strong>
-                <p>Générée et envoyée par e-mail.</p>
-              </div>
-              <div class="tl-arrow" aria-hidden="true">→</div>
-              <div class="tl-step" role="listitem">
-                <div class="emoji" aria-hidden="true">📋</div>
-                <strong>6. Livre de police</strong>
-                <p>Mise à jour conforme.</p>
-              </div>
-              <div class="tl-arrow" aria-hidden="true">→</div>
-              <div class="tl-step" role="listitem">
-                <div class="emoji" aria-hidden="true">📄</div>
-                <strong>7. CERFA</strong>
-                <p>Document généré automatiquement.</p>
-              </div>
-            </div>
-          </div>
-          <p class="timeline-tagline">Ce qui prenait 15 minutes se fait en 8 secondes.</p>
-        </div>
-      </section>
-
-      <section id="features" class="reveal" data-reveal>
-        <div class="container">
-          <h2 class="section-title">Tout ce dont une concession a besoin</h2>
-          <p class="section-sub">Sans la complexité d'un DMS à 500&nbsp;€/mois.</p>
-          <div class="feature-grid">
-            <article class="feature-card">
-              <div class="ic" aria-hidden="true">🤖</div>
-              <h3>Agent IA post-vente</h3>
-              <p>
-                Déclenché automatiquement après signature. Gère véhicule, client, facture, CERFA et livre de police
-                sans intervention humaine.
-              </p>
-            </article>
-            <article class="feature-card">
-              <div class="ic" aria-hidden="true">📊</div>
-              <h3>Briefing IA quotidien</h3>
-              <p>
-                Chaque matin : CA du mois, bons en attente, alertes de relance. Votre journée organisée avant même
-                d'arriver au bureau.
-              </p>
-            </article>
-            <article class="feature-card">
-              <div class="ic" aria-hidden="true">✍️</div>
-              <h3>Signature électronique</h3>
-              <p>
-                Le client signe depuis son téléphone. Vous signez sur l'app. PDF final envoyé automatiquement aux deux
-                parties.
-              </p>
-            </article>
-            <article class="feature-card">
-              <div class="ic" aria-hidden="true">📋</div>
-              <h3>Livre de police numérique</h3>
-              <p>
-                Registre légal conforme Article L321-1 CSI. Rempli automatiquement par l'IA. Export PDF pour les
-                contrôles en un clic.
-              </p>
-            </article>
-            <article class="feature-card">
-              <div class="ic" aria-hidden="true">💰</div>
-              <h3>Estimation reprise IA</h3>
-              <p>
-                L'IA analyse marque/modèle/kilométrage et propose une fourchette de prix de reprise en temps réel pendant
-                la négociation.
-              </p>
-            </article>
-            <article class="feature-card">
-              <div class="ic" aria-hidden="true">📧</div>
-              <h3>Relances automatiques</h3>
-              <p>
-                Bon non signé depuis 3 jours ? L'app relance le client automatiquement. Vous ne perdez plus aucune vente
-                par oubli.
-              </p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="compare" class="reveal" data-reveal>
-        <div class="container">
-          <h2 class="section-title">3× moins cher. 10× plus intelligent.</h2>
-          <p class="section-sub">AutoDocs vs Spider VO — même segment, autre niveau d'automatisation.</p>
-          <div class="compare-wrap">
-            <table class="compare">
-              <thead>
-                <tr>
-                  <th></th>
-                  <th class="col-ad">AutoDocs</th>
-                  <th class="col-sp">Spider VO</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Prix</td>
-                  <td class="col-ad"><strong>49&nbsp;€/mois</strong></td>
-                  <td class="col-sp">159&nbsp;€/mois</td>
-                </tr>
-                <tr>
-                  <td>Agent IA post-vente</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">❌</td>
-                </tr>
-                <tr>
-                  <td>Briefing IA quotidien</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">❌</td>
-                </tr>
-                <tr>
-                  <td>Estimation reprise IA</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">❌</td>
-                </tr>
-                <tr>
-                  <td>Bons de commande</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">✅</td>
-                </tr>
-                <tr>
-                  <td>Signature électronique</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">✅</td>
-                </tr>
-                <tr>
-                  <td>CERFA automatique</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">✅</td>
-                </tr>
-                <tr>
-                  <td>Livre de police</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">✅</td>
-                </tr>
-                <tr>
-                  <td>Facturation légale</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">✅</td>
-                </tr>
-                <tr>
-                  <td>Support</td>
-                  <td class="col-ad">✅</td>
-                  <td class="col-sp">✅</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div style="text-align: center">
-            <p class="compare-badge">🏆 AutoDocs — L'IA que Spider VO n'a pas, au tiers du prix</p>
-          </div>
-        </div>
-      </section>
-
-      <section id="temoignages" class="reveal" data-reveal>
-        <div class="container">
-          <h2 class="section-title">Ils vendent plus, pas plus tard</h2>
-          <p class="section-sub">Concessions indépendantes qui ont basculé sur l'IA post-vente.</p>
-          <div class="test-grid">
-            <article class="test-card">
-              <blockquote>
-                «&nbsp;Mes commerciaux passaient 20 minutes de paperasse après chaque vente. Maintenant l'agent IA fait
-                tout. On a vendu 4 voitures de plus ce mois-ci avec le temps récupéré.&nbsp;»
-              </blockquote>
-              <cite>— Marc D., Directeur commercial, Garage du Centre, Lyon</cite>
-            </article>
-            <article class="test-card">
-              <blockquote>
-                «&nbsp;Le livre de police numérique nous a sauvés lors d'un contrôle préfectoral. Tout était à jour,
-                exporté en PDF en 30 secondes.&nbsp;»
-              </blockquote>
-              <cite>— Sophie L., Directrice, AutoSud Montpellier</cite>
-            </article>
-            <article class="test-card">
-              <blockquote>
-                «&nbsp;On économise 110&nbsp;€/mois vs Spider VO avec 10× plus d'automatisation IA. Le retour sur
-                investissement est immédiat.&nbsp;»
-              </blockquote>
-              <cite>— Karim B., Gérant, Auto Prestige Marseille</cite>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="tarifs" class="reveal" data-reveal>
-        <div class="container">
-          <h2 class="section-title">Simple, transparent, sans surprise</h2>
-          <p class="section-sub">Gratuit pour tester, Pro quand la concession accélère.</p>
-          <div class="price-grid">
-            <div class="price-card">
-              <h3>Gratuit</h3>
-              <div class="price-amount">0&nbsp;€</div>
-              <ul class="price-list">
-                <li>10 bons de commande à vie</li>
-                <li>Toutes les fonctionnalités</li>
-                <li>Agent IA inclus</li>
-                <li>Support e-mail</li>
-              </ul>
-              <a class="btn btn-outline" href="https://autodocs-eight.vercel.app/inscription" style="width: 100%"
-                >Commencer gratuitement</a
-              >
-            </div>
-            <div class="price-card pro">
-              <span class="price-badge">Le plus populaire</span>
-              <h3>Pro</h3>
-              <div class="price-amount">49&nbsp;€/mois</div>
-              <p style="margin: -0.5rem 0 1rem; font-size: 0.9rem; color: var(--text-muted)">
-                ou <strong style="color: var(--text)">299&nbsp;€/an</strong>
-                <span
-                  style="
-                    margin-left: 0.35rem;
-                    padding: 0.15rem 0.45rem;
-                    border-radius: 6px;
-                    font-size: 0.75rem;
-                    font-weight: 700;
-                    background: rgba(16, 185, 129, 0.15);
-                    color: var(--green);
-                  "
-                  >−49&nbsp;%</span
-                >
-                vs mensuel ×12
-              </p>
-              <ul class="price-list">
-                <li>Bons illimités</li>
-                <li>Toutes les fonctionnalités</li>
-                <li>Agent IA illimité</li>
-                <li>Priorité support</li>
-                <li>Mises à jour en avant-première</li>
-              </ul>
-              <a class="btn btn-primary btn-primary-lg" href="https://autodocs-eight.vercel.app/inscription" style="width: 100%"
-                >Passer au Pro →</a
-              >
-            </div>
-          </div>
-          <p class="price-footnote">
-            Sans engagement · Annulable à tout moment · Paiement sécurisé par Stripe
+    <!-- =================================================================
+         FEATURES
+         ================================================================= -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-eyebrow reveal">Fonctionnalités</span>
+          <h2 class="section-title light-subtitle reveal" style="--reveal-delay: 80ms">
+            Tout ce dont un concessionnaire a besoin pour vendre vite
+          </h2>
+          <p class="section-subtitle reveal" style="--reveal-delay: 160ms">
+            Conçu avec des commerciaux automobiles pour éliminer chaque friction
+            administrative.
           </p>
         </div>
-      </section>
 
-      <section id="faq" class="reveal" data-reveal>
-        <div class="container">
-          <h2 class="section-title">Questions fréquentes</h2>
-          <p class="section-sub">La transparence avant le clic.</p>
-          <div class="faq">
-            <div class="faq-item">
-              <button type="button" class="faq-q" aria-expanded="false">
-                Est-ce que mes données sont sécurisées&nbsp;?
-                <span class="faq-icon" aria-hidden="true">+</span>
-              </button>
-              <div class="faq-a">
-                <div class="faq-a-inner">
-                  Oui. AutoDocs utilise Supabase (PostgreSQL) avec chiffrement des données et authentification sécurisée.
-                  Vos données restent en Europe.
-                </div>
-              </div>
-            </div>
-            <div class="faq-item">
-              <button type="button" class="faq-q" aria-expanded="false">
-                Puis-je importer mon stock de véhicules&nbsp;?
-                <span class="faq-icon" aria-hidden="true">+</span>
-              </button>
-              <div class="faq-a">
-                <div class="faq-a-inner">
-                  Oui, import CSV/Excel en un clic avec sélection des colonnes. Compatible avec tous les formats d'export
-                  de vos outils actuels.
-                </div>
-              </div>
-            </div>
-            <div class="faq-item">
-              <button type="button" class="faq-q" aria-expanded="false">
-                L'agent IA fonctionne comment exactement&nbsp;?
-                <span class="faq-icon" aria-hidden="true">+</span>
-              </button>
-              <div class="faq-a">
-                <div class="faq-a-inner">
-                  Après chaque signature, il analyse le bon de commande et exécute automatiquement les tâches que vous
-                  sélectionnez : créer la fiche client, générer la facture, marquer le véhicule vendu, etc.
-                </div>
-              </div>
-            </div>
-            <div class="faq-item">
-              <button type="button" class="faq-q" aria-expanded="false">
-                Que se passe-t-il si je dépasse les 10 bons gratuits&nbsp;?
-                <span class="faq-icon" aria-hidden="true">+</span>
-              </button>
-              <div class="faq-a">
-                <div class="faq-a-inner">
-                  L'app vous propose de passer au plan Pro. Vos données sont conservées et vous continuez exactement où
-                  vous en étiez.
-                </div>
-              </div>
-            </div>
-            <div class="faq-item">
-              <button type="button" class="faq-q" aria-expanded="false">
-                Puis-je avoir plusieurs commerciaux sur le même compte&nbsp;?
-                <span class="faq-icon" aria-hidden="true">+</span>
-              </button>
-              <div class="faq-a">
-                <div class="faq-a-inner">
-                  Oui, le plan Pro inclut le multi-utilisateurs. Chaque commercial a son accès, les données sont
-                  partagées par concession.
-                </div>
-              </div>
-            </div>
-          </div>
+        <div class="features-grid">
+          <article class="feature-card reveal">
+            <div class="feature-icon">📄</div>
+            <h3>Scan CNI automatique</h3>
+            <p>
+              Extrayez nom, prénom, adresse en un scan. Plus de saisie manuelle,
+              plus d'erreurs de retranscription.
+            </p>
+          </article>
+          <article class="feature-card reveal" style="--reveal-delay: 120ms">
+            <div class="feature-icon">🚗</div>
+            <h3>Stock véhicules intégré</h3>
+            <p>
+              Importez votre stock Excel, sélectionnez le véhicule en 2 clics,
+              synchronisez les prix et références.
+            </p>
+          </article>
+          <article class="feature-card reveal" style="--reveal-delay: 240ms">
+            <div class="feature-icon">⚡</div>
+            <h3>PDF instantané</h3>
+            <p>
+              Bon de commande généré et prêt à signer en quelques secondes, au
+              format officiel attendu par le client.
+            </p>
+          </article>
         </div>
-      </section>
-    </main>
-
-    <section class="cta-final reveal" data-reveal aria-labelledby="cta-final-title">
-      <div class="container cta-inner">
-        <h2 id="cta-final-title">Votre concession mérite mieux que la paperasse</h2>
-        <p>Rejoignez les concessions qui ont choisi l'IA pour vendre plus.</p>
-        <a class="btn btn-primary btn-primary-lg" href="https://autodocs-eight.vercel.app/inscription"
-          >Commencer gratuitement — C'est immédiat →</a
-        >
-        <p class="cta-note">Aucune carte bancaire requise</p>
       </div>
     </section>
 
+    <!-- =================================================================
+         PRICING
+         ================================================================= -->
+    <section class="section" id="pricing">
+      <div class="container">
+        <div class="section-head">
+          <span class="section-eyebrow reveal">Tarifs</span>
+          <h2 class="section-title light-subtitle reveal" style="--reveal-delay: 80ms">
+            Sans engagement, annulable à tout moment
+          </h2>
+          <p class="section-subtitle reveal" style="--reveal-delay: 160ms">
+            Commencez gratuitement, passez au Pro quand votre volume explose.
+          </p>
+        </div>
+
+        <div class="pricing-grid">
+          <!-- Gratuit -->
+          <article class="pricing-card reveal">
+            <div class="plan-name">Gratuit</div>
+            <div class="plan-price">0 €<span class="suffix">/ mois</span></div>
+            <p class="plan-tagline">Pour tester AutoDocs sans risque</p>
+            <ul class="plan-features">
+              <li>10 bons de commande offerts</li>
+              <li>Stock véhicules</li>
+              <li>Scan CNI</li>
+            </ul>
+            <a class="btn-secondary plan-cta" href="/login">Commencer gratuitement</a>
+          </article>
+
+          <!-- Pro mensuel -->
+          <article class="pricing-card reveal" style="--reveal-delay: 120ms">
+            <div class="plan-name">Pro mensuel</div>
+            <div class="plan-price">49 €<span class="suffix">/ mois</span></div>
+            <p class="plan-tagline">Flexibilité totale, annulable à tout moment</p>
+            <ul class="plan-features">
+              <li>Bons illimités</li>
+              <li>Support prioritaire</li>
+              <li>Toutes les fonctionnalités</li>
+            </ul>
+            <a class="btn-secondary plan-cta" href="/login?plan=monthly">Choisir Mensuel</a>
+          </article>
+
+          <!-- Pro annuel : card featured -->
+          <article class="pricing-card featured reveal" style="--reveal-delay: 240ms">
+            <span class="pricing-badge">⭐ Meilleure offre</span>
+            <div class="plan-name">Pro annuel</div>
+            <div class="plan-price">399 €<span class="suffix">/ an</span></div>
+            <p class="plan-tagline">L'option la plus rentable pour votre concession</p>
+
+            <div class="plan-savings">
+              <div class="plan-savings-line strong">
+                <span>=</span>
+                <span class="em">33 €/mois seulement</span>
+              </div>
+              <div class="plan-savings-line">
+                <span>🎁</span>
+                <span>2 mois offerts par rapport au mensuel</span>
+              </div>
+              <div class="plan-savings-line">
+                <span>💰</span>
+                <span>Économisez <strong>189 €/an</strong></span>
+              </div>
+            </div>
+
+            <ul class="plan-features">
+              <li>Tout le Pro mensuel</li>
+              <li>Bons illimités</li>
+              <li>Support prioritaire</li>
+              <li>Mises à jour & nouvelles fonctionnalités</li>
+            </ul>
+
+            <a class="btn-primary plan-cta" href="/login?plan=annual">Choisir Annuel</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================
+         FOOTER
+         ================================================================= -->
     <footer>
-      <div class="container foot-inner">
-        <a href="#" class="logo" aria-label="AutoDocs">
-          <span class="logo-mark" aria-hidden="true"></span>
-          AutoDocs
-        </a>
-        <div class="foot-links">
+      <div class="container footer-inner">
+        <div class="footer-brand">© 2025 AutoDocs — Tous droits réservés.</div>
+        <div class="footer-links">
           <a href="/cgu.html">CGU</a>
           <a href="/confidentialite.html">Politique de confidentialité</a>
           <a href="mailto:contact@autodocs.fr">Contact</a>
         </div>
-        <p class="foot-copy">© 2026 AutoDocs — Fait avec ❤️ pour les concessions françaises</p>
       </div>
     </footer>
 
     <script>
-      (function () {
-        var HOURLY = 135;
-        var PRO_MONTHLY = 49;
+      // Pas de redirection auto vers /app : la session est stockée sous la
+      // clé "autodocs-auth" côté SPA, et d’anciennes clés sb-*-auth-token
+      // pouvaient déclencher un faux "connecté" → boucle landing ↔ /app.
+      // L’app est atteignable via le bouton "Connexion" / liens de la nav.
 
-        // Navbar glass on scroll
-        window.addEventListener("scroll", function () {
-          var nav = document.getElementById("site-nav");
-          if (!nav) return;
-          if (window.scrollY > 50) {
-            nav.style.background = "rgba(15,15,26,0.88)";
-            nav.style.backdropFilter = "blur(20px)";
-            nav.style.borderBottom = "1px solid rgba(99,102,241,0.2)";
-          } else {
-            nav.style.background = "transparent";
-            nav.style.backdropFilter = "none";
-            nav.style.borderBottom = "1px solid transparent";
-          }
-        });
-
-        // ROI calculator
-        var slider = document.getElementById("sales-slider");
-        var display = document.getElementById("sales-display");
-        var output = document.getElementById("roi-output");
-
-        function fmtInt(n) {
-          return Math.round(n).toLocaleString("fr-FR");
-        }
-
-        function fmtMoney(n) {
-          return Math.round(n).toLocaleString("fr-FR");
-        }
-
-        function updateRoi() {
-          if (!slider || !output) return;
-          var x = parseInt(slider.value, 10);
-          if (display) display.textContent = x + " vente" + (x > 1 ? "s" : "") + " / mois";
-
-          var minutes = x * 15;
-          var hours = (x * 15) / 60;
-          var ca = hours * HOURLY;
-          var roi = ca / PRO_MONTHLY;
-
-          output.innerHTML =
-            '<p style="margin:0 0 0.75rem;font-weight:600;color:var(--text)">Pour <strong>' +
-            fmtInt(x) +
-            "</strong> ventes par mois :</p>" +
-            '<div class="row">⏱&nbsp;<span><strong>' +
-            fmtInt(minutes) +
-            "</strong> minutes économisées</span></div>" +
-            '<div class="row">📅&nbsp;<span><strong>' +
-            hours.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) +
-            "</strong> heures libérées</span></div>" +
-            '<div class="row">💰&nbsp;<span>+<strong>' +
-            fmtMoney(ca) +
-            "</strong>&nbsp;€ de CA potentiel récupérable</span></div>" +
-            '<div class="row">🏆&nbsp;<span>ROI AutoDocs : <strong>' +
-            roi.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) +
-            "×</strong> (vs abonnement Pro 49&nbsp;€)</span></div>";
-        }
-
-        if (slider) {
-          slider.addEventListener("input", updateRoi);
-          updateRoi();
-        }
-
-        // FAQ accordion
-        document.querySelectorAll(".faq-item").forEach(function (item) {
-          var btn = item.querySelector(".faq-q");
-          var panel = item.querySelector(".faq-a");
-          var inner = panel ? panel.querySelector(".faq-a-inner") : null;
-          if (!btn || !panel || !inner) return;
-
-          btn.addEventListener("click", function () {
-            var open = item.classList.contains("open");
-            document.querySelectorAll(".faq-item").forEach(function (other) {
-              if (other !== item) {
-                other.classList.remove("open");
-                var p = other.querySelector(".faq-a");
-                var b = other.querySelector(".faq-q");
-                if (p) p.style.maxHeight = null;
-                if (b) b.setAttribute("aria-expanded", "false");
-              }
-            });
-            if (open) {
-              item.classList.remove("open");
-              panel.style.maxHeight = null;
-              btn.setAttribute("aria-expanded", "false");
-            } else {
-              item.classList.add("open");
-              panel.style.maxHeight = inner.scrollHeight + "px";
-              btn.setAttribute("aria-expanded", "true");
-            }
-          });
-        });
-
-        // Smooth scroll for in-page links (offset fixed nav)
-        document.querySelectorAll('a[href^="#"]').forEach(function (link) {
-          link.addEventListener("click", function (e) {
-            var id = link.getAttribute("href");
-            if (!id || id === "#") return;
-            var target = document.querySelector(id);
-            if (!target) return;
-            e.preventDefault();
-            var navH = document.getElementById("site-nav")
-              ? document.getElementById("site-nav").offsetHeight
-              : 72;
-            var y = target.getBoundingClientRect().top + window.scrollY - navH - 12;
-            window.scrollTo({ top: y, behavior: "smooth" });
-            history.pushState(null, "", id);
-          });
-        });
-
-        // Intersection Observer — reveal on scroll
-        var revealEls = document.querySelectorAll("[data-reveal]");
-        if ("IntersectionObserver" in window) {
-          var io = new IntersectionObserver(
-            function (entries) {
-              entries.forEach(function (en) {
-                if (en.isIntersecting) {
-                  en.target.classList.add("visible");
-                  io.unobserve(en.target);
-                }
-              });
-            },
-            { root: null, rootMargin: "0px 0px -8% 0px", threshold: 0.08 }
-          );
-          revealEls.forEach(function (el) {
-            io.observe(el);
-          });
-        } else {
-          revealEls.forEach(function (el) {
+      // =================================================================
+      // 1. Fade-in au scroll via IntersectionObserver.
+      // =================================================================
+      (function setupReveal() {
+        var reveals = document.querySelectorAll(".reveal");
+        if (!("IntersectionObserver" in window)) {
+          reveals.forEach(function (el) {
             el.classList.add("visible");
           });
+          return;
         }
+        var io = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("visible");
+                io.unobserve(entry.target);
+              }
+            });
+          },
+          { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
+        );
+        reveals.forEach(function (el) {
+          io.observe(el);
+        });
+      })();
+
+      // =================================================================
+      // 2. Lien "Voir la démo" : scroll smooth vers #features.
+      // =================================================================
+      (function smoothAnchors() {
+        document.querySelectorAll('a[href^="#"]').forEach(function (a) {
+          a.addEventListener("click", function (e) {
+            var target = document.querySelector(a.getAttribute("href"));
+            if (!target) return;
+            e.preventDefault();
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        });
       })();
     </script>
   </body>
