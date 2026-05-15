@@ -14,6 +14,7 @@ import {
   buildFactureHtml,
   type FactureTemplatePayload,
 } from "./_lib/facture-template.js";
+import { buildLivrePoliceHTML } from "./_lib/livre-police-template.js";
 import {
   assertIsAdminOfConcession,
   getActiveConcessionIdForUser,
@@ -585,7 +586,13 @@ function buildHtml(
   return html;
 }
 
-async function renderPdfFromHtml(html: string): Promise<Buffer> {
+async function renderPdfFromHtml(
+  html: string,
+  options?: {
+    landscape?: boolean;
+    margin?: { top: string; bottom: string; left: string; right: string };
+  },
+): Promise<Buffer> {
   let browser;
   try {
     browser = await puppeteer.launch({
@@ -598,10 +605,18 @@ async function renderPdfFromHtml(html: string): Promise<Buffer> {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
 
+    const margin = options?.margin ?? {
+      top: "10mm",
+      right: "10mm",
+      bottom: "10mm",
+      left: "10mm",
+    };
+
     const pdfBuffer = await page.pdf({
       format: "A4",
+      landscape: options?.landscape === true,
       printBackground: true,
-      margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" },
+      margin,
     });
 
     return Buffer.from(pdfBuffer);
@@ -655,6 +670,10 @@ type SaveRelancesConfigBody = {
   delai_premier_rappel?: unknown;
   delai_deuxieme_rappel?: unknown;
   message_personnalise?: unknown;
+};
+
+type GenerateBriefingBody = {
+  concession_id?: string;
 };
 
 function parseRequestBody(req: VercelRequest): Record<string, unknown> | null {
@@ -1669,8 +1688,14 @@ async function handleSendRelances(
 
     console.log("config trouvée:", config);
 
-    const premierDelai = Number(config.delai_premier_rappel ?? 3);
-    const deuxiemeDelai = Number(config.delai_deuxieme_rappel ?? 7);
+    const premierDelai = Math.max(
+      1,
+      Math.round(Number(String(config.delai_premier_rappel ?? "3").trim()) || 3),
+    );
+    const deuxiemeDelai = Math.max(
+      1,
+      Math.round(Number(String(config.delai_deuxieme_rappel ?? "7").trim()) || 7),
+    );
 
     const { data: brouillons, error: brouillonsErr } = await admin
       .from("brouillons")
@@ -1692,61 +1717,437 @@ async function handleSendRelances(
       continue;
     }
 
-    const delaiMs1 = Math.max(0, premierDelai) * 24 * 60 * 60 * 1000;
+    const delaiMs1 = premierDelai * 24 * 60 * 60 * 1000;
     const dateLimit1 = new Date(now.getTime() - delaiMs1).toISOString();
 
-    const { data: aRelancer1, error: r1Err } = await admin
+    const idsForIn =
+      brouillonIds.length > 0
+        ? brouillonIds
+        : ["00000000-0000-0000-0000-000000000000"];
+
+    console.log("=== SEND-RELANCES DEBUG ===");
+    console.log("concession_id:", body.concession_id);
+    console.log("concessionId (boucle):", concessionId);
+    console.log("brouillonIds trouvés:", brouillonIds);
+    console.log("dateLimit relance1:", dateLimit1);
+
+    const { data: aRelancer1Debug, error: err1 } = await admin
       .from("signature_requests")
-      .select(
-        "id, token, expires_at, brouillon_id, client_email, client_nom, client_prenom, form_data, created_at",
-      )
-      .in("brouillon_id", brouillonIds)
+      .select("id, created_at, brouillon_id, relance_1_sent_at")
+      .in("brouillon_id", idsForIn)
       .is("signed_at", null)
       .is("relance_1_sent_at", null)
       .lte("created_at", dateLimit1);
 
-    console.log("dateLimit:", dateLimit1);
-    console.log("bons éligibles relance 1:", aRelancer1);
+    console.log("aRelancer1:", aRelancer1Debug);
+    console.log("err1:", err1);
 
-    if (r1Err) {
-      console.error("[actions/send-relances] relance1 read:", r1Err);
+    const { data: tousLesSR } = await admin
+      .from("signature_requests")
+      .select("id, created_at, signed_at, relance_1_sent_at, brouillon_id")
+      .in("brouillon_id", idsForIn);
+
+    console.log("TOUS les signature_requests:", tousLesSR);
+
+    console.log("Config relances:", config);
+    console.log("Délai jours (relance 1):", premierDelai);
+    console.log("Date limite calculée (relance 1):", dateLimit1);
+    console.log("Date now:", now.toISOString());
+    console.log("brouillonIds:", brouillonIds);
+
+    const { data: poolRelance1, error: r1PoolErr } = await admin
+      .from("signature_requests")
+      .select(
+        "id, token, expires_at, brouillon_id, client_email, client_nom, client_prenom, form_data, created_at, relance_1_sent_at, relance_2_sent_at",
+      )
+      .in("brouillon_id", brouillonIds)
+      .is("signed_at", null)
+      .is("relance_1_sent_at", null);
+
+    if (r1PoolErr) {
+      console.error("[actions/send-relances] relance1 pool read:", r1PoolErr);
       continue;
     }
 
-    for (const sr of aRelancer1 ?? []) {
+    console.log("aRelancer1 avant filtre (sans created_at):", poolRelance1?.length, poolRelance1);
+
+    const aRelancer1 = (poolRelance1 ?? []).filter((row) => {
+      const ts = String((row as { created_at?: string | null }).created_at ?? "").trim();
+      if (!ts) return false;
+      return ts <= dateLimit1;
+    });
+
+    console.log("aRelancer1 après filtre created_at:", aRelancer1.length, aRelancer1);
+
+    for (const sr of aRelancer1) {
       if (await sendRelanceMailForRow(sr as RelanceSrRow, config as RelancesConfigForMail, 1))
         sent += 1;
     }
 
-    const delaiMs2 = Math.max(0, deuxiemeDelai) * 24 * 60 * 60 * 1000;
+    const delaiMs2 = deuxiemeDelai * 24 * 60 * 60 * 1000;
     const dateLimit2 = new Date(now.getTime() - delaiMs2).toISOString();
 
-    const { data: aRelancer2, error: r2Err } = await admin
+    console.log("Délai jours (relance 2):", deuxiemeDelai);
+    console.log("Date limite calculée (relance 2):", dateLimit2);
+
+    const { data: poolRelance2, error: r2PoolErr } = await admin
       .from("signature_requests")
       .select(
-        "id, token, expires_at, brouillon_id, client_email, client_nom, client_prenom, form_data, created_at",
+        "id, token, expires_at, brouillon_id, client_email, client_nom, client_prenom, form_data, created_at, relance_1_sent_at, relance_2_sent_at",
       )
       .in("brouillon_id", brouillonIds)
       .is("signed_at", null)
       .not("relance_1_sent_at", "is", null)
-      .is("relance_2_sent_at", null)
-      .lte("created_at", dateLimit2);
+      .is("relance_2_sent_at", null);
 
-    console.log("dateLimit (relance 2):", dateLimit2);
-    console.log("bons éligibles relance 2:", aRelancer2);
-
-    if (r2Err) {
-      console.error("[actions/send-relances] relance2 read:", r2Err);
+    if (r2PoolErr) {
+      console.error("[actions/send-relances] relance2 pool read:", r2PoolErr);
       continue;
     }
 
-    for (const sr of aRelancer2 ?? []) {
+    const aRelancer2 = (poolRelance2 ?? []).filter((row) => {
+      const ts = String((row as { created_at?: string | null }).created_at ?? "").trim();
+      if (!ts) return false;
+      return ts <= dateLimit2;
+    });
+
+    console.log("aRelancer2 après filtre created_at:", aRelancer2.length, aRelancer2);
+
+    for (const sr of aRelancer2) {
       if (await sendRelanceMailForRow(sr as RelanceSrRow, config as RelancesConfigForMail, 2))
         sent += 1;
     }
   }
 
   return res.status(200).json({ sent });
+}
+
+function briefingAlerteEstChiffreAffairesOuCa(message: string): boolean {
+  const m = message.toLowerCase();
+  if (m.includes("ca du mois") || m.includes("c.a. du mois")) return true;
+  if (m.includes("chiffre") && m.includes("affaires")) return true;
+  if (m.includes("ca ") && m.includes("mois") && (m.includes("véhicule") || m.includes("vehicule")))
+    return true;
+  if (m.includes("ca ") && m.includes("vendu")) return true;
+  return false;
+}
+
+async function handleGenerateBriefing(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const userId = await getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Non autorise" });
+
+  const body = data as GenerateBriefingBody;
+  const requestedConcessionId = String(body.concession_id ?? "").trim();
+  if (!requestedConcessionId) {
+    return res.status(400).json({ error: "concession_id requis" });
+  }
+
+  const admin = await getSupabaseAdmin();
+  const activeConcessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!activeConcessionId) {
+    return res.status(403).json({ error: "Aucune concession active pour ce compte." });
+  }
+  const allowedRequestId =
+    requestedConcessionId === activeConcessionId || requestedConcessionId === userId;
+  if (!allowedRequestId) {
+    return res.status(403).json({ error: "Concession invalide." });
+  }
+  const queryConcessionId = activeConcessionId;
+
+  const openAiKey = String(process.env.OPENAI_API_KEY ?? "").trim();
+  if (!openAiKey) {
+    return res.status(500).json({ error: "OPENAI_API_KEY manquante." });
+  }
+
+  try {
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const { data: brouillons, error: brouillonsErr } = await admin
+      .from("brouillons")
+      .select("id")
+      .eq("concession_id", queryConcessionId);
+    if (brouillonsErr) {
+      console.error("[actions/generate-briefing] brouillons:", brouillonsErr);
+      return res.status(500).json({ error: "Erreur lecture brouillons." });
+    }
+
+    const brouillonIds =
+      brouillons?.map((b) => String((b as { id?: string }).id ?? "").trim()).filter(Boolean) ??
+      [];
+
+    const { data: bonsEnAttente, error: bonsErr } = await admin
+      .from("signature_requests")
+      .select("id, created_at, brouillon_id, relance_1_sent_at, relance_2_sent_at")
+      .is("signed_at", null)
+      .in(
+        "brouillon_id",
+        brouillonIds.length > 0 ? brouillonIds : ["00000000-0000-0000-0000-000000000000"],
+      );
+    if (bonsErr) {
+      console.error("[actions/generate-briefing] signature_requests:", bonsErr);
+      return res.status(500).json({ error: "Erreur lecture bons en attente." });
+    }
+
+    console.log("bonsEnAttente:", bonsEnAttente?.length);
+
+    const { data: factures, error: facturesErr } = await admin
+      .from("factures")
+      .select("prix_ttc, created_at, statut")
+      .eq("concession_id", queryConcessionId)
+      .gte("created_at", startOfMonth.toISOString())
+      .neq("statut", "annulee");
+    if (facturesErr) {
+      console.error("[actions/generate-briefing] factures:", facturesErr);
+      return res.status(500).json({ error: "Erreur lecture factures." });
+    }
+
+    const caMois =
+      factures?.reduce((sum, facture) => {
+        const amount =
+          typeof facture.prix_ttc === "number"
+            ? facture.prix_ttc
+            : Number.parseFloat(String(facture.prix_ttc ?? "0"));
+        return sum + (Number.isFinite(amount) ? amount : 0);
+      }, 0) ?? 0;
+
+    const { data: ventesData, error: ventesErr } = await admin
+      .from("stock_vehicules")
+      .select("id, updated_at")
+      .eq("concession_id", queryConcessionId)
+      .eq("statut", "vendu")
+      .gte("updated_at", startOfMonth.toISOString());
+    if (ventesErr) {
+      console.error("[actions/generate-briefing] stock vendus:", ventesErr);
+      return res.status(500).json({ error: "Erreur lecture ventes." });
+    }
+    const nbVentes = ventesData?.length ?? 0;
+
+    const { data: stockDort, error: stockErr } = await admin
+      .from("stock_vehicules")
+      .select("id, donnees, created_at")
+      .eq("concession_id", queryConcessionId)
+      .eq("disponible", true)
+      .lte("created_at", thirtyDaysAgo.toISOString());
+    if (stockErr) {
+      console.error("[actions/generate-briefing] stock dormant:", stockErr);
+      return res.status(500).json({ error: "Erreur lecture stock dormant." });
+    }
+
+    const { data: relancesConfig, error: relancesErr } = await admin
+      .from("relances_config")
+      .select("*")
+      .eq("concession_id", queryConcessionId)
+      .eq("actif", true)
+      .maybeSingle();
+    if (relancesErr) {
+      console.error("[actions/generate-briefing] relances_config:", relancesErr);
+      return res.status(500).json({ error: "Erreur lecture configuration relances." });
+    }
+
+    const seuilRelanceJours = Math.max(
+      1,
+      Number(relancesConfig?.delai_premier_rappel ?? 3) || 3,
+    );
+    const seuilRelance2Jours = Math.max(
+      1,
+      Number(relancesConfig?.delai_deuxieme_rappel ?? 7) || 7,
+    );
+    const listeBons = bonsEnAttente ?? [];
+
+    type SrAttente = {
+      created_at?: string | null;
+      brouillon_id?: string | null;
+      relance_1_sent_at?: string | null;
+      relance_2_sent_at?: string | null;
+    };
+
+    const brouillonsMap = new Map<string, SrAttente>();
+    for (const sr of listeBons) {
+      const row = sr as SrAttente;
+      const bid = String(row.brouillon_id ?? "").trim();
+      if (!bid) continue;
+      const existing = brouillonsMap.get(bid);
+      const tNew = new Date(String(row.created_at ?? "")).getTime();
+      const tOld = existing
+        ? new Date(String(existing.created_at ?? "")).getTime()
+        : Number.NaN;
+      if (
+        !existing ||
+        (!Number.isNaN(tNew) && (Number.isNaN(tOld) || tNew > tOld))
+      ) {
+        brouillonsMap.set(bid, row);
+      }
+    }
+
+    const bonsUniques = Array.from(brouillonsMap.values());
+    const nbBonsEnAttente = bonsUniques.length;
+
+    const bonsRecents =
+      bonsUniques.filter((b) => {
+        const createdAt = new Date(String(b.created_at ?? ""));
+        if (Number.isNaN(createdAt.getTime())) return false;
+        const jours = Math.floor(
+          (today.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        return jours < seuilRelanceJours;
+      }).length || 0;
+
+    // Par bon (brouillon) unique : dernière signature_request, délais et relances déjà envoyées
+    const bonsARelancer =
+      bonsUniques.filter((b) => {
+        const createdAt = new Date(String(b.created_at ?? ""));
+        if (Number.isNaN(createdAt.getTime())) return false;
+        const joursAttente = Math.floor(
+          (today.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        const r1 = b.relance_1_sent_at;
+        const r2 = b.relance_2_sent_at;
+        const relance1Faite = Boolean(r1 && String(r1).trim() !== "");
+        const relance2Faite = Boolean(r2 && String(r2).trim() !== "");
+
+        const eligibleRelance1 =
+          joursAttente >= seuilRelanceJours && !relance1Faite;
+        const eligibleRelance2 =
+          joursAttente >= seuilRelance2Jours && relance1Faite && !relance2Faite;
+
+        return eligibleRelance1 || eligibleRelance2;
+      }).length || 0;
+
+    const prompt = `
+Tu es l'assistant IA d'AutoDocs, un logiciel pour concessions automobiles françaises.
+
+Génère un briefing matinal court, professionnel et motivant pour le commercial. Utilise ces données :
+
+- Bons récents en attente de signature (brouillons distincts, délai depuis la dernière demande de signature : moins de ${seuilRelanceJours} jour(s), pas encore en retard) : ${bonsRecents}
+- Bons en retard éligibles à une relance (brouillons distincts, selon la dernière demande et les relances déjà envoyées) : ${bonsARelancer}
+- Total bons en attente de signature (brouillons distincts avec au moins une demande non signée) : ${nbBonsEnAttente}
+- CA du mois en cours (affiché à part dans l'app, ne pas en faire une alerte) : ${caMois.toLocaleString("fr-FR")}€
+- Véhicules vendus ce mois (affiché à part, ne pas en faire une alerte) : ${nbVentes}
+- Véhicules en stock depuis +30 jours : ${stockDort?.length ?? 0}
+- Date du jour : ${today.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })}
+
+Format de réponse UNIQUEMENT en JSON :
+{
+  "salutation": "Bonjour ! Voici votre briefing du [jour]",
+  "resume": "Une phrase de résumé de la situation",
+  "alertes": [
+    {
+      "type": "warning|success|info",
+      "icone": "🔔|✅|📊|🚗|💰",
+      "message": "Message court et actionnable",
+      "action": "Texte du bouton d'action ou null"
+    }
+  ]
+}
+
+Maximum 4 alertes. Priorise les urgences.
+
+Si ${nbBonsEnAttente} === 0 et ${bonsARelancer} === 0 et ${stockDort?.length ?? 0} === 0 (aucun bon en attente de signature, aucune relance urgente, aucun véhicule en stock depuis plus de 30 jours), génère EXACTEMENT UNE SEULE alerte de type "success" avec un message encourageant et factuel, icône "✅", action null. Exemples de formulations acceptables :
+- "Tout est à jour — aucun bon en attente de relance."
+- "Aucune action requise aujourd'hui, bonne journée !"
+- "Tous vos bons sont signés — continuez ainsi !"
+N'invente pas de problèmes s'il n'y en a pas. Pas de conseils génériques : uniquement un constat positif court.
+
+N'inclus AUCUNE alerte sur le chiffre d'affaires, le CA du mois, les ventes du mois ou le nombre de véhicules vendus : l'interface les affiche déjà dans un encart dédié sous les alertes.
+
+IMPORTANT : ne génère PAS deux alertes pour la même chose (ne mélange pas « bons récents » et « relances urgentes »).
+Si ${bonsARelancer} > 0, parle uniquement des relances urgentes pour ce sujet (pas une alerte séparée pour les bons récents).
+Si ${bonsARelancer} === 0 et ${bonsRecents} > 0, parle des bons en attente normaux (suivi habituel, sans dramatiser).
+Si ${bonsARelancer} === 0 et ${bonsRecents} === 0 et (${nbBonsEnAttente} > 0 ou ${stockDort?.length ?? 0} > 0), au plus une ou deux alertes factuelles (info ou warning) sur ces seuls sujets, sans dramatiser ni inventer d'autres problèmes.
+
+Pour les relances, utilise une formulation directe et professionnelle comme :
+'X bon(s) en attente de signature depuis plus de X jours — pensez à relancer vos clients.'
+ou
+'X client(s) n'ont pas encore signé leur bon de commande.'
+
+Jamais de formulation comme 'pour maintenir le contact' ou trop commerciale/marketing. Ton : direct, factuel, professionnel.
+
+Retourne UNIQUEMENT le JSON, rien d'autre.
+`;
+
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openAiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 500,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!openaiRes.ok) {
+      const raw = await openaiRes.text().catch(() => "");
+      console.error("[actions/generate-briefing] openai:", openaiRes.status, raw);
+      return res.status(500).json({ error: "Erreur génération briefing IA." });
+    }
+
+    const openaiData = (await openaiRes.json()) as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+    const briefingRaw = String(openaiData.choices?.[0]?.message?.content ?? "")
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    if (!briefingRaw) {
+      return res.status(500).json({ error: "Réponse IA vide." });
+    }
+
+    const briefing = JSON.parse(briefingRaw) as {
+      salutation?: unknown;
+      resume?: unknown;
+      alertes?: unknown;
+    };
+
+    if (
+      typeof briefing.salutation !== "string" ||
+      typeof briefing.resume !== "string" ||
+      !Array.isArray(briefing.alertes)
+    ) {
+      return res.status(500).json({ error: "Format briefing invalide." });
+    }
+
+    const alertesFiltered = briefing.alertes.filter((item) => {
+      if (!item || typeof item !== "object") return true;
+      const msg = String((item as { message?: unknown }).message ?? "");
+      return !briefingAlerteEstChiffreAffairesOuCa(msg);
+    });
+
+    const briefingOut = {
+      salutation: briefing.salutation,
+      resume: briefing.resume,
+      alertes: alertesFiltered,
+    };
+
+    return res.status(200).json({
+      success: true,
+      briefing: briefingOut,
+      stats: {
+        ca_mois: caMois,
+        nb_ventes: nbVentes,
+        bons_en_attente: nbBonsEnAttente,
+        bons_a_relancer: bonsARelancer,
+      },
+    });
+  } catch (err) {
+    console.error("[actions/generate-briefing] exception:", err);
+    return res.status(500).json({ error: "Erreur serveur briefing." });
+  }
 }
 
 /* ==================================================================
@@ -1882,18 +2283,14 @@ async function handleFillCerfa(
   const dateMec = parseDate(pickStr(cerfaInput, "date_mise_en_circulation"));
   const marque = pickStr(cerfaInput, "marque");
   const typeVariante = pickStr(cerfaInput, "type_variante");
-  const genre = pickStr(cerfaInput, "genre");
   const denomination = pickStr(cerfaInput, "denomination");
   const kilometrage = pickStr(cerfaInput, "kilometrage");
   const numeroFormule = pickStr(cerfaInput, "numero_formule");
   const dateCi = parseDate(pickStr(cerfaInput, "date_ci_ancien_format"));
   const motifAbsenceCi = pickStr(cerfaInput, "motif_absence_ci");
 
-  // ---------- Vendeur (concession) ----------
-  const vendeurType =
-    pickStr(cerfaInput, "vendeur_type").toLowerCase() === "physique"
-      ? "physique"
-      : "morale";
+  // ---------- Vendeur (ancien propriétaire) = toujours personne morale (concession) ----------
+  /** Jamais physique / M. / Mme côté vendeur sur ce flux (évite tout défaut « féminin » du PDF). */
   const vendeurNom = pickStr(cerfaInput, "vendeur_nom");
   const vendeurSiren = pickStr(cerfaInput, "vendeur_siren").replace(/\s+/g, "");
   const vendeurAdresse = parseAdresse(pickStr(cerfaInput, "vendeur_adresse"));
@@ -1902,8 +2299,9 @@ async function handleFillCerfa(
   const cessionDate = parseDate(pickStr(cerfaInput, "cession_date"));
   const cessionHeure = parseHeure(pickStr(cerfaInput, "cession_heure"));
   const cessionLieu = pickStr(cerfaInput, "cession_lieu");
-  const certifSituation = pickBool(cerfaInput, "certif_situation_admin");
-  const certifNonTransfo = pickBool(cerfaInput, "certif_pas_transformation");
+  /** Toujours cochées (certifications vendeur obligatoires CERFA). */
+  const certifSituation = true;
+  const certifNonTransfo = true;
   const certifVhu = pickBool(cerfaInput, "certif_vhu");
   const vendeurAgrement = pickStr(cerfaInput, "vendeur_agrement_vhu");
   const cession = pickStr(cerfaInput, "cession_motif").toLowerCase(); // "" | "destruction"
@@ -1998,7 +2396,8 @@ async function handleFillCerfa(
     safeSetText(`${p}.num_DateImmatriculationAnnée[0]`, dateMec.a);
     safeSetText(`${p}.txt_MarqueVéhicule[0]`, marque);
     safeSetText(`${p}.txt_TypeVarianteVersionVéhicule[0]`, typeVariante);
-    safeSetText(`${p}.txt_GenreNational[0]`, genre);
+    /* J.1 — toujours véhicule particulier (code VP, aligné avec l’UI CERFA.tsx). */
+    safeSetText(`${p}.txt_GenreNational[0]`, "VP");
     safeSetText(`${p}.txt_DénominationCommerciale[0]`, denomination);
     safeSetText(`${p}.num_KilométrageCompteur[0]`, kilometrage);
 
@@ -2011,18 +2410,12 @@ async function handleFillCerfa(
     safeSetText(`${p}.num_DateCertificatMois[0]`, dateCi.m);
     safeSetText(`${p}.num_DateCertificatAnnée[0]`, dateCi.a);
 
-    // ---- Vendeur ----
-    safeRadio(
-      `${p}.Groupe_de_boutons_radio2[0]`,
-      vendeurType === "physique" ? "1" : "2",
-    );
-    // Sexe vendeur seulement si personne physique
-    if (vendeurType === "physique") {
-      const sexeVendeur = pickStr(cerfaInput, "vendeur_sexe").toUpperCase();
-      safeRadio(
-        `${p}.Groupe_de_boutons_radio3[0]`,
-        sexeVendeur === "M" ? "1" : sexeVendeur === "F" ? "2" : null,
-      );
+    // ---- Vendeur : personne morale uniquement ; décocher tout sexe M/F (template peut laisser Mme par défaut)
+    safeRadio(`${p}.Groupe_de_boutons_radio2[0]`, "2");
+    try {
+      form.getRadioGroup(`${p}.Groupe_de_boutons_radio3[0]`).clear();
+    } catch (err) {
+      console.warn("[fill-cerfa] vendeur sexe (radio3) clear", err);
     }
     safeSetText(`${p}.txt_IdentitéVendeur[0]`, vendeurNom);
     safeSetText(`${p}.Num_Siret[0]`, vendeurSiren);
@@ -2915,6 +3308,1438 @@ async function handleAcceptInvitation(
   return res.status(200).json({ ok: true });
 }
 
+type AgentRapportEntry = {
+  tache: string;
+  statut: "ok" | "err" | "warn" | "skip";
+  message: string;
+  /** PDF CERFA (base64) lorsque la tâche `cerfa` a réussi côté serveur. */
+  pdf_base64?: string;
+};
+
+function makeResCapture(): {
+  res: VercelResponse;
+  snapshot: () => { status: number; body: unknown };
+} {
+  let status = 200;
+  let body: unknown;
+  const res = {
+    status(code: number) {
+      status = code;
+      return res;
+    },
+    json(b: unknown) {
+      body = b;
+      return res;
+    },
+  };
+  return {
+    res: res as unknown as VercelResponse,
+    snapshot: () => ({ status, body }),
+  };
+}
+
+function stripDiacriticsActions(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function extractClientTelFromKv(kvStr: Record<string, string>): string {
+  const customRaw = kvStr.custom_fields_values;
+  if (customRaw) {
+    try {
+      const obj = JSON.parse(customRaw) as Record<string, unknown>;
+      if (obj && typeof obj === "object") {
+        for (const [key, val] of Object.entries(obj)) {
+          const v = String(val ?? "").trim();
+          if (!v) continue;
+          const nk = stripDiacriticsActions(key);
+          if (
+            nk.includes("telephone") ||
+            nk.includes("tel") ||
+            nk.includes("mobile") ||
+            nk.includes("phone")
+          ) {
+            return v;
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return "";
+}
+
+function normNameAgent(s: string): string {
+  return stripDiacriticsActions(s).replace(/\s+/g, " ").trim();
+}
+
+type AgentExtractedClient = {
+  email?: string;
+  nom?: string;
+  prenom?: string;
+  telephone?: string;
+  adresse?: string;
+  date_naissance?: string;
+};
+
+function isMissingClientsColumnErrorActions(message: string | undefined): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    (m.includes("could not find") && m.includes("column") && m.includes("clients")) ||
+    (m.includes("schema cache") && m.includes("clients"))
+  );
+}
+
+const CLIENTS_OPTIONAL_INSERT_COLS = [
+  "civilite",
+  "code_postal",
+  "ville",
+  "lieu_naissance",
+  "numero_cni",
+] as const;
+
+/** Insert admin avec retry si colonnes CRM optionnelles absentes (migration non appliquée). */
+async function adminInsertClientWithOptionalColumns(
+  admin: Awaited<ReturnType<typeof getSupabaseAdmin>>,
+  row: Record<string, unknown>,
+): Promise<{ data: { id: string } | null; error: { message: string } | null }> {
+  let { data, error } = await admin.from("clients").insert(row).select("id").single();
+  if (error && isMissingClientsColumnErrorActions(error.message)) {
+    const minimal = { ...row };
+    for (const k of CLIENTS_OPTIONAL_INSERT_COLS) delete minimal[k];
+    console.warn(
+      "[agent-post-vente] insert clients sans colonnes optionnelles (exécutez ALTER TABLE sur Supabase)",
+    );
+    const second = await admin.from("clients").insert(minimal).select("id").single();
+    data = second.data as { id: string } | null;
+    error = second.error as { message: string } | null;
+  }
+  return { data: data as { id: string } | null, error: error as { message: string } | null };
+}
+
+async function analyserBonAvecIA(
+  row: Record<string, unknown>,
+  apiKey: string | undefined,
+): Promise<{
+  client: AgentExtractedClient;
+  vehicule: { stock_vehicule_id?: string };
+}> {
+  const rawKv = row.vehicle_field_values;
+  const kvStr: Record<string, string> = {};
+  if (rawKv && typeof rawKv === "object") {
+    for (const [k, v] of Object.entries(rawKv as Record<string, unknown>)) {
+      kvStr[k] = String(v ?? "");
+    }
+  }
+  const base = {
+    client: {
+      email: String(kvStr.client_email ?? "").trim() || undefined,
+      nom: String(row.client_nom ?? "").trim() || undefined,
+      prenom: String(row.client_prenom ?? "").trim() || undefined,
+      telephone: String(kvStr.client_telephone ?? "").trim() || undefined,
+      adresse: String(row.client_adresse ?? "").trim() || undefined,
+      date_naissance: String(row.client_date_naissance ?? "").trim() || undefined,
+    },
+    vehicule: {
+      stock_vehicule_id: String(kvStr.vehicule_stock_id ?? "").trim() || undefined,
+    },
+  };
+  if (!apiKey?.trim()) {
+    return base;
+  }
+  const snippet = JSON.stringify({
+    client_nom: row.client_nom,
+    client_prenom: row.client_prenom,
+    client_adresse: row.client_adresse,
+    client_date_naissance: row.client_date_naissance,
+    vehicule_prix: row.vehicule_prix,
+    kv: kvStr,
+  }).slice(0, 12000);
+  try {
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        temperature: 0,
+        max_tokens: 500,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: `Tu analyses un brouillon de bon de commande automobile (JSON ci-dessous).
+Réponds UNIQUEMENT par un objet JSON avec les clés :
+- "client_email" : string, email acheteur si identifiable, sinon "".
+- "client_nom" : string, nom famille acheteur si identifiable, sinon "".
+- "client_prenom" : string, prénom acheteur si identifiable, sinon "".
+- "client_telephone" : string, téléphone si identifiable, sinon "".
+- "client_adresse" : string, adresse postale si identifiable, sinon "".
+- "client_date_naissance" : string, date naissance (YYYY-MM-DD ou JJ/MM/AAAA) si identifiable, sinon "".
+- "stock_vehicule_id" : string, UUID du véhicule en stock si présent (souvent vehicule_stock_id), sinon "".
+
+Données :
+${snippet}`,
+          },
+        ],
+      }),
+    });
+    if (!openaiRes.ok) {
+      console.warn("[agent-post-vente] OpenAI analyse:", openaiRes.status);
+      return base;
+    }
+    const json = (await openaiRes.json()) as {
+      choices?: Array<{ message?: { content?: string | null } }>;
+    };
+    const raw = json.choices?.[0]?.message?.content?.trim();
+    if (!raw) return base;
+    const parsed = JSON.parse(raw) as {
+      client_email?: string;
+      client_nom?: string;
+      client_prenom?: string;
+      client_telephone?: string;
+      client_adresse?: string;
+      client_date_naissance?: string;
+      stock_vehicule_id?: string;
+    };
+    const em = String(parsed.client_email ?? "").trim();
+    const nomAi = String(parsed.client_nom ?? "").trim();
+    const prenomAi = String(parsed.client_prenom ?? "").trim();
+    const telAi = String(parsed.client_telephone ?? "").trim();
+    const adrAi = String(parsed.client_adresse ?? "").trim();
+    const dnAi = String(parsed.client_date_naissance ?? "").trim();
+    const sid = String(parsed.stock_vehicule_id ?? "").trim();
+    return {
+      client: {
+        email: em || base.client.email,
+        nom: nomAi || base.client.nom,
+        prenom: prenomAi || base.client.prenom,
+        telephone: telAi || base.client.telephone,
+        adresse: adrAi || base.client.adresse,
+        date_naissance: dnAi || base.client.date_naissance,
+      },
+      vehicule: {
+        stock_vehicule_id: sid || base.vehicule.stock_vehicule_id,
+      },
+    };
+  } catch (err) {
+    console.warn("[agent-post-vente] analyserBonAvecIA:", err);
+    return base;
+  }
+}
+
+function buildCerfaPayloadFromBrouillon(
+  row: Record<string, unknown>,
+  prof: Record<string, unknown> | null,
+  agentCerfa?: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const rawKv = row.vehicle_field_values;
+  const kvStr: Record<string, string> = {};
+  if (rawKv && typeof rawKv === "object") {
+    for (const [k, v] of Object.entries(rawKv as Record<string, unknown>)) {
+      kvStr[k] = String(v ?? "");
+    }
+  }
+  const stockDonnees = parseStringDict(
+    (rawKv as Record<string, unknown> | undefined)?.stock_donnees,
+  );
+  const immat = extractVehiculeField(stockDonnees, [
+    "immat",
+    "immatriculation",
+    "plaque",
+    "numero_immat",
+  ]);
+  const vinStock = extractVehiculeField(stockDonnees, ["vin", "VIN", "chassis", "châssis"]);
+  const marque = pickStockField(stockDonnees, ["marque", "brand"]);
+  const modele = pickStockField(stockDonnees, ["modele", "modèle", "model"]);
+  const km = extractVehiculeField(stockDonnees, [
+    "km",
+    "kilometrage",
+    "kilométrage",
+    "kms",
+  ]);
+  const prem = extractVehiculeField(stockDonnees, [
+    "premiere_mise_en_circulation",
+    "première mise en circulation",
+    "date_mec",
+    "mec",
+  ]);
+  const formuleStock = extractVehiculeField(stockDonnees, [
+    "formule",
+    "numero_formule",
+    "numéro_formule",
+    "n_formule",
+    "numero_formule_carte_grise",
+    "carte_grise_formule",
+  ]).slice(0, 9);
+
+  const ag = agentCerfa ?? {};
+  const vinAgent = String(ag.vin ?? "").trim().slice(0, 17);
+  const vinFinal = (vinAgent || vinStock).trim().slice(0, 17);
+  const formuleAgent = String(ag.numero_formule ?? "").trim().slice(0, 9);
+  const numeroFormuleFinal = (formuleAgent || formuleStock).trim().slice(0, 9);
+
+  const civRaw = String(ag.acheteur_civilite ?? "m").toLowerCase().trim();
+  let acheteurType: "physique" | "morale" = "physique";
+  let acheteurSexe = "M";
+  if (civRaw === "morale" || civRaw === "personne_morale" || civRaw === "pm") {
+    acheteurType = "morale";
+    acheteurSexe = "M";
+  } else if (civRaw === "mme" || civRaw === "f") {
+    acheteurType = "physique";
+    acheteurSexe = "F";
+  } else {
+    acheteurType = "physique";
+    acheteurSexe = "M";
+  }
+
+  const acheteurCp = String(ag.acheteur_code_postal ?? "").trim();
+  const acheteurVille = String(ag.acheteur_ville ?? "").trim();
+  const acheteurLieuNaiss = String(ag.acheteur_lieu_naissance ?? "").trim();
+
+  const nom = String(row.client_nom ?? "").trim();
+  const prenom = String(row.client_prenom ?? "").trim();
+  const adresse = String(row.client_adresse ?? "").trim();
+  const dn = String(row.client_date_naissance ?? "").trim();
+  const concessionNom = String(prof?.nom_concession ?? "").trim() || "Concession";
+  const cpVille = [
+    String(prof?.code_postal ?? "").trim(),
+    String(prof?.ville ?? "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const vendAdresse = [
+    String(prof?.adresse ?? "").trim(),
+    cpVille,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const siret = String(prof?.siret ?? prof?.siren ?? "").trim();
+  const today = new Date();
+  const d = today.toISOString().slice(0, 10);
+  const parts = d.split("-");
+  const cessionDate =
+    parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : "";
+
+  if (!immat || !nom || !adresse) {
+    return null;
+  }
+
+  return {
+    vendeur_force_morale: true,
+    vendeur_is_personne_morale: true,
+    vendeur_civilite: "personne_morale",
+    vendeur_genre: null,
+    immatriculation: immat,
+    vin: vinFinal || undefined,
+    numero_formule: numeroFormuleFinal || undefined,
+    date_mise_en_circulation: prem || undefined,
+    marque: marque || "—",
+    type_variante: "",
+    genre: "VP",
+    denomination: modele || "—",
+    kilometrage: km || "—",
+    vendeur_type: "morale",
+    vendeur_nom: concessionNom,
+    vendeur_siren: siret.slice(0, 9) || undefined,
+    vendeur_adresse: vendAdresse || "—",
+    vendeur_code_postal: String(prof?.code_postal ?? "").trim() || "00000",
+    vendeur_ville: String(prof?.ville ?? "").trim() || "—",
+    cession_date: cessionDate,
+    cession_heure: "12",
+    cession_lieu: String(prof?.ville ?? "").trim() || "—",
+    certif_situation_admin: true,
+    certif_pas_transformation: true,
+    certif_vhu: false,
+    acheteur_type: acheteurType,
+    acheteur_sexe: acheteurSexe,
+    acheteur_nom: nom,
+    acheteur_prenom: prenom,
+    acheteur_date_naissance: dn || undefined,
+    acheteur_lieu_naissance: acheteurLieuNaiss || undefined,
+    acheteur_adresse: adresse,
+    acheteur_code_postal: acheteurCp || "00000",
+    acheteur_ville: acheteurVille || "—",
+    acheteur_cert_acquerir: true,
+    acheteur_cert_informe: true,
+    opposition_prospection: false,
+  };
+}
+
+async function handleAgentPostVente(
+  req: VercelRequest,
+  body: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  console.log("BODY COMPLET REÇU:", JSON.stringify(body));
+  console.log("TACHES COMPLÈTES:", JSON.stringify(body.taches));
+  const t0 = Date.now();
+  const userId = await getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Non autorisé" });
+
+  console.log("=== AGENT REÇU ===");
+  console.log("body.taches:", JSON.stringify(body.taches ?? null));
+
+  const brouillonId = String(body.brouillon_id ?? "").trim();
+  if (!brouillonId) return res.status(400).json({ error: "brouillon_id requis" });
+
+  const tachesRaw = body.taches;
+  const taches =
+    tachesRaw && typeof tachesRaw === "object"
+      ? (tachesRaw as Record<string, unknown>)
+      : {};
+  const enregistrer_client = taches.enregistrer_client === true;
+  const envoyer_bon_email = taches.envoyer_bon_email === true;
+  const generer_facture = taches.generer_facture === true;
+  const envoyer_facture_email = taches.envoyer_facture_email === true;
+  const marquer_vendu = taches.marquer_vendu === true;
+  const generer_cerfa = taches.generer_cerfa === true;
+  console.log("[agent-post-vente] taches reçues raw:", JSON.stringify(taches));
+  console.log("[agent-post-vente] flags parsés:", { enregistrer_client, envoyer_bon_email, generer_facture, envoyer_facture_email, marquer_vendu, generer_cerfa });
+
+  const pdfBase64 = String(body.pdf_base64 ?? "").trim();
+  const formData =
+    body.form_data && typeof body.form_data === "object"
+      ? (body.form_data as Record<string, string>)
+      : ({} as Record<string, string>);
+  const signatureVendeurBase64 = String(body.signature_vendeur_base64 ?? "").trim();
+  const bonEmailDejaEnvoye = body.bon_email_deja_envoye === true;
+  const clientEmailMeta = String(body.client_email ?? "").trim();
+  const clientNomMeta = String(body.client_nom ?? "").trim();
+  const clientPrenomMeta = String(body.client_prenom ?? "").trim();
+  const vehiculeModeleMeta = String(body.vehicule_modele ?? "").trim() || "Véhicule";
+  const vendeurEmailMeta = String(body.vendeur_email ?? "").trim();
+  const vendeurNomMeta = String(body.vendeur_nom ?? "").trim() || "Votre conseiller";
+
+  const admin = await getSupabaseAdmin();
+  const concessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!concessionId) {
+    return res.status(403).json({ error: "Aucune concession active pour ce compte." });
+  }
+
+  const clientConcessionId =
+    body.concession_id != null ? String(body.concession_id).trim() : "";
+  if (clientConcessionId && clientConcessionId !== concessionId) {
+    console.warn("[agent-post-vente] concession_id client ≠ serveur");
+  }
+
+  const { data: row, error: brErr } = await admin
+    .from("brouillons")
+    .select("*")
+    .eq("id", brouillonId)
+    .eq("concession_id", concessionId)
+    .maybeSingle();
+
+  if (brErr) {
+    console.error("[agent-post-vente] brouillon:", brErr);
+    return res.status(500).json({ error: "Erreur lecture brouillon" });
+  }
+  if (!row || typeof row !== "object") {
+    return res.status(404).json({ error: "Brouillon introuvable" });
+  }
+
+  const br = row as Record<string, unknown>;
+  const rapport: AgentRapportEntry[] = [];
+  const erreurs: { tache: string; detail: string }[] = [];
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  let extracted: Awaited<ReturnType<typeof analyserBonAvecIA>>;
+  try {
+    extracted = await analyserBonAvecIA(br, apiKey?.trim() ? apiKey : undefined);
+    rapport.push({
+      tache: "analyse",
+      statut: "ok",
+      message: "Données analysées",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Analyse impossible";
+    rapport.push({ tache: "analyse", statut: "err", message: msg });
+    erreurs.push({ tache: "analyse", detail: msg });
+    extracted = await analyserBonAvecIA(br, undefined);
+  }
+
+  const rawKv = br.vehicle_field_values;
+  const kvStr: Record<string, string> = {};
+  if (rawKv && typeof rawKv === "object") {
+    for (const [k, v] of Object.entries(rawKv as Record<string, unknown>)) {
+      kvStr[k] = String(v ?? "");
+    }
+  }
+
+  const emailClientEffectif =
+    extracted.client.email?.trim() ||
+    clientEmailMeta ||
+    String(kvStr.client_email ?? "").trim();
+
+  console.log("[agent-post-vente] Tâche enregistrer_client:", enregistrer_client);
+  console.log("[agent-post-vente] Données client extraites:", extracted?.client);
+  console.log("[agent-post-vente] concession_id:", concessionId);
+  console.log("[agent-post-vente] taches reçues:", JSON.stringify(taches));
+
+  if (enregistrer_client) {
+    try {
+      const nom = String(extracted.client?.nom ?? br.client_nom ?? "").trim();
+      const prenom = String(extracted.client?.prenom ?? br.client_prenom ?? "").trim();
+
+      if (!nom || !prenom) {
+        rapport.push({
+          tache: "client",
+          statut: "warn",
+          message: "Fiche client : nom ou prénom manquant (brouillon ou analyse IA)",
+        });
+      } else if (br.client_id) {
+        rapport.push({
+          tache: "client",
+          statut: "ok",
+          message: "Fiche client déjà enregistrée",
+        });
+      } else {
+        const { data: hits } = await admin
+          .from("clients")
+          .select("id, nom, prenom")
+          .eq("concession_id", concessionId)
+          .ilike("nom", nom)
+          .ilike("prenom", prenom)
+          .limit(20);
+        let existingId: string | null = null;
+        for (const h of hits ?? []) {
+          const r = h as { id?: string; nom?: string; prenom?: string };
+          if (
+            normNameAgent(String(r.nom ?? "")) === normNameAgent(nom) &&
+            normNameAgent(String(r.prenom ?? "")) === normNameAgent(prenom)
+          ) {
+            existingId = String(r.id ?? "");
+            break;
+          }
+        }
+
+        const tel =
+          String(extracted.client?.telephone ?? "").trim() ||
+          String(kvStr.client_telephone ?? "").trim() ||
+          extractClientTelFromKv(kvStr);
+        const emailCrm =
+          String(extracted.client?.email ?? "").trim() || emailClientEffectif || null;
+        const adresseCrm =
+          String(extracted.client?.adresse ?? "").trim() ||
+          String(br.client_adresse ?? "").trim() ||
+          null;
+        const dateNaissCrm =
+          String(extracted.client?.date_naissance ?? "").trim() ||
+          String(br.client_date_naissance ?? "").trim() ||
+          null;
+        const lieuNaissUpd = String(kvStr.cerfa_acheteur_lieu_naissance ?? "").trim() || null;
+        const numeroCniUpd = String(br.client_numero_cni ?? "").trim() || null;
+
+        if (existingId) {
+          const { error: updErr } = await admin
+            .from("clients")
+            .update({
+              email: emailCrm,
+              telephone: tel || null,
+              adresse: adresseCrm,
+              date_naissance: dateNaissCrm,
+              lieu_naissance: lieuNaissUpd,
+              numero_cni: numeroCniUpd,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingId);
+          if (updErr) {
+            const m = updErr.message ?? "update client";
+            rapport.push({ tache: "client", statut: "err", message: m });
+            erreurs.push({ tache: "client", detail: m });
+          } else {
+            await admin
+              .from("brouillons")
+              .update({ client_id: existingId })
+              .eq("id", brouillonId)
+              .eq("concession_id", concessionId);
+            rapport.push({
+              tache: "client",
+              statut: "ok",
+              message: "Fiche client mise à jour",
+            });
+          }
+        } else {
+          const civRaw = String(kvStr.cerfa_acheteur_civilite ?? "").trim().toLowerCase();
+          const civ =
+            civRaw === "m" || civRaw === "mme" || civRaw === "morale" ? civRaw : null;
+          const cpCl = String(kvStr.cerfa_acheteur_code_postal ?? "").trim() || null;
+          const villeCl = String(kvStr.cerfa_acheteur_ville ?? "").trim() || null;
+          const lieuNaiss = String(kvStr.cerfa_acheteur_lieu_naissance ?? "").trim() || null;
+          const numeroCniIns = String(br.client_numero_cni ?? "").trim() || null;
+
+          const insertRow: Record<string, unknown> = {
+            concession_id: concessionId,
+            nom,
+            prenom,
+            email: emailCrm,
+            telephone: tel || null,
+            adresse: adresseCrm,
+            date_naissance: dateNaissCrm,
+            civilite: civ,
+            code_postal: cpCl,
+            ville: villeCl,
+            lieu_naissance: lieuNaiss,
+            numero_cni: numeroCniIns,
+          };
+
+          const { data: nouveau, error: createError } =
+            await adminInsertClientWithOptionalColumns(admin, insertRow);
+
+          console.log("[agent-post-vente] Nouveau client créé:", nouveau, "Erreur:", createError);
+
+          if (createError || !nouveau?.id) {
+            const d = createError?.message ?? "insert client";
+            rapport.push({ tache: "client", statut: "err", message: d });
+            erreurs.push({ tache: "client", detail: d });
+          } else {
+            await admin
+              .from("brouillons")
+              .update({ client_id: String(nouveau.id) })
+              .eq("id", brouillonId)
+              .eq("concession_id", concessionId);
+            rapport.push({
+              tache: "client",
+              statut: "ok",
+              message: "Fiche client créée dans le CRM",
+            });
+          }
+        }
+      }
+    } catch (e: unknown) {
+      console.error("[agent-post-vente] Erreur client agent:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      rapport.push({
+        tache: "client",
+        statut: "err",
+        message: `Erreur client: ${msg}`,
+      });
+      erreurs.push({ tache: "client", detail: msg });
+    }
+  }
+
+  if (envoyer_bon_email) {
+    if (bonEmailDejaEnvoye) {
+      rapport.push({
+        tache: "bon_email",
+        statut: "ok",
+        message: "Bon déjà envoyé par email (étape précédente)",
+      });
+    } else if (!pdfBase64) {
+      rapport.push({
+        tache: "bon_email",
+        statut: "skip",
+        message: "Envoi bon : PDF non fourni",
+      });
+    } else if (!emailClientEffectif || !isValidEmail(emailClientEffectif)) {
+      rapport.push({
+        tache: "bon_email",
+        statut: "skip",
+        message: "Envoi bon : email client manquant ou invalide",
+      });
+    } else {
+      try {
+        const cap = makeResCapture();
+        await handleSendEmail(
+          req,
+          {
+            pdfBase64,
+            clientEmail: emailClientEffectif,
+            clientNom: clientNomMeta || String(br.client_nom ?? ""),
+            clientPrenom: clientPrenomMeta || String(br.client_prenom ?? ""),
+            vehiculeModele: vehiculeModeleMeta,
+            vendeurNom: vendeurNomMeta,
+            vendeurEmail: vendeurEmailMeta,
+            brouillonId,
+            formData,
+            signatureVendeurBase64: signatureVendeurBase64 || undefined,
+          } as unknown as Record<string, unknown>,
+          cap.res,
+        );
+        const sn = cap.snapshot();
+        if (sn.status === 200) {
+          rapport.push({
+            tache: "bon_email",
+            statut: "ok",
+            message: "Bon de commande envoyé par email",
+          });
+        } else {
+          const errBody = sn.body as { error?: string } | undefined;
+          const em = errBody?.error ?? `HTTP ${sn.status}`;
+          rapport.push({ tache: "bon_email", statut: "err", message: em });
+          erreurs.push({ tache: "bon_email", detail: em });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Email bon";
+        rapport.push({ tache: "bon_email", statut: "err", message: msg });
+        erreurs.push({ tache: "bon_email", detail: msg });
+      }
+    }
+  }
+
+  let factureId: string | null = null;
+  let numeroFactureOut: string | null = null;
+
+  if (generer_facture) {
+    try {
+      const cap = makeResCapture();
+      await handleGenerateFacture(
+        req,
+        {
+          brouillon_id: brouillonId,
+          client_email: emailClientEffectif || undefined,
+          client_adresse: String(br.client_adresse ?? "").trim() || undefined,
+          client_telephone: String(kvStr.client_telephone ?? "").trim() || undefined,
+        },
+        cap.res,
+      );
+      const sn = cap.snapshot();
+      const b = sn.body as {
+        factureId?: string;
+        numero_facture?: string;
+        error?: string;
+        duplicate?: boolean;
+      };
+      if (sn.status === 200 && (b.factureId || b.numero_facture)) {
+        factureId = b.factureId ? String(b.factureId) : null;
+        numeroFactureOut = b.numero_facture ? String(b.numero_facture) : null;
+        rapport.push({
+          tache: "facture",
+          statut: "ok",
+          message: numeroFactureOut
+            ? `Facture ${numeroFactureOut} générée`
+            : "Facture générée",
+        });
+      } else {
+        const em = b.error ?? `Erreur facture (${sn.status})`;
+        rapport.push({ tache: "facture", statut: "err", message: em });
+        erreurs.push({ tache: "facture", detail: em });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Facture";
+      rapport.push({ tache: "facture", statut: "err", message: msg });
+      erreurs.push({ tache: "facture", detail: msg });
+    }
+  }
+
+  if (envoyer_facture_email && generer_facture) {
+    if (!factureId) {
+      rapport.push({
+        tache: "facture_email",
+        statut: "skip",
+        message: "Envoi facture : aucune facture générée",
+      });
+    } else if (!emailClientEffectif || !isValidEmail(emailClientEffectif)) {
+      rapport.push({
+        tache: "facture_email",
+        statut: "skip",
+        message: "Envoi facture : email client manquant",
+      });
+    } else {
+      try {
+        const cap = makeResCapture();
+        await handleSendFactureEmail(
+          req,
+          { facture_id: factureId, client_email: emailClientEffectif },
+          cap.res,
+        );
+        const sn = cap.snapshot();
+        if (sn.status === 200) {
+          rapport.push({
+            tache: "facture_email",
+            statut: "ok",
+            message: "Facture envoyée par email",
+          });
+        } else {
+          const errBody = sn.body as { error?: string } | undefined;
+          const em = errBody?.error ?? `HTTP ${sn.status}`;
+          rapport.push({ tache: "facture_email", statut: "err", message: em });
+          erreurs.push({ tache: "facture_email", detail: em });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Email facture";
+        rapport.push({ tache: "facture_email", statut: "err", message: msg });
+        erreurs.push({ tache: "facture_email", detail: msg });
+      }
+    }
+  }
+
+  if (marquer_vendu) {
+    const vid =
+      String(extracted.vehicule.stock_vehicule_id ?? "").trim() ||
+      String(kvStr.vehicule_stock_id ?? "").trim();
+    if (!vid) {
+      rapport.push({
+        tache: "vendu",
+        statut: "skip",
+        message: "Stock : aucun véhicule lié au bon",
+      });
+    } else {
+      try {
+        const { data: upd, error: upErr } = await admin
+          .from("stock_vehicules")
+          .update({
+            statut: "vendu",
+            disponible: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", vid)
+          .eq("concession_id", concessionId)
+          .select("id")
+          .maybeSingle();
+        if (upErr || !upd) {
+          const em = upErr?.message ?? "Mise à jour stock refusée";
+          rapport.push({ tache: "vendu", statut: "err", message: em });
+          erreurs.push({ tache: "vendu", detail: em });
+        } else {
+          rapport.push({
+            tache: "vendu",
+            statut: "ok",
+            message: "Véhicule marqué comme vendu",
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Stock";
+        rapport.push({ tache: "vendu", statut: "err", message: msg });
+        erreurs.push({ tache: "vendu", detail: msg });
+      }
+    }
+  }
+
+  if (generer_cerfa) {
+    try {
+      const { data: profil } = await admin
+        .from("profil_concession")
+        .select("*")
+        .eq("concession_id", concessionId)
+        .maybeSingle();
+      const prof = (profil ?? null) as Record<string, unknown> | null;
+      const cerfaAgentFromKv: Record<string, unknown> = {
+        vin: String(kvStr.cerfa_vin_complement ?? "").trim(),
+        numero_formule: String(kvStr.cerfa_formule_carte_grise ?? "").trim(),
+        acheteur_civilite: String(kvStr.cerfa_acheteur_civilite ?? "m").trim().toLowerCase() || "m",
+        acheteur_code_postal: String(kvStr.cerfa_acheteur_code_postal ?? "").trim(),
+        acheteur_ville: String(kvStr.cerfa_acheteur_ville ?? "").trim(),
+        acheteur_lieu_naissance: String(kvStr.cerfa_acheteur_lieu_naissance ?? "").trim(),
+      };
+      const cerfaPayload = buildCerfaPayloadFromBrouillon(br, prof, cerfaAgentFromKv);
+      if (!cerfaPayload) {
+        rapport.push({
+          tache: "cerfa",
+          statut: "warn",
+          message: "CERFA : données insuffisantes (immatriculation ou adresse acheteur)",
+        });
+      } else {
+        const cap = makeResCapture();
+        await handleFillCerfa(req, { cerfa_data: cerfaPayload }, cap.res);
+        const sn = cap.snapshot();
+        if (sn.status === 200) {
+          const okBody = sn.body as { pdf_base64?: string } | undefined;
+          const pdfCerfa = String(okBody?.pdf_base64 ?? "").trim();
+          console.log("CERFA généré, pdf_base64 length:", pdfCerfa?.length);
+          const warnEmail = !emailClientEffectif;
+          if (pdfCerfa) {
+            console.log("Sauvegarde CERFA en base...");
+            const { error: cerfaError } = await admin.from("cerfas").insert({
+              user_id: userId,
+              concession_id: concessionId,
+              brouillon_id: brouillonId,
+              pdf_base64: pdfCerfa,
+              cerfa_data: cerfaPayload,
+              created_by: userId,
+            });
+            if (cerfaError) {
+              console.error("Erreur sauvegarde CERFA:", cerfaError);
+              rapport.push({
+                tache: "cerfa",
+                statut: "warn",
+                message: "CERFA généré mais non sauvegardé en historique",
+                pdf_base64: pdfCerfa,
+              });
+            } else {
+              rapport.push({
+                tache: "cerfa",
+                statut: warnEmail ? "warn" : "ok",
+                message: warnEmail
+                  ? "CERFA généré et sauvegardé — email client manquant (envoi non effectué)"
+                  : "CERFA généré et sauvegardé",
+                pdf_base64: pdfCerfa,
+              });
+            }
+          } else {
+            rapport.push({
+              tache: "cerfa",
+              statut: warnEmail ? "warn" : "ok",
+              message: warnEmail
+                ? "CERFA : email client manquant (PDF généré, envoi non effectué)"
+                : "CERFA généré",
+            });
+          }
+        } else {
+          const errBody = sn.body as { error?: string } | undefined;
+          const em = errBody?.error ?? `CERFA ${sn.status}`;
+          rapport.push({ tache: "cerfa", statut: "err", message: em });
+          erreurs.push({ tache: "cerfa", detail: em });
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "CERFA";
+      rapport.push({ tache: "cerfa", statut: "err", message: msg });
+      erreurs.push({ tache: "cerfa", detail: msg });
+    }
+  }
+
+  const executedAt = new Date().toISOString();
+  try {
+    await admin
+      .from("brouillons")
+      .update({
+        agent_ia_executed_at: executedAt,
+        agent_ia_rapport: rapport,
+      })
+      .eq("id", brouillonId)
+      .eq("concession_id", concessionId);
+  } catch (updErr) {
+    console.warn("[agent-post-vente] update agent_ia_*:", updErr);
+  }
+
+  return res.status(200).json({
+    success: true,
+    rapport,
+    erreurs,
+    duration_ms: Date.now() - t0,
+  });
+}
+
+async function handleExportLivrePolice(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const userId = await getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Non autorisé" });
+
+  const admin = await getSupabaseAdmin();
+  const concessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!concessionId) {
+    return res.status(403).json({ error: "Aucune concession active pour ce compte." });
+  }
+
+  const bodyClientCid = data.concession_id != null ? String(data.concession_id).trim() : "";
+  if (bodyClientCid && bodyClientCid !== concessionId) {
+    console.warn("[export-livre-police] concession_id client ≠ serveur");
+  }
+
+  console.log("export-livre-police body:", data);
+  console.log("concession_id (body client data.concession_id):", data.concession_id);
+  console.log("concession_id (membres actifs serveur):", concessionId);
+  console.log("auth userId:", userId);
+
+  const filtresRaw = data.filtres;
+  const filtres =
+    filtresRaw && typeof filtresRaw === "object"
+      ? (filtresRaw as Record<string, unknown>)
+      : {};
+  const statutFiltre = String(filtres.statut ?? "tous").trim() || "tous";
+  const entreeId = String(data.entree_id ?? "").trim();
+
+  let q = admin.from("livre_de_police").select("*").eq("concession_id", concessionId);
+  if (entreeId) {
+    q = q.eq("id", entreeId);
+  }
+  q = q.order("numero_ordre", { ascending: true });
+
+  const { data: entrees, error } = await q;
+
+  console.log("Entrées trouvées:", entrees?.length);
+  console.log("Erreur:", error);
+  console.log("Première entrée:", entrees?.[0]);
+
+  if (error) {
+    console.error("[export-livre-police] select:", error);
+    return res.status(500).json({ error: "Lecture livre de police impossible." });
+  }
+
+  let rows = (entrees ?? []) as Record<string, unknown>[];
+
+  if (rows.length === 0 && userId && String(userId) !== String(concessionId)) {
+    let qUid = admin.from("livre_de_police").select("*").eq("concession_id", userId);
+    if (entreeId) {
+      qUid = qUid.eq("id", entreeId);
+    }
+    qUid = qUid.order("numero_ordre", { ascending: true });
+    const { data: entreesUid, error: errUid } = await qUid;
+    console.log(
+      "[export-livre-police] fallback concession_id=auth.uid — count:",
+      entreesUid?.length,
+      "err:",
+      errUid,
+    );
+    if (!errUid && entreesUid?.length) {
+      rows = entreesUid as Record<string, unknown>[];
+    }
+  }
+
+  if (!entreeId && statutFiltre === "en_stock") {
+    rows = rows.filter((e) => !e.date_sortie);
+  } else if (!entreeId && statutFiltre === "vendu") {
+    rows = rows.filter((e) => !!e.date_sortie);
+  }
+
+  const { data: profil } = await admin
+    .from("profil_concession")
+    .select("nom_concession, siret, siren")
+    .eq("concession_id", concessionId)
+    .maybeSingle();
+  const prof = (profil ?? null) as Record<string, unknown> | null;
+  const concessionInfo = {
+    nom: String(prof?.nom_concession ?? "").trim(),
+    siret: String(prof?.siret ?? prof?.siren ?? "").trim(),
+  };
+
+  let html: string;
+  try {
+    html = buildLivrePoliceHTML(rows, concessionInfo);
+  } catch (err) {
+    console.error("[export-livre-police] template:", err);
+    return res.status(500).json({ error: "Erreur rendu HTML." });
+  }
+
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await renderPdfFromHtml(html, {
+      landscape: true,
+      margin: { top: "15mm", bottom: "15mm", left: "10mm", right: "10mm" },
+    });
+  } catch (err) {
+    console.error("[export-livre-police] pdf:", err);
+    return res.status(500).json({ error: "Erreur génération PDF." });
+  }
+
+  return res.status(200).json({ pdf_base64: pdfBuffer.toString("base64") });
+}
+
+async function handleEstimerReprise(
+  req: VercelRequest,
+  data: Record<string, unknown>,
+  res: VercelResponse,
+) {
+  const userId = await getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Non autorisé" });
+
+  const admin = await getSupabaseAdmin();
+  const concessionId = await getActiveConcessionIdForUser(admin, userId);
+  if (!concessionId) {
+    return res.status(403).json({ error: "Aucune concession active pour ce compte." });
+  }
+
+  const marque = String(data.marque ?? "").trim();
+  const modele = String(data.modele ?? "").trim();
+  const kilometrage = String(data.kilometrage ?? "").trim();
+  const annee = String(data.annee ?? "").trim();
+  const energie = String(data.energie ?? "").trim();
+  const version = String(data.version ?? "").trim();
+
+  if (!marque || !modele) {
+    return res.status(400).json({
+      error: "Marque et modèle requis",
+    });
+  }
+
+  const openAiKey = String(process.env.OPENAI_API_KEY ?? "").trim();
+  if (!openAiKey) {
+    return res.status(500).json({ error: "OPENAI_API_KEY manquante." });
+  }
+
+  const prompt = `
+Tu es un expert en évaluation de véhicules d'occasion 
+pour le marché français.
+
+Estime le prix de reprise pour ce véhicule :
+- Marque : ${marque}
+- Modèle : ${modele}
+- Version/Finition : ${version || "Non précisée"}
+- Année : ${annee || "Non précisée"}
+- Kilométrage : ${kilometrage || "Non précisé"} km
+- Énergie : ${energie || "Non précisée"}
+
+Donne une estimation RÉALISTE basée sur :
+1. La cote Argus approximative
+2. L'état du marché de l'occasion en France
+3. La décote kilométrique standard
+
+Retourne UNIQUEMENT ce JSON :
+{
+  "prix_min": 12000,
+  "prix_max": 14500,
+  "prix_recommande": 13200,
+  "fiabilite": "haute|moyenne|faible",
+  "explication": "Courte explication de 1-2 phrases",
+  "facteurs": [
+    "Point positif ou négatif qui influence le prix"
+  ]
+}
+
+Valeurs en euros entiers, sans symbole.
+Si les infos sont insuffisantes pour estimer, 
+mets fiabilite: "faible" et une fourchette large.
+Retourne UNIQUEMENT le JSON, rien d'autre.
+  `;
+
+  let openaiRes: Response;
+  try {
+    openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openAiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 400,
+        temperature: 0.3,
+      }),
+    });
+  } catch (e) {
+    console.error("[estimer-reprise] fetch OpenAI:", e);
+    return res.status(502).json({ error: "Impossible de joindre OpenAI." });
+  }
+
+  const openaiData = (await openaiRes.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!openaiRes.ok) {
+    const errMsg =
+      typeof openaiData.error === "object" && openaiData.error !== null
+        ? String((openaiData.error as { message?: unknown }).message ?? openaiRes.status)
+        : String(openaiData.error ?? `OpenAI ${openaiRes.status}`);
+    console.warn("[estimer-reprise] OpenAI:", openaiRes.status, errMsg);
+    return res.status(502).json({ error: errMsg || "Erreur OpenAI." });
+  }
+
+  const choices = openaiData.choices as unknown[] | undefined;
+  const first = choices?.[0] as Record<string, unknown> | undefined;
+  const message = first?.message as Record<string, unknown> | undefined;
+  const rawContent = String(message?.content ?? "").trim();
+  if (!rawContent) {
+    return res.status(502).json({ error: "Réponse OpenAI vide." });
+  }
+
+  const text = rawContent.replace(/```json/gi, "").replace(/```/g, "").trim();
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(text) as Record<string, unknown>;
+  } catch (e) {
+    console.warn("[estimer-reprise] JSON parse:", e, text.slice(0, 200));
+    return res.status(502).json({ error: "Réponse IA non exploitable (JSON invalide)." });
+  }
+
+  const toInt = (v: unknown): number => {
+    const n = Math.round(Number.parseFloat(String(v ?? "").replace(/\s/g, "").replace(",", ".")));
+    return Number.isFinite(n) ? n : NaN;
+  };
+
+  const prix_min = toInt(parsed.prix_min);
+  const prix_max = toInt(parsed.prix_max);
+  const prix_recommande = toInt(parsed.prix_recommande);
+  const fiabiliteRaw = String(parsed.fiabilite ?? "faible").toLowerCase();
+  const fiabilite =
+    fiabiliteRaw === "haute" || fiabiliteRaw === "moyenne" || fiabiliteRaw === "faible"
+      ? fiabiliteRaw
+      : "faible";
+  const explication = String(parsed.explication ?? "").trim() || "—";
+  const facteursRaw = parsed.facteurs;
+  const facteurs = Array.isArray(facteursRaw)
+    ? facteursRaw.map((x) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+
+  if (!Number.isFinite(prix_min) || !Number.isFinite(prix_max) || !Number.isFinite(prix_recommande)) {
+    return res.status(502).json({ error: "Estimation incomplète renvoyée par le modèle." });
+  }
+
+  const estimation = {
+    prix_min,
+    prix_max,
+    prix_recommande,
+    fiabilite,
+    explication,
+    facteurs,
+  };
+
+  return res.status(200).json({
+    success: true,
+    estimation,
+  });
+}
+
+async function handleSendWelcomeEmail(data: Record<string, unknown>, res: VercelResponse) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "RESEND_API_KEY manquante." });
+  }
+
+  const email = String(data.email ?? "").trim();
+  const prenomRaw = String(data.prenom ?? "").trim();
+  const prenomHtml = prenomRaw ? ` ${escapeHtml(prenomRaw)}` : "";
+
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ error: "email invalide" });
+  }
+
+  const resend = new Resend(apiKey);
+
+  try {
+    const { error } = await resend.emails.send({
+      from: "AutoDocs <noreply@autodocs.services>",
+      to: email,
+      subject: "🚗 Bienvenue sur AutoDocs !",
+      html: `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 
+                   'Segoe UI', Arial, sans-serif;
+      background: #0a0a14;
+      color: #f1f5f9;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .logo-text {
+      font-size: 24px;
+      font-weight: 700;
+      color: #818cf8;
+      letter-spacing: -0.5px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #1a1a35, #1e1b4b);
+      border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    .emoji { font-size: 48px; margin-bottom: 16px; }
+    h1 { 
+      font-size: 28px; 
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 12px;
+    }
+    .subtitle {
+      color: #94a3b8;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white !important;
+      text-decoration: none;
+      padding: 16px 32px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 16px;
+      margin-top: 24px;
+    }
+    .steps {
+      background: #111127;
+      border: 1px solid rgba(99,102,241,0.15);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+    .steps h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 20px;
+    }
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .step:last-child { margin-bottom: 0; }
+    .step-number {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      flex-shrink: 0;
+      color: white;
+    }
+    .step-content h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f1f5f9;
+      margin-bottom: 4px;
+    }
+    .step-content p {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.5;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .feature {
+      background: #111127;
+      border: 1px solid rgba(99,102,241,0.15);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .feature-icon { font-size: 24px; margin-bottom: 8px; }
+    .feature h3 { font-size: 13px; font-weight: 600; color: #f1f5f9; }
+    .feature p { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    .footer {
+      text-align: center;
+      color: #475569;
+      font-size: 12px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .footer a { color: #6366f1; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <!-- Logo -->
+    <div class="logo">
+      <span class="logo-text">🚗 AutoDocs</span>
+    </div>
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="emoji">🎉</div>
+      <h1>Bienvenue${prenomHtml} !</h1>
+      <p class="subtitle">
+        Votre compte AutoDocs est prêt.<br>
+        Vous êtes à quelques minutes de transformer 
+        la gestion administrative de votre concession.
+      </p>
+      <a href="https://autodocs-eight.vercel.app/dashboard" 
+         class="cta-button">
+        Accéder à mon espace →
+      </a>
+    </div>
+
+    <!-- Guide démarrage -->
+    <div class="steps">
+      <h2>🚀 Démarrez en 3 étapes</h2>
+      
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h3>Configurez votre concession</h3>
+          <p>Renseignez le nom, SIRET et adresse de votre 
+             concession dans "Ma concession". Ces infos 
+             apparaîtront sur vos bons de commande et factures.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h3>Importez votre stock de véhicules</h3>
+          <p>Importez votre stock via CSV/Excel dans 
+             "Stock véhicules". Compatible avec tous 
+             les formats d'export.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h3>Créez votre premier bon de commande</h3>
+          <p>Cliquez sur "Nouveau bon", sélectionnez 
+             un véhicule, remplissez les infos client 
+             et générez votre premier bon en 2 minutes.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🤖</div>
+        <h3>Agent IA post-vente</h3>
+        <p>Automatise tout après la signature</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">✍️</div>
+        <h3>Signature électronique</h3>
+        <p>Le client signe depuis son téléphone</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🧾</div>
+        <h3>Facturation légale</h3>
+        <p>PDF conformes envoyés automatiquement</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📋</div>
+        <h3>Livre de police</h3>
+        <p>Registre légal numérique conforme</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>
+        Vous recevez cet email car vous venez de créer 
+        un compte sur AutoDocs.<br>
+        <a href="https://autodocs.services">autodocs.services</a> · 
+        <a href="https://autodocs-eight.vercel.app/cgu">CGU</a> · 
+        <a href="https://autodocs-eight.vercel.app/confidentialite">
+          Confidentialité
+        </a>
+      </p>
+      <p style="margin-top: 8px;">
+        © 2026 AutoDocs — Fait avec ❤️ pour les concessions françaises
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>
+    `,
+    });
+
+    if (error) {
+      console.error("[send-welcome-email] resend:", error);
+      return res.status(500).json({ error: error.message || "Echec d'envoi email" });
+    }
+  } catch (e) {
+    console.error("[send-welcome-email]", e);
+    return res.status(500).json({ error: "Echec d'envoi email" });
+  }
+
+  return res.status(200).json({ success: true });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -2929,6 +4754,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { action, ...data } = parsed;
   const actionName = String(action ?? "").trim();
 
+  if (actionName === "generate-briefing") {
+    const rawAuth = req.headers.authorization;
+    const authHeader = typeof rawAuth === "string" ? rawAuth : "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) {
+      return res.status(401).json({ error: "Non authentifié" });
+    }
+    const supabaseAdmin = await getSupabaseAdmin();
+    const {
+      data: { user },
+      error: authUserError,
+    } = await supabaseAdmin.auth.getUser(token);
+    if (authUserError || !user) {
+      return res.status(401).json({ error: "Non authentifié" });
+    }
+  }
+
   switch (actionName) {
     case "send-email":
       return handleSendEmail(req, data, res);
@@ -2940,6 +4782,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleResendSignatureEmail(req, data, res);
     case "send-relances":
       return handleSendRelances(req, data, res);
+    case "generate-briefing":
+      return handleGenerateBriefing(req, data, res);
     case "save-relances-config":
       return handleSaveRelancesConfig(req, data, res);
     case "fill-cerfa":
@@ -2954,6 +4798,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleInviteMembre(req, data, res);
     case "accept-invitation":
       return handleAcceptInvitation(req, data, res);
+    case "agent-post-vente":
+      return handleAgentPostVente(req, data, res);
+    case "export-livre-police":
+      return handleExportLivrePolice(req, data, res);
+    case "estimer-reprise":
+      return handleEstimerReprise(req, data, res);
+    case "send-welcome-email":
+      return handleSendWelcomeEmail(data, res);
     default:
       return res.status(400).json({ error: "Action inconnue" });
   }

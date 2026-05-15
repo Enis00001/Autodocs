@@ -13,6 +13,15 @@ import { cn } from "@/lib/utils";
 
 export { countMissingMandatoryFields, isDraftFormComplete };
 
+/** Données transmises au parent après succès (génération / signature / email optionnel). */
+export type GenerateBarSuccessPayload = {
+  pdfBase64: string;
+  signatureVendeurBase64: string | null;
+  formData: Record<string, string>;
+  /** True si l’utilisateur a déjà envoyé le bon depuis la popup « Envoi par email ». */
+  emailDejaEnvoye: boolean;
+};
+
 type GenerateBarProps = {
   documentsUploaded: number;
   missingFieldsCount: number;
@@ -44,7 +53,7 @@ type GenerateBarProps = {
    * après un flux terminé avec succès (`isSuccess`). Pas appelé en cas d'erreur
    * ou de simple abandon avant succès.
    */
-  onSuccessfulModalClosed?: () => void;
+  onSuccessfulModalClosed?: (payload: GenerateBarSuccessPayload) => void;
 };
 
 const MAX_DOTS = 6;
@@ -86,9 +95,14 @@ const GenerateBar = ({
   }>(null);
 
   const closeModal = () => {
-    if (isSuccess) {
+    if (isSuccess && generatedPdfBase64) {
       try {
-        onSuccessfulModalClosed?.();
+        onSuccessfulModalClosed?.({
+          pdfBase64: generatedPdfBase64,
+          signatureVendeurBase64: signatureVendeurBase64,
+          formData: { ...formData },
+          emailDejaEnvoye: emailSent,
+        });
       } catch (e) {
         console.warn("[GenerateBar] onSuccessfulModalClosed:", e);
       }

@@ -3,66 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>AutoDocs — Le bon de commande automobile en 30 secondes</title>
+    <title>AutoDocs — L'IA qui libère vos commerciaux et booste votre CA</title>
     <meta
       name="description"
-      content="AutoDocs automatise les bons de commande pour les concessions : scan CNI, stock intégré, PDF instantané. Vos commerciaux se concentrent sur la vente."
+      content="AutoDocs automatise l'administration post-vente grâce à l'IA. 15 minutes économisées par vente, +1000€ de CA potentiel par mois. 3x moins cher que Spider VO."
     />
-    <meta property="og:title" content="AutoDocs — Bons de commande automobile automatisés" />
+    <meta property="og:title" content="AutoDocs — Votre équipe vend. L'IA gère le reste." />
     <meta
       property="og:description"
-      content="Scannez les documents client, sélectionnez le véhicule, générez le PDF. AutoDocs s'occupe de la paperasse."
+      content="Agent IA post-vente pour concessions automobiles. Automatisation complète après chaque signature."
     />
     <meta property="og:type" content="website" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@700;800&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap"
     />
 
     <style>
-      /* ====================================================================
-         Palette AutoDocs — alignée avec src/index.css
-         ==================================================================== */
       :root {
-        --bg: #0f1117;
-        --surface: #1a1d27;
-        --primary: #6366f1;
-        --primary-hover: #4f46e5;
+        --bg: #0f0f1a;
+        --bg-card: #111127;
+        --bg-card-hover: #1a1a35;
+        --border: rgba(99, 102, 241, 0.15);
+        --indigo: #6366f1;
+        --indigo-light: #818cf8;
+        --indigo-dark: #4f46e5;
+        --purple: #8b5cf6;
         --text: #f1f5f9;
-        --muted: #94a3b8;
-        --border: rgba(255, 255, 255, 0.08);
-        --success: #22c55e;
+        --text-muted: #94a3b8;
+        --green: #10b981;
+        --glow: 0 0 40px rgba(99, 102, 241, 0.3);
+        --nav-h: 72px;
+        --radius: 12px;
+        --radius-lg: 16px;
+        --max-w: 1200px;
       }
 
       *,
       *::before,
       *::after {
         box-sizing: border-box;
+        margin: 0;
+        padding: 0;
       }
 
       html {
         scroll-behavior: smooth;
+        scroll-padding-top: var(--nav-h);
       }
 
       body {
-        margin: 0;
-        font-family: "DM Sans", system-ui, sans-serif;
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
         background: var(--bg);
         color: var(--text);
+        line-height: 1.6;
         -webkit-font-smoothing: antialiased;
         overflow-x: hidden;
-      }
-
-      h1,
-      h2,
-      h3,
-      h4 {
-        font-family: "Syne", system-ui, sans-serif;
-        letter-spacing: -0.01em;
-        margin: 0;
       }
 
       a {
@@ -70,931 +69,1718 @@
         text-decoration: none;
       }
 
-      button {
-        font-family: inherit;
-        cursor: pointer;
-      }
-
-      /* ====================================================================
-         Halos ambiance
-         ==================================================================== */
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        background:
-          radial-gradient(ellipse 80% 50% at 100% 0%, rgba(99, 102, 241, 0.18), transparent 55%),
-          radial-gradient(ellipse 60% 40% at 0% 100%, rgba(99, 102, 241, 0.1), transparent 50%);
-        z-index: 0;
+      img,
+      svg {
+        display: block;
+        max-width: 100%;
       }
 
       .container {
-        max-width: 1200px;
+        width: 100%;
+        max-width: var(--max-w);
         margin: 0 auto;
         padding: 0 24px;
-        position: relative;
-        z-index: 1;
       }
 
-      /* ====================================================================
-         NAV
-         ==================================================================== */
-      .nav {
-        position: sticky;
-        top: 0;
-        z-index: 50;
-        backdrop-filter: blur(12px);
-        background: rgba(15, 17, 23, 0.72);
-        border-bottom: 1px solid var(--border);
+      section {
+        padding: 96px 0;
       }
+
+      @media (max-width: 768px) {
+        section {
+          padding: 64px 0;
+        }
+      }
+
+      /* Buttons */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 24px;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        border-radius: 10px;
+        border: none;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s, background 0.2s, border-color 0.2s;
+        white-space: nowrap;
+        font-family: inherit;
+      }
+
+      .btn:active {
+        transform: scale(0.98);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, var(--indigo-dark), var(--indigo));
+        color: #fff;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+      }
+
+      .btn-primary:hover {
+        box-shadow: var(--glow), 0 8px 30px rgba(99, 102, 241, 0.45);
+        transform: translateY(-1px);
+      }
+
+      .btn-outline {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+      }
+
+      .btn-outline:hover {
+        border-color: rgba(255, 255, 255, 0.5);
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .btn-nav-outline {
+        padding: 10px 18px;
+        font-size: 0.875rem;
+        background: transparent;
+        color: var(--text);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 8px;
+        font-weight: 500;
+        transition: background 0.2s, border-color 0.2s;
+      }
+
+      .btn-nav-outline:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.5);
+      }
+
+      .btn-nav-primary {
+        padding: 10px 18px;
+        font-size: 0.875rem;
+        background: var(--indigo);
+        color: #fff;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: box-shadow 0.2s, transform 0.2s;
+      }
+
+      .btn-nav-primary:hover {
+        box-shadow: var(--glow);
+        transform: translateY(-1px);
+      }
+
+      .section-label {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--indigo-light);
+        margin-bottom: 16px;
+      }
+
+      .section-title {
+        font-size: clamp(1.75rem, 4vw, 2.5rem);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.15;
+        margin-bottom: 16px;
+      }
+
+      .section-subtitle {
+        font-size: 1.125rem;
+        color: var(--text-muted);
+        max-width: 600px;
+        margin: 0 auto 48px;
+      }
+
+      .text-center {
+        text-align: center;
+      }
+
+      /* Navbar */
+      nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        height: var(--nav-h);
+        display: flex;
+        align-items: center;
+        transition: background 0.3s, backdrop-filter 0.3s, border-bottom 0.3s;
+      }
+
       .nav-inner {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        height: 72px;
+        width: 100%;
+        max-width: var(--max-w);
+        margin: 0 auto;
+        padding: 0 24px;
       }
-      .brand {
+
+      .logo {
         display: flex;
         align-items: center;
         gap: 10px;
-        font-family: "Syne", sans-serif;
-        font-weight: 800;
-        font-size: 18px;
+        font-weight: 700;
+        font-size: 1.125rem;
+        letter-spacing: -0.02em;
       }
-      .brand-icon {
+
+      .logo svg {
         width: 36px;
         height: 36px;
-        border-radius: 10px;
-        background: rgba(99, 102, 241, 0.18);
-        color: var(--primary);
+        flex-shrink: 0;
+      }
+
+      .nav-links {
         display: flex;
         align-items: center;
-        justify-content: center;
-      }
-      .brand-icon svg {
-        width: 20px;
-        height: 20px;
-      }
-      .brand .accent {
-        color: var(--primary);
-      }
-      .nav-links {
-        display: none;
-        align-items: center;
         gap: 32px;
-        font-size: 14px;
-        color: var(--muted);
+        list-style: none;
       }
+
       .nav-links a {
-        transition: color 180ms ease;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-muted);
+        transition: color 0.2s;
       }
+
       .nav-links a:hover {
         color: var(--text);
       }
-      @media (min-width: 768px) {
-        .nav-links {
-          display: flex;
-        }
-      }
-      .nav-cta {
-        display: inline-flex;
+
+      .nav-actions {
+        display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 10px 18px;
-        border-radius: 10px;
-        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-        color: #fff;
-        font-weight: 700;
-        font-size: 14px;
-        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
-        transition: transform 200ms ease, box-shadow 200ms ease;
-        min-height: 44px;
-      }
-      .nav-cta:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 28px rgba(99, 102, 241, 0.45);
+        gap: 12px;
       }
 
-      /* ====================================================================
-         HERO
-         ==================================================================== */
-      .hero {
-        padding: 72px 0 96px;
-        text-align: center;
+      .nav-toggle {
+        display: none;
+        background: none;
+        border: none;
+        color: var(--text);
+        cursor: pointer;
+        padding: 8px;
       }
-      @media (min-width: 768px) {
-        .hero {
-          padding: 120px 0 140px;
+
+      @media (max-width: 900px) {
+        .nav-links,
+        .nav-actions {
+          display: none;
+        }
+
+        .nav-toggle {
+          display: flex;
+        }
+
+        .nav-mobile-open .nav-links,
+        .nav-mobile-open .nav-actions {
+          display: flex;
+        }
+
+        nav.nav-mobile-open {
+          background: rgba(10, 10, 20, 0.95);
+          backdrop-filter: blur(20px);
+          border-bottom: 1px solid var(--border);
+          height: auto;
+          flex-wrap: wrap;
+        }
+
+        nav.nav-mobile-open .nav-inner {
+          flex-wrap: wrap;
+          padding-bottom: 16px;
+        }
+
+        nav.nav-mobile-open .nav-links {
+          flex-direction: column;
+          width: 100%;
+          gap: 16px;
+          padding: 16px 0;
+          order: 3;
+        }
+
+        nav.nav-mobile-open .nav-actions {
+          flex-direction: column;
+          width: 100%;
+          order: 4;
+        }
+
+        nav.nav-mobile-open .nav-actions .btn-nav-outline,
+        nav.nav-mobile-open .nav-actions .btn-nav-primary {
+          width: 100%;
+          text-align: center;
+          padding: 14px;
         }
       }
+
+      /* Hero */
+      .hero {
+        padding-top: calc(var(--nav-h) + 64px);
+        padding-bottom: 96px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero-mesh {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+
+      .hero-mesh::before,
+      .hero-mesh::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(80px);
+        opacity: 0.4;
+        animation: meshFloat 12s ease-in-out infinite;
+      }
+
+      .hero-mesh::before {
+        width: 500px;
+        height: 500px;
+        background: radial-gradient(circle, var(--indigo) 0%, transparent 70%);
+        top: -20%;
+        right: -10%;
+      }
+
+      .hero-mesh::after {
+        width: 400px;
+        height: 400px;
+        background: radial-gradient(circle, var(--purple) 0%, transparent 70%);
+        bottom: -10%;
+        left: -5%;
+        animation-delay: -6s;
+      }
+
+      @keyframes meshFloat {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(30px, -20px) scale(1.05);
+        }
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 64px;
+        align-items: center;
+        position: relative;
+        z-index: 1;
+      }
+
+      @media (max-width: 900px) {
+        .hero-grid {
+          grid-template-columns: 1fr;
+          gap: 48px;
+        }
+      }
+
       .hero-badge {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 6px 14px;
-        border-radius: 999px;
-        border: 1px solid rgba(99, 102, 241, 0.35);
-        background: rgba(99, 102, 241, 0.08);
-        color: var(--primary);
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        margin-bottom: 24px;
-      }
-      .hero-badge::before {
-        content: "";
-        width: 7px;
-        height: 7px;
-        background: var(--success);
-        border-radius: 999px;
-        box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
-      }
-      .hero h1 {
-        font-size: clamp(32px, 6vw, 64px);
-        font-weight: 600;
-        line-height: 1.05;
-        max-width: 900px;
-        margin: 0 auto 24px;
-      }
-      .hero h1 .grad {
-        background: linear-gradient(135deg, #6366f1, #8b5cf6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-      }
-      .hero p {
-        font-size: clamp(15px, 2vw, 18px);
-        font-weight: 400;
-        color: var(--muted);
-        max-width: 640px;
-        margin: 0 auto 40px;
-        line-height: 1.6;
-      }
-      .hero-ctas {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        align-items: center;
-        justify-content: center;
-      }
-      @media (min-width: 640px) {
-        .hero-ctas {
-          flex-direction: row;
-        }
-      }
-      .btn-primary {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 14px 28px;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
-        color: #fff;
-        font-family: "Syne", sans-serif;
-        font-weight: 700;
-        font-size: 15px;
-        border: 0;
-        box-shadow: 0 4px 24px rgba(99, 102, 241, 0.35);
-        transition: transform 200ms ease, box-shadow 200ms ease;
-        min-height: 52px;
-        min-width: 240px;
-      }
-      .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 32px rgba(99, 102, 241, 0.5);
-      }
-      .btn-secondary {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 14px 28px;
-        border-radius: 12px;
-        background: transparent;
+        padding: 8px 16px;
+        background: rgba(99, 102, 241, 0.12);
         border: 1px solid var(--border);
-        color: var(--text);
-        font-family: "Syne", sans-serif;
-        font-weight: 600;
-        font-size: 15px;
-        transition: border-color 200ms ease, background 200ms ease, transform 200ms ease;
-        min-height: 52px;
-        min-width: 240px;
-      }
-      .btn-secondary:hover {
-        border-color: var(--muted);
-        background: rgba(255, 255, 255, 0.03);
-        transform: translateY(-1px);
+        border-radius: 100px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--indigo-light);
+        margin-bottom: 24px;
+        backdrop-filter: blur(8px);
+        animation: badgePulse 3s ease-in-out infinite;
       }
 
-      .hero-preview {
-        margin: 72px auto 0;
-        max-width: 880px;
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        background: linear-gradient(180deg, rgba(26, 29, 39, 0.9), rgba(15, 17, 23, 0.95));
-        padding: 18px;
-        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
-      }
-      .hero-preview-bar {
-        display: flex;
-        gap: 6px;
-        padding: 2px 4px 12px;
-      }
-      .hero-preview-bar span {
-        width: 10px;
-        height: 10px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.12);
-      }
-      .hero-preview-grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 10px;
-      }
-      @media (min-width: 768px) {
-        .hero-preview-grid {
-          grid-template-columns: 1fr 1fr 1fr;
+      @keyframes badgePulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.2);
+        }
+        50% {
+          box-shadow: 0 0 20px 4px rgba(99, 102, 241, 0.15);
         }
       }
-      .hero-preview-item {
-        padding: 18px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        text-align: left;
-      }
-      .hero-preview-item-label {
-        font-size: 10px;
-        font-weight: 700;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-      }
-      .hero-preview-item-value {
-        font-family: "Inter", sans-serif;
+
+      .hero h1 {
+        font-size: clamp(2.25rem, 5vw, 3.5rem);
         font-weight: 800;
-        font-size: 28px;
-        margin-top: 6px;
-        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        letter-spacing: -0.04em;
+        line-height: 1.08;
+        margin-bottom: 24px;
+        background: linear-gradient(135deg, #fff 0%, var(--indigo-light) 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
       }
-      .hero-preview-item.green .hero-preview-item-value {
-        background: linear-gradient(135deg, #22c55e, #16a34a);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+
+      .hero-sub {
+        font-size: 1.125rem;
+        color: var(--text-muted);
+        line-height: 1.7;
+        margin-bottom: 32px;
+        max-width: 520px;
       }
-      .hero-preview-item-sub {
-        font-size: 11px;
-        color: var(--muted);
+
+      .hero-ctas {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 32px;
+      }
+
+      .hero-proof {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px 24px;
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+      }
+
+      .hero-proof span {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .hero-proof .check {
+        color: var(--green);
+        font-weight: 700;
+      }
+
+      .hero-visual {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .hero-visual-glow {
+        position: absolute;
+        width: 80%;
+        height: 80%;
+        background: radial-gradient(ellipse, rgba(99, 102, 241, 0.35) 0%, transparent 70%);
+        filter: blur(40px);
+        pointer-events: none;
+      }
+
+      .hero-visual svg {
+        width: 100%;
+        max-width: 480px;
+        position: relative;
+        z-index: 1;
+      }
+
+      /* ROI Calculator */
+      #roi {
+        background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.04) 50%, transparent 100%);
+      }
+
+      .roi-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 48px;
+        max-width: 640px;
+        margin: 0 auto;
+        box-shadow: var(--glow);
+      }
+
+      @media (max-width: 600px) {
+        .roi-card {
+          padding: 28px 20px;
+        }
+      }
+
+      .roi-slider-wrap {
+        margin-bottom: 32px;
+      }
+
+      .roi-slider-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 16px;
+        font-weight: 500;
+      }
+
+      .roi-slider-label strong {
+        font-size: 1.5rem;
+        color: var(--indigo-light);
+        font-weight: 800;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        height: 8px;
+        -webkit-appearance: none;
+        appearance: none;
+        background: rgba(99, 102, 241, 0.2);
+        border-radius: 4px;
+        outline: none;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 24px;
+        height: 24px;
+        background: linear-gradient(135deg, var(--indigo-dark), var(--purple));
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 16px rgba(99, 102, 241, 0.6);
+        border: 2px solid #fff;
+      }
+
+      input[type="range"]::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
+        background: linear-gradient(135deg, var(--indigo-dark), var(--purple));
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 0 16px rgba(99, 102, 241, 0.6);
+        border: 2px solid #fff;
+      }
+
+      .roi-results {
+        background: rgba(99, 102, 241, 0.08);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 28px;
+        margin-bottom: 28px;
+      }
+
+      .roi-results h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        margin-bottom: 20px;
+      }
+
+      .roi-results h3 span {
+        color: var(--indigo-light);
+        font-weight: 800;
+      }
+
+      .roi-line {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 0;
+        font-size: 1rem;
+        border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+      }
+
+      .roi-line:last-child {
+        border-bottom: none;
+      }
+
+      .roi-line .icon {
+        font-size: 1.25rem;
+        flex-shrink: 0;
+      }
+
+      .roi-line .value {
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      .roi-line .value.highlight {
+        color: var(--green);
+        font-size: 1.125rem;
+      }
+
+      .roi-cta {
+        width: 100%;
+        text-align: center;
+      }
+
+      /* Timeline */
+      .timeline-wrap {
+        overflow-x: auto;
+        padding-bottom: 16px;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .timeline {
+        display: flex;
+        gap: 0;
+        min-width: 900px;
+        position: relative;
+        padding: 24px 0;
+      }
+
+      .timeline::before {
+        content: "";
+        position: absolute;
+        top: 52px;
+        left: 40px;
+        right: 40px;
+        height: 2px;
+        background: linear-gradient(90deg, var(--indigo), var(--purple));
+        opacity: 0.4;
+      }
+
+      .timeline-step {
+        flex: 1;
+        text-align: center;
+        padding: 0 8px;
+        position: relative;
+      }
+
+      .timeline-icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 16px;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        position: relative;
+        z-index: 1;
+        transition: transform 0.3s, box-shadow 0.3s;
+      }
+
+      .timeline-step:hover .timeline-icon {
+        transform: translateY(-4px);
+        box-shadow: var(--glow);
+        border-color: var(--indigo);
+      }
+
+      .timeline-step p {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        line-height: 1.4;
+        max-width: 110px;
+        margin: 0 auto;
+      }
+
+      .timeline-tagline {
+        text-align: center;
+        margin-top: 32px;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--indigo-light);
+      }
+
+      /* Features grid */
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+      }
+
+      @media (max-width: 900px) {
+        .features-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      @media (max-width: 600px) {
+        .features-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .feature-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 28px;
+        transition: transform 0.25s, background 0.25s, border-color 0.25s, box-shadow 0.25s;
+      }
+
+      .feature-card:hover {
+        transform: translateY(-4px);
+        background: var(--bg-card-hover);
+        border-color: rgba(99, 102, 241, 0.35);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+      }
+
+      .feature-card .icon {
+        font-size: 2rem;
+        margin-bottom: 16px;
+      }
+
+      .feature-card h3 {
+        font-size: 1.0625rem;
+        font-weight: 700;
+        margin-bottom: 10px;
+        letter-spacing: -0.02em;
+      }
+
+      .feature-card p {
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        line-height: 1.6;
+      }
+
+      /* Comparison table */
+      .compare-wrap {
+        overflow-x: auto;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 560px;
+      }
+
+      th,
+      td {
+        padding: 16px 24px;
+        text-align: center;
+        font-size: 0.9375rem;
+        border-bottom: 1px solid var(--border);
+      }
+
+      th {
+        font-weight: 700;
+        background: var(--bg-card);
+      }
+
+      th:first-child,
+      td:first-child {
+        text-align: left;
+        font-weight: 500;
+        color: var(--text-muted);
+      }
+
+      th.col-autodocs {
+        background: rgba(99, 102, 241, 0.15);
+        color: var(--indigo-light);
+      }
+
+      th.col-spider {
+        color: var(--text-muted);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      td.col-autodocs {
+        background: rgba(99, 102, 241, 0.06);
+        font-weight: 600;
+      }
+
+      td.col-spider {
+        color: var(--text-muted);
+      }
+
+      tr:last-child td,
+      tr:last-child th {
+        border-bottom: none;
+      }
+
+      .compare-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 24px;
+        padding: 12px 20px;
+        background: rgba(99, 102, 241, 0.12);
+        border: 1px solid var(--border);
+        border-radius: 100px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--indigo-light);
+        backdrop-filter: blur(8px);
+      }
+
+      /* Testimonials */
+      .testimonials-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+      }
+
+      @media (max-width: 900px) {
+        .testimonials-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .testimonial-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        padding: 28px;
+        display: flex;
+        flex-direction: column;
+        transition: transform 0.25s, border-color 0.25s;
+      }
+
+      .testimonial-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(99, 102, 241, 0.3);
+      }
+
+      .testimonial-card blockquote {
+        font-size: 0.9375rem;
+        line-height: 1.7;
+        color: var(--text);
+        flex: 1;
+        margin-bottom: 20px;
+        font-style: normal;
+      }
+
+      .testimonial-card cite {
+        font-size: 0.8125rem;
+        font-style: normal;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      .testimonial-card cite strong {
+        display: block;
+        color: var(--text);
+        font-weight: 600;
         margin-top: 4px;
       }
 
-      /* ====================================================================
-         SECTION TITLES
-         ==================================================================== */
-      .section {
-        padding: 80px 0;
-      }
-      .section-head {
-        text-align: center;
-        margin-bottom: 56px;
-      }
-      .section-eyebrow {
-        display: inline-block;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-        color: var(--primary);
-        margin-bottom: 14px;
-      }
-      .section-title {
-        font-size: clamp(28px, 4vw, 42px);
-        font-weight: 800;
-        max-width: 700px;
-        margin: 0 auto 16px;
-        line-height: 1.15;
-      }
-      .section-title.light-subtitle {
-        font-size: clamp(24px, 3.4vw, 36px);
-        font-weight: 400;
-      }
-      .section-subtitle {
-        color: var(--muted);
-        max-width: 560px;
-        margin: 0 auto;
-        font-size: 15px;
-        line-height: 1.6;
+      /* Pricing */
+      .pricing-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+        max-width: 800px;
+        margin: 0 auto 32px;
       }
 
-      /* ====================================================================
-         FEATURES
-         ==================================================================== */
-      .features-grid {
-        display: grid;
-        gap: 20px;
-        grid-template-columns: 1fr;
-      }
-      @media (min-width: 768px) {
-        .features-grid {
-          grid-template-columns: repeat(3, 1fr);
+      @media (max-width: 600px) {
+        .pricing-grid {
+          grid-template-columns: 1fr;
         }
       }
-      .feature-card {
-        padding: 32px 28px;
-        border-radius: 16px;
+
+      .pricing-card {
+        background: var(--bg-card);
         border: 1px solid var(--border);
-        background: linear-gradient(180deg, rgba(26, 29, 39, 0.7), rgba(26, 29, 39, 0.4));
-        transition: transform 260ms ease, border-color 260ms ease, box-shadow 260ms ease;
+        border-radius: var(--radius-lg);
+        padding: 36px;
+        position: relative;
+        transition: transform 0.25s, border-color 0.25s;
       }
-      .feature-card:hover {
-        transform: translateY(-4px);
-        border-color: rgba(99, 102, 241, 0.4);
-        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.4);
+
+      .pricing-card:hover {
+        transform: translateY(-2px);
       }
-      .feature-icon {
-        width: 52px;
-        height: 52px;
-        border-radius: 12px;
-        background: rgba(99, 102, 241, 0.15);
-        color: var(--primary);
-        font-size: 26px;
+
+      .pricing-card.featured {
+        border-color: var(--indigo);
+        box-shadow: var(--glow);
+      }
+
+      .pricing-badge {
+        position: absolute;
+        top: -12px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, var(--indigo-dark), var(--purple));
+        color: #fff;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 6px 14px;
+        border-radius: 100px;
+        white-space: nowrap;
+      }
+
+      .pricing-card h3 {
+        font-size: 0.875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+
+      .pricing-price {
+        font-size: 2.5rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        margin-bottom: 8px;
+      }
+
+      .pricing-price span {
+        font-size: 1rem;
+        font-weight: 500;
+        color: var(--text-muted);
+      }
+
+      .pricing-alt {
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+        margin-bottom: 24px;
+      }
+
+      .pricing-features {
+        list-style: none;
+        margin-bottom: 28px;
+      }
+
+      .pricing-features li {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 8px 0;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+      }
+
+      .pricing-features li::before {
+        content: "✓";
+        color: var(--green);
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+
+      .pricing-card .btn {
+        width: 100%;
+      }
+
+      .pricing-note {
+        text-align: center;
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+      }
+
+      /* FAQ */
+      .faq-list {
+        max-width: 720px;
+        margin: 0 auto;
+      }
+
+      .faq-item {
+        border-bottom: 1px solid var(--border);
+      }
+
+      .faq-question {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 20px 0;
+        background: none;
+        border: none;
+        color: var(--text);
+        font-size: 1rem;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+        font-family: inherit;
+        transition: color 0.2s;
+      }
+
+      .faq-question:hover {
+        color: var(--indigo-light);
+      }
+
+      .faq-icon {
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-bottom: 20px;
-      }
-      .feature-card h3 {
-        font-size: 19px;
-        font-weight: 700;
-        margin-bottom: 10px;
-      }
-      .feature-card p {
-        color: var(--muted);
-        font-size: 14px;
-        line-height: 1.6;
-        margin: 0;
+        font-size: 1.125rem;
+        color: var(--indigo-light);
+        transition: transform 0.3s, background 0.2s;
       }
 
-      /* ====================================================================
-         PRICING
-         ==================================================================== */
-      .pricing-grid {
-        display: grid;
-        gap: 20px;
-        grid-template-columns: 1fr;
-        max-width: 1120px;
-        margin: 0 auto;
-        align-items: stretch;
+      .faq-item.open .faq-icon {
+        transform: rotate(45deg);
+        background: rgba(99, 102, 241, 0.15);
       }
-      @media (min-width: 768px) {
-        .pricing-grid {
-          /* Colonne annuelle plus large pour la mettre en avant. */
-          grid-template-columns: 1fr 1fr 1.15fr;
-          gap: 24px;
-        }
+
+      .faq-answer {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.35s ease, padding 0.35s ease;
       }
-      .pricing-card {
-        padding: 36px 32px;
-        border-radius: 18px;
-        border: 1px solid var(--border);
-        background: linear-gradient(180deg, rgba(26, 29, 39, 0.75), rgba(26, 29, 39, 0.45));
-        display: flex;
-        flex-direction: column;
-        transition: transform 260ms ease, border-color 260ms ease;
+
+      .faq-item.open .faq-answer {
+        max-height: 300px;
+        padding-bottom: 20px;
+      }
+
+      .faq-answer p {
+        font-size: 0.9375rem;
+        color: var(--text-muted);
+        line-height: 1.7;
+      }
+
+      /* Final CTA */
+      .cta-final {
+        padding: 80px 0;
+      }
+
+      .cta-final-inner {
+        background: linear-gradient(135deg, var(--indigo-dark) 0%, #3730a3 40%, var(--purple) 100%);
+        border-radius: 24px;
+        padding: 64px 48px;
+        text-align: center;
         position: relative;
+        overflow: hidden;
       }
-      .pricing-card.featured {
-        border-color: rgba(99, 102, 241, 0.55);
-        background: linear-gradient(
-          180deg,
-          rgba(99, 102, 241, 0.08) 0%,
-          rgba(26, 29, 39, 0.7) 55%
-        );
-        padding: 44px 34px 40px;
-        /* Bord brillant animé (box-shadow pulsé). */
-        animation: pricing-glow 2800ms ease-in-out infinite;
-      }
-      @media (min-width: 768px) {
-        .pricing-card.featured {
-          transform: scale(1.04);
-        }
-      }
-      @keyframes pricing-glow {
-        0%,
-        100% {
-          box-shadow:
-            0 0 0 1px rgba(99, 102, 241, 0.35),
-            0 30px 70px -25px rgba(99, 102, 241, 0.55);
-        }
-        50% {
-          box-shadow:
-            0 0 0 2px rgba(99, 102, 241, 0.7),
-            0 36px 90px -20px rgba(99, 102, 241, 0.85);
-        }
-      }
-      /* Reflet qui traverse la bordure. */
-      .pricing-card.featured::after {
+
+      .cta-final-inner::before {
         content: "";
         position: absolute;
         inset: 0;
-        border-radius: inherit;
-        overflow: hidden;
+        background: radial-gradient(circle at 30% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
         pointer-events: none;
-        background: linear-gradient(
-          100deg,
-          transparent 35%,
-          rgba(255, 255, 255, 0.1) 48%,
-          rgba(255, 255, 255, 0.18) 50%,
-          rgba(255, 255, 255, 0.1) 52%,
-          transparent 65%
-        );
-        background-size: 250% 100%;
-        background-position: -150% 0;
-        animation: pricing-shine 3600ms ease-in-out infinite;
-        animation-delay: 800ms;
-        mix-blend-mode: screen;
       }
-      @keyframes pricing-shine {
-        0% {
-          background-position: -150% 0;
-        }
-        60% {
-          background-position: 250% 0;
-        }
-        100% {
-          background-position: 250% 0;
-        }
+
+      .cta-final-inner > * {
+        position: relative;
+        z-index: 1;
       }
-      .pricing-badge {
-        position: absolute;
-        top: -14px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 6px 14px;
-        background: linear-gradient(135deg, #4f46e5, #6366f1);
-        color: #fff;
-        border-radius: 999px;
-        font-size: 11px;
+
+      .cta-final h2 {
+        font-size: clamp(1.5rem, 3.5vw, 2.25rem);
         font-weight: 800;
-        letter-spacing: 0.08em;
-        white-space: nowrap;
-        box-shadow: 0 8px 24px rgba(99, 102, 241, 0.45);
+        letter-spacing: -0.03em;
+        margin-bottom: 16px;
+        max-width: 560px;
+        margin-left: auto;
+        margin-right: auto;
       }
-      .pricing-card:hover {
-        transform: translateY(-3px);
+
+      .cta-final p {
+        font-size: 1.0625rem;
+        opacity: 0.9;
+        margin-bottom: 32px;
+        max-width: 480px;
+        margin-left: auto;
+        margin-right: auto;
       }
-      @media (min-width: 768px) {
-        .pricing-card.featured:hover {
-          transform: scale(1.04) translateY(-3px);
+
+      .cta-final .btn {
+        background: #fff;
+        color: var(--indigo-dark);
+        font-weight: 700;
+        padding: 16px 32px;
+        font-size: 1rem;
+      }
+
+      .cta-final .btn:hover {
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+      }
+
+      .cta-final small {
+        display: block;
+        margin-top: 16px;
+        font-size: 0.8125rem;
+        opacity: 0.8;
+      }
+
+      @media (max-width: 600px) {
+        .cta-final-inner {
+          padding: 48px 24px;
         }
       }
 
-      .plan-name {
-        font-size: 13px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        color: var(--muted);
-        margin-bottom: 10px;
-      }
-      .pricing-card.featured .plan-name {
-        color: var(--primary);
-      }
-      .plan-price {
-        font-family: "Inter", sans-serif;
-        font-size: 46px;
-        font-weight: 800;
-        line-height: 1;
-      }
-      .plan-price .suffix {
-        font-size: 16px;
-        font-weight: 500;
-        color: var(--muted);
-        margin-left: 4px;
-      }
-      .plan-tagline {
-        color: var(--muted);
-        font-size: 14px;
-        margin: 12px 0 20px;
-      }
-
-      /* Bloc "argumentaire économique" sous le prix annuel. */
-      .plan-savings {
-        margin: 0 0 24px;
-        padding: 14px 16px;
-        border-radius: 12px;
-        background: rgba(99, 102, 241, 0.1);
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        display: grid;
-        gap: 8px;
-        font-size: 13px;
-      }
-      .plan-savings-line {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--text);
-      }
-      .plan-savings-line.strong {
-        font-weight: 700;
-        color: #fff;
-      }
-      .plan-savings-line .em {
-        color: var(--primary);
-        font-weight: 700;
-      }
-
-      .plan-features {
-        list-style: none;
-        padding: 0;
-        margin: 0 0 28px;
-        display: grid;
-        gap: 12px;
-      }
-      .plan-features li {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 14px;
-        color: var(--text);
-      }
-      .plan-features li::before {
-        content: "";
-        width: 18px;
-        height: 18px;
-        border-radius: 999px;
-        background: rgba(34, 197, 94, 0.15);
-        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2322c55e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
-        background-repeat: no-repeat;
-        background-position: center;
-        flex-shrink: 0;
-      }
-      .plan-cta {
-        margin-top: auto;
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .pricing-card.featured {
-          animation: none;
-        }
-        .pricing-card.featured::after {
-          animation: none;
-          display: none;
-        }
-      }
-
-      /* ====================================================================
-         FOOTER
-         ==================================================================== */
+      /* Footer */
       footer {
+        padding: 48px 0 32px;
         border-top: 1px solid var(--border);
-        padding: 40px 0;
-        margin-top: 40px;
       }
+
       .footer-inner {
         display: flex;
-        flex-direction: column;
-        gap: 20px;
-        align-items: center;
+        flex-wrap: wrap;
         justify-content: space-between;
-        text-align: center;
+        align-items: center;
+        gap: 24px;
       }
-      @media (min-width: 768px) {
-        .footer-inner {
-          flex-direction: row;
-          text-align: left;
-        }
-      }
-      .footer-brand {
-        font-size: 13px;
-        color: var(--muted);
-      }
+
       .footer-links {
         display: flex;
         flex-wrap: wrap;
-        justify-content: center;
         gap: 24px;
-        font-size: 13px;
+        list-style: none;
       }
+
       .footer-links a {
-        color: var(--muted);
-        transition: color 180ms ease;
+        font-size: 0.875rem;
+        color: var(--text-muted);
+        transition: color 0.2s;
       }
+
       .footer-links a:hover {
         color: var(--text);
       }
 
-      /* ====================================================================
-         FADE IN ON SCROLL
-         ==================================================================== */
+      .footer-copy {
+        width: 100%;
+        text-align: center;
+        font-size: 0.8125rem;
+        color: var(--text-muted);
+        padding-top: 24px;
+        margin-top: 8px;
+        border-top: 1px solid var(--border);
+      }
+
+      /* Scroll animations */
       .reveal {
         opacity: 0;
         transform: translateY(24px);
-        transition: opacity 600ms ease-out, transform 600ms ease-out;
-        transition-delay: var(--reveal-delay, 0ms);
+        transition: opacity 0.6s ease, transform 0.6s ease;
       }
+
       .reveal.visible {
         opacity: 1;
         transform: translateY(0);
       }
-
-      @media (prefers-reduced-motion: reduce) {
-        * {
-          animation-duration: 0.01ms !important;
-          transition-duration: 0.01ms !important;
-        }
-        .reveal {
-          opacity: 1;
-          transform: none;
-        }
-      }
-
-      /* iOS : empêche le zoom auto sur inputs (aucun ici mais par prudence) */
-      @media (max-width: 767px) {
-        input,
-        select,
-        textarea {
-          font-size: 16px;
-        }
-      }
-
-      /* Touch targets 44px minimum */
-      @media (hover: none) {
-        .nav-links a,
-        .footer-links a {
-          padding: 8px 0;
-        }
-      }
     </style>
   </head>
   <body>
-    <!-- =================================================================
-         NAV
-         ================================================================= -->
-    <nav class="nav">
-      <div class="container nav-inner">
-        <a class="brand" href="/" aria-label="AutoDocs accueil">
-          <span class="brand-icon" aria-hidden="true">
-            <!-- icône voiture -->
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 16H9m10 0h3v-3.15a1 1 0 0 0-.84-.99L16 11l-2.7-3.6a1 1 0 0 0-.8-.4H5.24a2 2 0 0 0-1.8 1.1l-.8 1.63A6 6 0 0 0 2 12.42V16h2" />
-              <circle cx="6.5" cy="16.5" r="2.5" />
-              <circle cx="16.5" cy="16.5" r="2.5" />
-            </svg>
-          </span>
-          <span>Auto<span class="accent">Docs</span></span>
+    <!-- NAVBAR -->
+    <nav id="navbar">
+      <div class="nav-inner">
+        <a href="#" class="logo" aria-label="AutoDocs accueil">
+          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect x="4" y="4" width="56" height="56" rx="14" fill="#6366F1" />
+            <path
+              d="M18 36h4.5m19.5 0H46v-5.2a2 2 0 0 0-1.67-1.97l-6.9-1.15-4.28-5.86A2 2 0 0 0 31.53 21H20.2a2.5 2.5 0 0 0-2.25 1.38L16.3 25.8A8 8 0 0 0 15 29.35V36h3"
+              stroke="#FFFFFF"
+              stroke-width="3.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <circle cx="24" cy="36.5" r="4.2" stroke="#FFFFFF" stroke-width="3.2" />
+            <circle cx="40" cy="36.5" r="4.2" stroke="#FFFFFF" stroke-width="3.2" />
+          </svg>
+          AutoDocs
         </a>
-
-        <div class="nav-links" role="navigation">
-          <a href="#features">Fonctionnalités</a>
-          <a href="#pricing">Tarifs</a>
-          <a href="/login">Connexion</a>
+        <ul class="nav-links">
+          <li><a href="#features">Fonctionnalités</a></li>
+          <li><a href="#roi">ROI</a></li>
+          <li><a href="#tarifs">Tarifs</a></li>
+        </ul>
+        <div class="nav-actions">
+          <a href="https://autodocs-eight.vercel.app/login" class="btn-nav-outline">Se connecter</a>
+          <a href="https://autodocs-eight.vercel.app/inscription" class="btn-nav-primary"
+            >Essayer gratuitement →</a
+          >
         </div>
-
-        <a class="nav-cta" href="/login">Essayer gratuitement</a>
+        <button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
       </div>
     </nav>
 
-    <!-- =================================================================
-         HERO
-         ================================================================= -->
+    <!-- HERO -->
     <header class="hero">
+      <div class="hero-mesh" aria-hidden="true"></div>
       <div class="container">
-        <span class="hero-badge reveal">SaaS · Concessions automobiles</span>
-        <h1 class="reveal" style="--reveal-delay: 80ms">
-          Le bon de commande automobile
-          <span class="grad">en 30 secondes</span>.
-        </h1>
-        <p class="reveal" style="--reveal-delay: 160ms">
-          Scannez les documents client, sélectionnez le véhicule, générez le PDF.
-          AutoDocs automatise la paperasse pour que vos commerciaux se
-          concentrent sur la vente.
-        </p>
-        <div class="hero-ctas reveal" style="--reveal-delay: 240ms">
-          <a class="btn-primary" href="/login">
-            Démarrer gratuitement
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
-            </svg>
-          </a>
-          <a class="btn-secondary" href="#features">Voir la démo</a>
-        </div>
-
-        <div class="hero-preview reveal" style="--reveal-delay: 320ms" aria-hidden="true">
-          <div class="hero-preview-bar">
-            <span></span><span></span><span></span>
+        <div class="hero-grid">
+          <div>
+            <div class="hero-badge reveal">
+              <span>🤖</span> Propulsé par l'IA — Agent de vente intégré
+            </div>
+            <h1 class="reveal">Votre équipe vend.<br />L'IA gère le reste.</h1>
+            <p class="hero-sub reveal">
+              AutoDocs automatise toute l'administration post-vente grâce à l'intelligence artificielle. Vos
+              commerciaux récupèrent 15 minutes par vente — soit plus de 1&nbsp;000€ de CA supplémentaire par mois.
+            </p>
+            <div class="hero-ctas reveal">
+              <a href="#roi" class="btn btn-primary">Calculer mon gain →</a>
+              <a href="https://autodocs-eight.vercel.app/inscription" class="btn btn-outline"
+                >Essayer gratuitement</a
+              >
+            </div>
+            <div class="hero-proof reveal">
+              <span><span class="check">✓</span> Sans carte bancaire</span>
+              <span><span class="check">✓</span> Actif en 2 minutes</span>
+              <span><span class="check">✓</span> 3x moins cher que Spider VO</span>
+            </div>
           </div>
-          <div class="hero-preview-grid">
-            <div class="hero-preview-item">
-              <div class="hero-preview-item-label">Bons ce mois</div>
-              <div class="hero-preview-item-value">247</div>
-              <div class="hero-preview-item-sub">Brouillons créés</div>
-            </div>
-            <div class="hero-preview-item green">
-              <div class="hero-preview-item-label">Véhicules stock</div>
-              <div class="hero-preview-item-value">38</div>
-              <div class="hero-preview-item-sub">Disponibles</div>
-            </div>
-            <div class="hero-preview-item">
-              <div class="hero-preview-item-label">Temps moyen</div>
-              <div class="hero-preview-item-value">28s</div>
-              <div class="hero-preview-item-sub">Par bon</div>
-            </div>
+          <div class="hero-visual reveal">
+            <div class="hero-visual-glow" aria-hidden="true"></div>
+            <svg viewBox="0 0 480 400" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Agent IA AutoDocs">
+              <!-- Central AI hub -->
+              <circle cx="240" cy="200" r="48" fill="url(#aiGrad)" stroke="rgba(129,140,248,0.5)" stroke-width="2" />
+              <text x="240" y="208" text-anchor="middle" fill="#fff" font-size="28" font-family="system-ui">🤖</text>
+              <!-- Orbiting task nodes -->
+              <g opacity="0.9">
+                <rect x="60" y="80" width="72" height="56" rx="10" fill="#111127" stroke="#6366f1" stroke-width="1.5" />
+                <text x="96" y="115" text-anchor="middle" fill="#94a3b8" font-size="22">📄</text>
+                <path d="M132 108 L188 168" stroke="#6366f1" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrow)" />
+              </g>
+              <g opacity="0.9">
+                <rect x="348" y="70" width="72" height="56" rx="10" fill="#111127" stroke="#8b5cf6" stroke-width="1.5" />
+                <text x="384" y="105" text-anchor="middle" fill="#94a3b8" font-size="22">🧾</text>
+                <path d="M348 98 L288 168" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="6 4" />
+              </g>
+              <g opacity="0.9">
+                <rect x="40" y="260" width="72" height="56" rx="10" fill="#111127" stroke="#6366f1" stroke-width="1.5" />
+                <text x="76" y="295" text-anchor="middle" fill="#94a3b8" font-size="22">👤</text>
+                <path d="M112 288 L192 228" stroke="#6366f1" stroke-width="2" stroke-dasharray="6 4" />
+              </g>
+              <g opacity="0.9">
+                <rect x="360" y="270" width="72" height="56" rx="10" fill="#111127" stroke="#10b981" stroke-width="1.5" />
+                <text x="396" y="305" text-anchor="middle" fill="#94a3b8" font-size="22">✅</text>
+                <path d="M360 298 L288 232" stroke="#10b981" stroke-width="2" stroke-dasharray="6 4" />
+              </g>
+              <g opacity="0.9">
+                <rect x="180" y="20" width="72" height="56" rx="10" fill="#111127" stroke="#818cf8" stroke-width="1.5" />
+                <text x="216" y="55" text-anchor="middle" fill="#94a3b8" font-size="22">🚗</text>
+                <path d="M216 76 L240 152" stroke="#818cf8" stroke-width="2" stroke-dasharray="6 4" />
+              </g>
+              <g opacity="0.9">
+                <rect x="200" y="320" width="72" height="56" rx="10" fill="#111127" stroke="#6366f1" stroke-width="1.5" />
+                <text x="236" y="355" text-anchor="middle" fill="#94a3b8" font-size="22">📋</text>
+                <path d="M236 320 L240 248" stroke="#6366f1" stroke-width="2" stroke-dasharray="6 4" />
+              </g>
+              <!-- Animated pulse rings -->
+              <circle cx="240" cy="200" r="70" stroke="rgba(99,102,241,0.3)" stroke-width="1" fill="none">
+                <animate attributeName="r" values="70;90;70" dur="3s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.5;0;0.5" dur="3s" repeatCount="indefinite" />
+              </circle>
+              <defs>
+                <linearGradient id="aiGrad" x1="192" y1="152" x2="288" y2="248" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#4f46e5" />
+                  <stop offset="1" stop-color="#8b5cf6" />
+                </linearGradient>
+                <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 Z" fill="#6366f1" />
+                </marker>
+              </defs>
+            </svg>
           </div>
         </div>
       </div>
     </header>
 
-    <!-- =================================================================
-         FEATURES
-         ================================================================= -->
-    <section class="section" id="features">
-      <div class="container">
-        <div class="section-head">
-          <span class="section-eyebrow reveal">Fonctionnalités</span>
-          <h2 class="section-title light-subtitle reveal" style="--reveal-delay: 80ms">
-            Tout ce dont un concessionnaire a besoin pour vendre vite
-          </h2>
-          <p class="section-subtitle reveal" style="--reveal-delay: 160ms">
-            Conçu avec des commerciaux automobiles pour éliminer chaque friction
-            administrative.
-          </p>
+    <!-- ROI CALCULATOR -->
+    <section id="roi">
+      <div class="container text-center">
+        <h2 class="section-title reveal">Combien AutoDocs peut vous rapporter ?</h2>
+        <div class="roi-card reveal">
+          <div class="roi-slider-wrap">
+            <label class="roi-slider-label" for="salesSlider">
+              <span>Nombre de ventes par mois</span>
+              <strong id="salesValue">30</strong>
+            </label>
+            <input type="range" id="salesSlider" min="5" max="100" value="30" step="1" aria-valuemin="5" aria-valuemax="100" />
+          </div>
+          <div class="roi-results">
+            <h3>Pour <span id="salesDisplay">30</span> ventes par mois :</h3>
+            <div class="roi-line">
+              <span class="icon">⏱</span>
+              <span><span class="value" id="minutesSaved">450</span> minutes économisées</span>
+            </div>
+            <div class="roi-line">
+              <span class="icon">📅</span>
+              <span><span class="value" id="hoursFreed">7,5</span> heures libérées</span>
+            </div>
+            <div class="roi-line">
+              <span class="icon">💰</span>
+              <span
+                >+<span class="value highlight" id="caPotential">1&nbsp;013</span>€ de CA potentiel récupérable</span
+              >
+            </div>
+            <div class="roi-line">
+              <span class="icon">🏆</span>
+              <span>ROI AutoDocs : <span class="value highlight" id="roiMultiple">20,7</span>x</span>
+            </div>
+          </div>
+          <a href="https://autodocs-eight.vercel.app/inscription" class="btn btn-primary roi-cta"
+            >Obtenir ce gain → Essayer gratuitement</a
+          >
         </div>
+      </div>
+    </section>
 
+    <!-- AI TIMELINE -->
+    <section id="ia-timeline">
+      <div class="container text-center">
+        <span class="section-label reveal">Automatisation</span>
+        <h2 class="section-title reveal">Un agent IA qui travaille après chaque vente</h2>
+        <div class="timeline-wrap reveal">
+          <div class="timeline">
+            <div class="timeline-step">
+              <div class="timeline-icon">🖊️</div>
+              <p>Commercial signe le bon</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-icon">🤖</div>
+              <p>Agent IA se déclenche automatiquement</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-icon">✅</div>
+              <p>Véhicule marqué vendu dans le stock</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-icon">👤</div>
+              <p>Fiche client créée/mise à jour CRM</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-icon">🧾</div>
+              <p>Facture générée et envoyée par email</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-icon">📋</div>
+              <p>Livre de police mis à jour</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-icon">📄</div>
+              <p>CERFA généré</p>
+            </div>
+          </div>
+        </div>
+        <p class="timeline-tagline reveal">Ce qui prenait 15 minutes se fait en 8 secondes.</p>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section id="features">
+      <div class="container text-center">
+        <span class="section-label reveal">Fonctionnalités</span>
+        <h2 class="section-title reveal">Tout ce dont une concession a besoin</h2>
+        <p class="section-subtitle reveal">Sans la complexité d'un DMS à 500€/mois</p>
         <div class="features-grid">
           <article class="feature-card reveal">
-            <div class="feature-icon">📄</div>
-            <h3>Scan CNI automatique</h3>
+            <div class="icon">🤖</div>
+            <h3>Agent IA post-vente</h3>
             <p>
-              Extrayez nom, prénom, adresse en un scan. Plus de saisie manuelle,
-              plus d'erreurs de retranscription.
+              Déclenché automatiquement après signature. Gère véhicule, client, facture, CERFA et livre de police sans
+              intervention humaine.
             </p>
           </article>
-          <article class="feature-card reveal" style="--reveal-delay: 120ms">
-            <div class="feature-icon">🚗</div>
-            <h3>Stock véhicules intégré</h3>
+          <article class="feature-card reveal">
+            <div class="icon">📊</div>
+            <h3>Briefing IA quotidien</h3>
             <p>
-              Importez votre stock Excel, sélectionnez le véhicule en 2 clics,
-              synchronisez les prix et références.
+              Chaque matin : CA du mois, bons en attente, alertes de relance. Votre journée organisée avant même
+              d'arriver au bureau.
             </p>
           </article>
-          <article class="feature-card reveal" style="--reveal-delay: 240ms">
-            <div class="feature-icon">⚡</div>
-            <h3>PDF instantané</h3>
+          <article class="feature-card reveal">
+            <div class="icon">✍️</div>
+            <h3>Signature électronique</h3>
             <p>
-              Bon de commande généré et prêt à signer en quelques secondes, au
-              format officiel attendu par le client.
+              Le client signe depuis son téléphone. Vous signez sur l'app. PDF final envoyé automatiquement aux deux
+              parties.
+            </p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="icon">📋</div>
+            <h3>Livre de police numérique</h3>
+            <p>
+              Registre légal conforme Article L321-1 CSI. Rempli automatiquement par l'IA. Export PDF pour les contrôles
+              en un clic.
+            </p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="icon">💰</div>
+            <h3>Estimation reprise IA</h3>
+            <p>
+              L'IA analyse marque/modèle/kilométrage et propose une fourchette de prix de reprise en temps réel pendant
+              la négociation.
+            </p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="icon">📧</div>
+            <h3>Relances automatiques</h3>
+            <p>
+              Bon non signé depuis 3 jours ? L'app relance le client automatiquement. Vous ne perdez plus aucune vente par
+              oubli.
             </p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- =================================================================
-         PRICING
-         ================================================================= -->
-    <section class="section" id="pricing">
+    <!-- COMPARISON -->
+    <section id="comparaison">
       <div class="container">
-        <div class="section-head">
-          <span class="section-eyebrow reveal">Tarifs</span>
-          <h2 class="section-title light-subtitle reveal" style="--reveal-delay: 80ms">
-            Sans engagement, annulable à tout moment
-          </h2>
-          <p class="section-subtitle reveal" style="--reveal-delay: 160ms">
-            Commencez gratuitement, passez au Pro quand votre volume explose.
-          </p>
+        <div class="text-center">
+          <span class="section-label reveal">Comparatif</span>
+          <h2 class="section-title reveal">3x moins cher. 10x plus intelligent.</h2>
         </div>
-
-        <div class="pricing-grid">
-          <!-- Gratuit -->
-          <article class="pricing-card reveal">
-            <div class="plan-name">Gratuit</div>
-            <div class="plan-price">0 €<span class="suffix">/ mois</span></div>
-            <p class="plan-tagline">Pour tester AutoDocs sans risque</p>
-            <ul class="plan-features">
-              <li>10 bons de commande offerts</li>
-              <li>Stock véhicules</li>
-              <li>Scan CNI</li>
-            </ul>
-            <a class="btn-secondary plan-cta" href="/login">Commencer gratuitement</a>
-          </article>
-
-          <!-- Pro mensuel -->
-          <article class="pricing-card reveal" style="--reveal-delay: 120ms">
-            <div class="plan-name">Pro mensuel</div>
-            <div class="plan-price">49 €<span class="suffix">/ mois</span></div>
-            <p class="plan-tagline">Flexibilité totale, annulable à tout moment</p>
-            <ul class="plan-features">
-              <li>Bons illimités</li>
-              <li>Support prioritaire</li>
-              <li>Toutes les fonctionnalités</li>
-            </ul>
-            <a class="btn-secondary plan-cta" href="/login?plan=monthly">Choisir Mensuel</a>
-          </article>
-
-          <!-- Pro annuel : card featured -->
-          <article class="pricing-card featured reveal" style="--reveal-delay: 240ms">
-            <span class="pricing-badge">⭐ Meilleure offre</span>
-            <div class="plan-name">Pro annuel</div>
-            <div class="plan-price">399 €<span class="suffix">/ an</span></div>
-            <p class="plan-tagline">L'option la plus rentable pour votre concession</p>
-
-            <div class="plan-savings">
-              <div class="plan-savings-line strong">
-                <span>=</span>
-                <span class="em">33 €/mois seulement</span>
-              </div>
-              <div class="plan-savings-line">
-                <span>🎁</span>
-                <span>2 mois offerts par rapport au mensuel</span>
-              </div>
-              <div class="plan-savings-line">
-                <span>💰</span>
-                <span>Économisez <strong>189 €/an</strong></span>
-              </div>
-            </div>
-
-            <ul class="plan-features">
-              <li>Tout le Pro mensuel</li>
-              <li>Bons illimités</li>
-              <li>Support prioritaire</li>
-              <li>Mises à jour & nouvelles fonctionnalités</li>
-            </ul>
-
-            <a class="btn-primary plan-cta" href="/login?plan=annual">Choisir Annuel</a>
-          </article>
+        <div class="compare-wrap reveal" style="margin-top: 48px">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th class="col-autodocs">AutoDocs</th>
+                <th class="col-spider">Spider VO</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Prix</td>
+                <td class="col-autodocs"><strong>49€/mois</strong></td>
+                <td class="col-spider">159€/mois</td>
+              </tr>
+              <tr>
+                <td>Agent IA post-vente</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">❌</td>
+              </tr>
+              <tr>
+                <td>Briefing IA quotidien</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">❌</td>
+              </tr>
+              <tr>
+                <td>Estimation reprise IA</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">❌</td>
+              </tr>
+              <tr>
+                <td>Bons de commande</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">✅</td>
+              </tr>
+              <tr>
+                <td>Signature électronique</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">✅</td>
+              </tr>
+              <tr>
+                <td>CERFA automatique</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">✅</td>
+              </tr>
+              <tr>
+                <td>Livre de police</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">✅</td>
+              </tr>
+              <tr>
+                <td>Facturation légale</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">✅</td>
+              </tr>
+              <tr>
+                <td>Support</td>
+                <td class="col-autodocs">✅</td>
+                <td class="col-spider">✅</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="text-center">
+          <span class="compare-badge reveal"
+            >🏆 AutoDocs — L'IA que Spider VO n'a pas, au tiers du prix</span
+          >
         </div>
       </div>
     </section>
 
-    <!-- =================================================================
-         FOOTER
-         ================================================================= -->
-    <footer>
-      <div class="container footer-inner">
-        <div class="footer-brand">© 2025 AutoDocs — Tous droits réservés.</div>
-        <div class="footer-links">
-          <a href="/cgu.html">CGU</a>
-          <a href="/confidentialite.html">Politique de confidentialité</a>
-          <a href="mailto:contact@autodocs.fr">Contact</a>
+    <!-- TESTIMONIALS -->
+    <section id="temoignages">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-label reveal">Témoignages</span>
+          <h2 class="section-title reveal">Ils ont choisi l'IA pour vendre plus</h2>
         </div>
+        <div class="testimonials-grid" style="margin-top: 48px">
+          <blockquote class="testimonial-card reveal">
+            <p>
+              « Mes commerciaux passaient 20 minutes de paperasse après chaque vente. Maintenant l'agent IA fait tout. On
+              a vendu 4 voitures de plus ce mois-ci avec le temps récupéré. »
+            </p>
+            <cite>
+              Marc D., Directeur commercial
+              <strong>Garage du Centre, Lyon</strong>
+            </cite>
+          </blockquote>
+          <blockquote class="testimonial-card reveal">
+            <p>
+              « Le livre de police numérique nous a sauvé lors d'un contrôle préfectoral. Tout était à jour, exporté en
+              PDF en 30 secondes. »
+            </p>
+            <cite>
+              Sophie L., Directrice
+              <strong>AutoSud Montpellier</strong>
+            </cite>
+          </blockquote>
+          <blockquote class="testimonial-card reveal">
+            <p>
+              « On économise 110€/mois vs Spider VO avec 10x plus d'automatisation IA. Le retour sur investissement est
+              immédiat. »
+            </p>
+            <cite>
+              Karim B., Gérant
+              <strong>Auto Prestige Marseille</strong>
+            </cite>
+          </blockquote>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING -->
+    <section id="tarifs">
+      <div class="container text-center">
+        <span class="section-label reveal">Tarifs</span>
+        <h2 class="section-title reveal">Simple, transparent, sans surprise</h2>
+        <div class="pricing-grid">
+          <div class="pricing-card reveal">
+            <h3>Gratuit</h3>
+            <div class="pricing-price">0€</div>
+            <ul class="pricing-features">
+              <li>10 bons de commande à vie</li>
+              <li>Toutes les fonctionnalités</li>
+              <li>Agent IA inclus</li>
+              <li>Support email</li>
+            </ul>
+            <a href="https://autodocs-eight.vercel.app/inscription" class="btn btn-outline"
+              >Commencer gratuitement</a
+            >
+          </div>
+          <div class="pricing-card featured reveal">
+            <span class="pricing-badge">Le plus populaire</span>
+            <h3>Pro</h3>
+            <div class="pricing-price">49€<span>/mois</span></div>
+            <p class="pricing-alt">ou 399€/an <strong style="color: var(--green)">(-49%)</strong></p>
+            <ul class="pricing-features">
+              <li>Bons illimités</li>
+              <li>Toutes les fonctionnalités</li>
+              <li>Agent IA illimité</li>
+              <li>Priorité support</li>
+              <li>Mises à jour en avant-première</li>
+            </ul>
+            <a href="https://autodocs-eight.vercel.app/inscription" class="btn btn-primary">Passer au Pro →</a>
+          </div>
+        </div>
+        <p class="pricing-note reveal">
+          Sans engagement · Annulable à tout moment · Paiement sécurisé par Stripe
+        </p>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-label reveal">FAQ</span>
+          <h2 class="section-title reveal">Questions fréquentes</h2>
+        </div>
+        <div class="faq-list" style="margin-top: 48px">
+          <div class="faq-item reveal">
+            <button class="faq-question" type="button" aria-expanded="false">
+              Est-ce que mes données sont sécurisées ?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Oui. AutoDocs utilise Supabase (PostgreSQL) avec chiffrement des données et authentification sécurisée.
+                Vos données restent en Europe.
+              </p>
+            </div>
+          </div>
+          <div class="faq-item reveal">
+            <button class="faq-question" type="button" aria-expanded="false">
+              Puis-je importer mon stock de véhicules ?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Oui, import CSV/Excel en un clic avec sélection des colonnes. Compatible avec tous les formats d'export
+                de vos outils actuels.
+              </p>
+            </div>
+          </div>
+          <div class="faq-item reveal">
+            <button class="faq-question" type="button" aria-expanded="false">
+              L'agent IA fonctionne comment exactement ?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Après chaque signature, il analyse le bon de commande et exécute automatiquement les tâches que vous
+                sélectionnez : créer la fiche client, générer la facture, marquer le véhicule vendu, etc.
+              </p>
+            </div>
+          </div>
+          <div class="faq-item reveal">
+            <button class="faq-question" type="button" aria-expanded="false">
+              Que se passe-t-il si je dépasse les 10 bons gratuits ?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                L'app vous propose de passer au plan Pro. Vos données sont conservées et vous continuez exactement où
+                vous en étiez.
+              </p>
+            </div>
+          </div>
+          <div class="faq-item reveal">
+            <button class="faq-question" type="button" aria-expanded="false">
+              Puis-je avoir plusieurs commerciaux sur le même compte ?
+              <span class="faq-icon" aria-hidden="true">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Oui, le plan Pro inclut le multi-utilisateurs. Chaque commercial a son accès, les données sont partagées
+                par concession.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="cta-final">
+      <div class="container">
+        <div class="cta-final-inner reveal">
+          <h2>Votre concession mérite mieux que la paperasse</h2>
+          <p>Rejoignez les concessions qui ont choisi l'IA pour vendre plus.</p>
+          <a href="https://autodocs-eight.vercel.app/inscription" class="btn"
+            >Commencer gratuitement — C'est immédiat →</a
+          >
+          <small>Aucune carte bancaire requise</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+      <div class="container">
+        <div class="footer-inner">
+          <a href="#" class="logo">
+            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width="32" height="32" aria-hidden="true">
+              <rect x="4" y="4" width="56" height="56" rx="14" fill="#6366F1" />
+              <path
+                d="M18 36h4.5m19.5 0H46v-5.2a2 2 0 0 0-1.67-1.97l-6.9-1.15-4.28-5.86A2 2 0 0 0 31.53 21H20.2a2.5 2.5 0 0 0-2.25 1.38L16.3 25.8A8 8 0 0 0 15 29.35V36h3"
+                stroke="#FFFFFF"
+                stroke-width="3.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <circle cx="24" cy="36.5" r="4.2" stroke="#FFFFFF" stroke-width="3.2" />
+              <circle cx="40" cy="36.5" r="4.2" stroke="#FFFFFF" stroke-width="3.2" />
+            </svg>
+            AutoDocs
+          </a>
+          <ul class="footer-links">
+            <li><a href="/cgu.html">CGU</a></li>
+            <li><a href="/confidentialite.html">Politique de confidentialité</a></li>
+            <li><a href="mailto:contact@autodocs.fr">Contact</a></li>
+          </ul>
+        </div>
+        <p class="footer-copy">© 2026 AutoDocs — Fait avec ❤️ pour les concessions françaises</p>
       </div>
     </footer>
 
     <script>
-      // Pas de redirection auto vers /app : la session est stockée sous la
-      // clé "autodocs-auth" côté SPA, et d’anciennes clés sb-*-auth-token
-      // pouvaient déclencher un faux "connecté" → boucle landing ↔ /app.
-      // L’app est atteignable via le bouton "Connexion" / liens de la nav.
-
-      // =================================================================
-      // 1. Fade-in au scroll via IntersectionObserver.
-      // =================================================================
-      (function setupReveal() {
-        var reveals = document.querySelectorAll(".reveal");
-        if (!("IntersectionObserver" in window)) {
-          reveals.forEach(function (el) {
-            el.classList.add("visible");
-          });
-          return;
+      /* Navbar glassmorphism */
+      const navbar = document.getElementById("navbar");
+      window.addEventListener("scroll", () => {
+        if (window.scrollY > 50) {
+          navbar.style.background = "rgba(10,10,20,0.9)";
+          navbar.style.backdropFilter = "blur(20px)";
+          navbar.style.borderBottom = "1px solid rgba(99,102,241,0.2)";
+        } else {
+          navbar.style.background = "transparent";
+          navbar.style.backdropFilter = "none";
+          navbar.style.borderBottom = "none";
         }
-        var io = new IntersectionObserver(
-          function (entries) {
-            entries.forEach(function (entry) {
-              if (entry.isIntersecting) {
-                entry.target.classList.add("visible");
-                io.unobserve(entry.target);
-              }
-            });
-          },
-          { threshold: 0.12, rootMargin: "0px 0px -40px 0px" },
-        );
-        reveals.forEach(function (el) {
-          io.observe(el);
-        });
-      })();
+      });
 
-      // =================================================================
-      // 2. Lien "Voir la démo" : scroll smooth vers #features.
-      // =================================================================
-      (function smoothAnchors() {
-        document.querySelectorAll('a[href^="#"]').forEach(function (a) {
-          a.addEventListener("click", function (e) {
-            var target = document.querySelector(a.getAttribute("href"));
-            if (!target) return;
+      /* Mobile nav */
+      const navToggle = document.getElementById("navToggle");
+      navToggle.addEventListener("click", () => {
+        const open = navbar.classList.toggle("nav-mobile-open");
+        navToggle.setAttribute("aria-expanded", open);
+      });
+
+      /* Smooth scroll */
+      document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+        anchor.addEventListener("click", function (e) {
+          const href = this.getAttribute("href");
+          if (href === "#") return;
+          const target = document.querySelector(href);
+          if (target) {
             e.preventDefault();
-            target.scrollIntoView({ behavior: "smooth", block: "start" });
-          });
+            target.scrollIntoView({ behavior: "smooth" });
+            navbar.classList.remove("nav-mobile-open");
+          }
         });
-      })();
+      });
+
+      /* ROI Calculator */
+      const slider = document.getElementById("salesSlider");
+      const salesValue = document.getElementById("salesValue");
+      const salesDisplay = document.getElementById("salesDisplay");
+      const minutesSaved = document.getElementById("minutesSaved");
+      const hoursFreed = document.getElementById("hoursFreed");
+      const caPotential = document.getElementById("caPotential");
+      const roiMultiple = document.getElementById("roiMultiple");
+      const HOURLY_RATE = 135;
+      const PRO_PRICE = 49;
+
+      function formatNumber(n) {
+        return Math.round(n).toLocaleString("fr-FR");
+      }
+
+      function updateROI() {
+        const sales = parseInt(slider.value, 10);
+        const minutes = sales * 15;
+        const hours = minutes / 60;
+        const ca = hours * HOURLY_RATE;
+        const roi = ca / PRO_PRICE;
+
+        salesValue.textContent = sales;
+        salesDisplay.textContent = sales;
+        minutesSaved.textContent = formatNumber(minutes);
+        hoursFreed.textContent = hours.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+        caPotential.textContent = formatNumber(ca);
+        roiMultiple.textContent = roi.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+      }
+
+      slider.addEventListener("input", updateROI);
+      updateROI();
+
+      /* FAQ Accordion */
+      document.querySelectorAll(".faq-item").forEach((item) => {
+        const btn = item.querySelector(".faq-question");
+        btn.addEventListener("click", () => {
+          const isOpen = item.classList.contains("open");
+          document.querySelectorAll(".faq-item").forEach((i) => {
+            i.classList.remove("open");
+            i.querySelector(".faq-question").setAttribute("aria-expanded", "false");
+          });
+          if (!isOpen) {
+            item.classList.add("open");
+            btn.setAttribute("aria-expanded", "true");
+          }
+        });
+      });
+
+      /* Scroll reveal */
+      const revealObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("visible");
+            }
+          });
+        },
+        { threshold: 0.1, rootMargin: "0px 0px -40px 0px" }
+      );
+
+      document.querySelectorAll(".reveal").forEach((el) => revealObserver.observe(el));
     </script>
   </body>
 </html>

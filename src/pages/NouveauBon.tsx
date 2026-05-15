@@ -10,11 +10,14 @@ import {
   Receipt,
   Search,
   X,
+  Circle,
+  AlertTriangle,
+  FileText,
 } from "lucide-react";
 import TopBar from "@/components/layout/TopBar";
 import ProfilClient from "@/components/nouveau-bon/ProfilClient";
 import ScanCni from "@/components/nouveau-bon/ScanCni";
-import VehiculeVente from "@/components/nouveau-bon/VehiculeVente";
+import VehiculeVente, { type RepriseEstimationAi } from "@/components/nouveau-bon/VehiculeVente";
 import Reglement from "@/components/nouveau-bon/Reglement";
 import GenerateBar, { countMissingMandatoryFields } from "@/components/nouveau-bon/GenerateBar";
 import { BonFormStepper, computeBonStep } from "@/components/nouveau-bon/BonFormStepper";
@@ -36,6 +39,7 @@ import {
 } from "@/utils/stockVehicules";
 import {
   attachDraftToClient,
+  clientUpsertFromDraft,
   createClient,
   findClientExactNomPrenom,
   searchClientsAutocomplete,
@@ -44,6 +48,8 @@ import {
 import FactureGenerateModal from "@/components/FactureGenerateModal";
 import { getFactureByBrouillonId } from "@/utils/factures";
 import { downloadBase64Pdf } from "@/utils/generatePDF";
+import type { GenerateBarSuccessPayload } from "@/components/nouveau-bon/GenerateBar";
+import { apiFetch } from "@/lib/apiClient";
 
 type DraftFormState = Omit<BonDraftData, "id" | "createdAt" | "updatedAt"> & {
   id?: string;
@@ -68,6 +74,9 @@ const defaultFormState: DraftFormState = {
   repriseModele: "",
   repriseVin: "",
   reprisePremiereCirculation: "",
+  repriseKilometrage: "",
+  repriseEnergie: "",
+  repriseVersion: "",
   repriseValeur: "",
   repriseDureeMois: "",
   vehiculePrix: "",
@@ -76,6 +85,12 @@ const defaultFormState: DraftFormState = {
   vehiculeRemise: "",
   vehiculeDateLivraison: "",
   customFieldsValues: {},
+  cerfaVinComplement: "",
+  cerfaFormuleCarteGrise: "",
+  cerfaAcheteurCivilite: "m",
+  cerfaAcheteurCodePostal: "",
+  cerfaAcheteurVille: "",
+  cerfaAcheteurLieuNaissance: "",
   vehicleFieldValues: {},
   documentsScanned: {},
   clientId: null,
@@ -157,6 +172,92 @@ type ClosureCrmUi =
   | "saving"
   | "saved";
 
+type PostAgentDelegateCtx = {
+  draftSnapshot: DraftFormState;
+  vehiculeDisplayLabel: string;
+  pdfBase64: string;
+  signatureVendeurBase64: string | null;
+  formData: Record<string, string>;
+  emailDejaEnvoye: boolean;
+};
+
+type AgentTachesState = {
+  enregistrer_client: boolean;
+  envoyer_bon_email: boolean;
+  generer_facture: boolean;
+  envoyer_facture_email: boolean;
+  marquer_vendu: boolean;
+  generer_cerfa: boolean;
+};
+
+type AgentRapportLigne = {
+  tache: string;
+  statut: "ok" | "err" | "warn" | "skip";
+  message: string;
+  pdf_base64?: string;
+};
+
+function guessVinFromStockDonnees(sd: Record<string, string>): string {
+  const keys = ["vin", "VIN", "chassis", "châssis", "numero_serie", "n_serie", "serie"];
+  for (const k of keys) {
+    const v = String(sd[k] ?? "").trim();
+    if (v) return v.replace(/\s+/g, "").slice(0, 17);
+  }
+  return "";
+}
+
+function guessFormuleFromStockDonnees(sd: Record<string, string>): string {
+  const keys = [
+    "formule",
+    "numero_formule",
+    "numéro_formule",
+    "n_formule",
+    "numero_formule_carte_grise",
+    "carte_grise_formule",
+  ];
+  for (const k of keys) {
+    const v = String(sd[k] ?? "").trim();
+    if (v) return v.replace(/\s+/g, "").slice(0, 9);
+  }
+  return "";
+}
+
+function defaultAgentTaches(clientEmailTrim: string): AgentTachesState {
+  return {
+    enregistrer_client: true,
+    envoyer_bon_email: true,
+    generer_facture: true,
+    envoyer_facture_email: true,
+    marquer_vendu: true,
+    generer_cerfa: false,
+  };
+}
+
+function buildAgentProgressOrder(t: AgentTachesState): { id: string; label: string }[] {
+  const rows: { id: string; label: string }[] = [
+    { id: "analyse", label: "Données analysées" },
+  ];
+  if (t.enregistrer_client) {
+    rows.push({ id: "client", label: "Fiche client enregistrée" });
+  }
+  if (t.envoyer_bon_email) {
+    rows.push({ id: "bon_email", label: "Envoi du bon par email" });
+  }
+  if (t.generer_facture) {
+    rows.push({ id: "facture", label: "Génération de la facture" });
+  }
+  if (t.envoyer_facture_email && t.generer_facture) {
+    rows.push({ id: "facture_email", label: "Envoi facture par email" });
+  }
+  if (t.marquer_vendu) {
+    rows.push({ id: "vendu", label: "Véhicule marqué comme vendu" });
+  }
+  if (t.generer_cerfa) {
+    rows.push({ id: "cerfa", label: "Génération CERFA" });
+  }
+  return rows;
+}
+
 function buildPdfFormData(
   form: DraftFormState,
   prefs: FormFieldPrefs,
@@ -214,8 +315,10 @@ const NouveauBon = () => {
 
   const [vendeurEmail, setVendeurEmail] = useState<string>("");
   const [autoFilledClientFields, setAutoFilledClientFields] = useState<
-    Array<"clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse">
+    Array<"clientNom" | "clientPrenom" | "clientDateNaissance" | "clientAdresse">
   >([]);
+  /** Badge « Extrait par IA » sur le N° CNI (section infos complémentaires), indépendant des champs identité. */
+  const [numeroCniExtraitParIa, setNumeroCniExtraitParIa] = useState(false);
 
   const [crmSearchInput, setCrmSearchInput] = useState("");
   const [crmSearchDebounced, setCrmSearchDebounced] = useState("");
@@ -242,6 +345,27 @@ const NouveauBon = () => {
     numero_facture: string;
     pdfBase64: string;
   } | null>(null);
+
+  /** Card « Déléguer à l’agent IA » après succès GenerateBar, avant la popup de clôture. */
+  const [postAgentOpen, setPostAgentOpen] = useState(false);
+  const [postAgentCtx, setPostAgentCtx] = useState<PostAgentDelegateCtx | null>(null);
+  const [postAgentPhase, setPostAgentPhase] = useState<"pick" | "run" | "summary">("pick");
+  const [postAgentTaches, setPostAgentTaches] = useState<AgentTachesState>(() =>
+    defaultAgentTaches(""),
+  );
+  /** Refs : évite une valeur « figée » des tâches au clic « Lancer l'agent ». */
+  const tachesRef = useRef<AgentTachesState>(defaultAgentTaches(""));
+  const [postAgentRunOrder, setPostAgentRunOrder] = useState<{ id: string; label: string }[]>([]);
+  const [postAgentRunStepIdx, setPostAgentRunStepIdx] = useState(0);
+  const [postAgentRapport, setPostAgentRapport] = useState<AgentRapportLigne[]>([]);
+  const [postAgentDurationMs, setPostAgentDurationMs] = useState(0);
+
+  useEffect(() => {
+    tachesRef.current = postAgentTaches;
+  }, [postAgentTaches]);
+
+  const [repriseEstimationLoading, setRepriseEstimationLoading] = useState(false);
+  const [repriseEstimation, setRepriseEstimation] = useState<RepriseEstimationAi | null>(null);
 
   const { formPrefs } = usePreferencesFormulaire();
 
@@ -308,6 +432,7 @@ const NouveauBon = () => {
         vehicleFieldValues: rest.customFieldsValues ?? {},
         id,
       });
+      setNumeroCniExtraitParIa(false);
     })();
     return () => {
       cancelled = true;
@@ -325,24 +450,38 @@ const NouveauBon = () => {
     setClosureFactureDraft(null);
     setClosureFactureDone(null);
     setClosureFactureOpening(false);
+    setPostAgentOpen(false);
+    setPostAgentCtx(null);
+    setPostAgentPhase("pick");
+    const routeResetTaches = defaultAgentTaches("");
+    setPostAgentTaches(routeResetTaches);
+    tachesRef.current = routeResetTaches;
+    setPostAgentRunOrder([]);
+    setPostAgentRunStepIdx(0);
+    setPostAgentRapport([]);
+    setPostAgentDurationMs(0);
+    setRepriseEstimation(null);
+    setRepriseEstimationLoading(false);
+    setNumeroCniExtraitParIa(false);
   }, [params.id]);
 
-  const handleSuccessfulModalClosed = useCallback(() => {
+  const openClosureModalWithState = useCallback((state: DraftFormState) => {
+    setClosurePayload({
+      draftSnapshot: snapshotDraftForm(state),
+      vehiculeDisplayLabel: vehiculeTitreFromForm(state),
+    });
+    setClosureCrmUi(state.clientId ? "linked_snapshot" : "idle");
+    setClosureSoldDone(false);
+    setClosureSoldSaving(false);
+    setClosureFactureDone(null);
+    setClosureFactureModalOpen(false);
+    setClosureFactureDraft(null);
+    setClosureModalOpen(true);
+  }, []);
+
+  const handleSuccessfulModalClosed = useCallback((payload: GenerateBarSuccessPayload) => {
     const fs = formStateRef.current;
     const snapshot = snapshotDraftForm(fs);
-    const openClosure = (state: DraftFormState) => {
-      setClosurePayload({
-        draftSnapshot: snapshotDraftForm(state),
-        vehiculeDisplayLabel: vehiculeTitreFromForm(state),
-      });
-      setClosureCrmUi(state.clientId ? "linked_snapshot" : "idle");
-      setClosureSoldDone(false);
-      setClosureSoldSaving(false);
-      setClosureFactureDone(null);
-      setClosureFactureModalOpen(false);
-      setClosureFactureDraft(null);
-      setClosureModalOpen(true);
-    };
 
     void (async () => {
       try {
@@ -357,10 +496,38 @@ const NouveauBon = () => {
           description: "Le brouillon a été mis à jour.",
         });
         window.setTimeout(() => t.dismiss(), 3000);
-        openClosure(nextState);
+        const snap = snapshotDraftForm(nextState);
+        setPostAgentCtx({
+          draftSnapshot: snap,
+          vehiculeDisplayLabel: vehiculeTitreFromForm(nextState),
+          pdfBase64: payload.pdfBase64,
+          signatureVendeurBase64: payload.signatureVendeurBase64,
+          formData: { ...payload.formData },
+          emailDejaEnvoye: payload.emailDejaEnvoye,
+        });
+        const nextTachesOk = defaultAgentTaches((snap.clientEmail ?? "").trim());
+        setPostAgentTaches(nextTachesOk);
+        tachesRef.current = nextTachesOk;
+        setPostAgentPhase("pick");
+        setPostAgentRapport([]);
+        setPostAgentDurationMs(0);
+        setPostAgentOpen(true);
       } catch (err) {
         console.error("Erreur sauvegarde auto:", err);
-        openClosure(snapshot);
+        const snap = snapshotDraftForm(snapshot);
+        setPostAgentCtx({
+          draftSnapshot: snap,
+          vehiculeDisplayLabel: vehiculeTitreFromForm(snapshot),
+          pdfBase64: payload.pdfBase64,
+          signatureVendeurBase64: payload.signatureVendeurBase64,
+          formData: { ...payload.formData },
+          emailDejaEnvoye: payload.emailDejaEnvoye,
+        });
+        const nextTachesErr = defaultAgentTaches((snap.clientEmail ?? "").trim());
+        setPostAgentTaches(nextTachesErr);
+        tachesRef.current = nextTachesErr;
+        setPostAgentPhase("pick");
+        setPostAgentOpen(true);
       }
     })();
   }, []);
@@ -480,8 +647,70 @@ const NouveauBon = () => {
   }, [location.search, params.id]);
 
   const updateForm = useCallback((patch: Partial<DraftFormState>) => {
+    if (patch.repriseActive === false) {
+      setRepriseEstimation(null);
+    }
     setFormState((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  const estimerReprise = useCallback(async () => {
+    setRepriseEstimationLoading(true);
+    setRepriseEstimation(null);
+    try {
+      const fs = formStateRef.current;
+      const response = await apiFetch("/api/actions", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "estimer-reprise",
+          marque: fs.repriseMarque,
+          modele: fs.repriseModele,
+          kilometrage: fs.repriseKilometrage,
+          annee: fs.reprisePremiereCirculation,
+          energie: fs.repriseEnergie,
+          version: fs.repriseVersion,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        estimation?: RepriseEstimationAi;
+        error?: string;
+      };
+      if (!response.ok) {
+        toast({
+          title: "Estimation IA",
+          description: data.error ?? "Une erreur est survenue.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (data.estimation) {
+        setRepriseEstimation(data.estimation);
+      }
+    } catch (err) {
+      console.error("Erreur estimation:", err);
+      toast({
+        title: "Estimation IA",
+        description: err instanceof Error ? err.message : "Erreur réseau.",
+        variant: "destructive",
+      });
+    } finally {
+      setRepriseEstimationLoading(false);
+    }
+  }, []);
+
+  /** Pré-remplit VIN / formule CERFA depuis le stock si les champs sont encore vides. */
+  useEffect(() => {
+    setFormState((fs) => {
+      if (!fs.vehiculeStockId?.trim()) return fs;
+      const patch: Partial<DraftFormState> = {};
+      const vinStock = guessVinFromStockDonnees(fs.stockDonnees ?? {});
+      if (!(fs.cerfaVinComplement ?? "").trim() && vinStock) patch.cerfaVinComplement = vinStock;
+      const fStock = guessFormuleFromStockDonnees(fs.stockDonnees ?? {});
+      if (!(fs.cerfaFormuleCarteGrise ?? "").trim() && fStock)
+        patch.cerfaFormuleCarteGrise = fStock;
+      return Object.keys(patch).length ? { ...fs, ...patch } : fs;
+    });
+  }, [formState.vehiculeStockId, formState.stockDonnees]);
 
   const updateCustomField = useCallback((key: string, value: string) => {
     setFormState((prev) => ({
@@ -494,11 +723,11 @@ const NouveauBon = () => {
   const handleCniExtracted = useCallback(
     (patch: Partial<BonDraftData>, highlightedFields: Array<keyof BonDraftData>) => {
       setFormState((prev) => ({ ...prev, ...patch }));
+      setNumeroCniExtraitParIa(highlightedFields.includes("clientNumeroCni"));
       const clientFieldNames = [
         "clientNom",
         "clientPrenom",
         "clientDateNaissance",
-        "clientNumeroCni",
         "clientAdresse",
       ] as const;
       const clientOnly = highlightedFields.filter((k): k is (typeof clientFieldNames)[number] =>
@@ -522,26 +751,37 @@ const NouveauBon = () => {
   );
 
   const handleManualClientEdit = useCallback(
-    (
-      field: "clientNom" | "clientPrenom" | "clientDateNaissance" | "clientNumeroCni" | "clientAdresse",
-    ) => {
+    (field: "clientNom" | "clientPrenom" | "clientDateNaissance" | "clientAdresse") => {
       setAutoFilledClientFields((prev) => prev.filter((f) => f !== field));
     },
     [],
   );
 
   const handleCrmClientSelect = useCallback((c: ClientData) => {
+    const civRaw = (c.civilite ?? "m").toLowerCase().trim();
+    const cerfaAcheteurCivilite: "m" | "mme" | "morale" =
+      civRaw === "mme" || civRaw === "f"
+        ? "mme"
+        : civRaw === "morale" || civRaw === "pm" || civRaw === "personne_morale"
+          ? "morale"
+          : "m";
     setFormState((prev) => ({
       ...prev,
       clientId: c.id,
       clientNom: c.nom ?? "",
       clientPrenom: c.prenom ?? "",
       clientDateNaissance: c.dateNaissance ?? "",
+      clientNumeroCni: c.numeroCni?.trim() ?? "",
       clientEmail: c.email ?? "",
       clientTelephone: c.telephone?.trim() ?? "",
       clientAdresse: c.adresse?.trim() ?? "",
+      cerfaAcheteurCodePostal: c.codePostal?.trim() ?? "",
+      cerfaAcheteurVille: c.ville?.trim() ?? "",
+      cerfaAcheteurLieuNaissance: c.lieuNaissance?.trim() ?? "",
+      cerfaAcheteurCivilite,
     }));
     setAutoFilledClientFields([]);
+    setNumeroCniExtraitParIa(false);
     setCrmSearchInput("");
     setCrmSearchResults([]);
     setCrmPickerOpen(false);
@@ -661,19 +901,17 @@ const NouveauBon = () => {
       setClosureCrmUi("saving");
       let draftId = ds.id;
       if (!draftId) {
-        const saved = await upsertDraft(ds);
+        const saved = await upsertDraft(closureSnapshotForUpsert(ds));
         draftId = saved.id;
       }
+      const { vehicleFieldValues: _vf, ...draftSansVf } = ds;
+      const base = clientUpsertFromDraft(draftSansVf as BonDraftData);
       const tel =
         ds.clientTelephone?.trim() ||
         extractClientTelephone(ds.customFieldsValues);
       const created = await createClient({
-        nom,
-        prenom,
-        email: ds.clientEmail?.trim() || "",
-        telephone: tel,
-        adresse: ds.clientAdresse?.trim() || "",
-        dateNaissance: ds.clientDateNaissance?.trim() || "",
+        ...base,
+        telephone: tel || base.telephone || "",
       });
       await attachDraftToClient(draftId, created.id);
       setFormState((prev) => ({ ...prev, id: draftId, clientId: created.id }));
@@ -700,10 +938,171 @@ const NouveauBon = () => {
     setClosureFactureDraft(null);
     setClosureFactureDone(null);
     setClosureFactureOpening(false);
+    setPostAgentOpen(false);
+    setPostAgentCtx(null);
+    setPostAgentPhase("pick");
+    const fermerTaches = defaultAgentTaches("");
+    setPostAgentTaches(fermerTaches);
+    tachesRef.current = fermerTaches;
+    setPostAgentRunOrder([]);
+    setPostAgentRunStepIdx(0);
+    setPostAgentRapport([]);
+    setPostAgentDurationMs(0);
+    setRepriseEstimation(null);
+    setRepriseEstimationLoading(false);
     setFormState({ ...defaultFormState });
     setAutoFilledClientFields([]);
+    setNumeroCniExtraitParIa(false);
     navigate("/nouveau-bon", { replace: true });
   }, [navigate]);
+
+  const handlePostAgentManual = useCallback(() => {
+    if (!postAgentCtx) return;
+    const snap = postAgentCtx.draftSnapshot;
+    setPostAgentOpen(false);
+    setPostAgentCtx(null);
+    setPostAgentPhase("pick");
+    openClosureModalWithState(snap);
+  }, [postAgentCtx, openClosureModalWithState]);
+
+  const handlePostAgentToggleTache = useCallback(
+    (key: keyof AgentTachesState, value: boolean) => {
+      setPostAgentTaches((prev) => {
+        console.log("TACHES APRES TOGGLE:", { ...prev, [key]: value });
+        const next = { ...prev, [key]: value };
+        if (key === "generer_facture" && !value) {
+          next.envoyer_facture_email = false;
+        }
+        tachesRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handlePostAgentSelectAll = useCallback((all: boolean) => {
+    const email = (postAgentCtx?.draftSnapshot.clientEmail ?? "").trim();
+    const next: AgentTachesState = {
+      enregistrer_client: all,
+      envoyer_bon_email: all && !!email,
+      generer_facture: all,
+      envoyer_facture_email: all,
+      marquer_vendu: all,
+      generer_cerfa: all,
+    };
+    tachesRef.current = next;
+    setPostAgentTaches(next);
+  }, [postAgentCtx]);
+
+  const handlePostAgentLancer = useCallback(async () => {
+    if (!postAgentCtx?.draftSnapshot.id?.trim()) {
+      toast({
+        title: "Brouillon incomplet",
+        description: "Identifiant du bon manquant. Réessayez après sauvegarde.",
+        variant: "destructive",
+      });
+      return;
+    }
+    console.log("=== AGENT IA LAUNCH ===");
+    const tachesActuelles = tachesRef.current;
+    console.log("Tâches envoyées à l'agent:", {
+      enregistrer_client: tachesActuelles.enregistrer_client,
+      envoyer_bon_email: tachesActuelles.envoyer_bon_email,
+      generer_facture: tachesActuelles.generer_facture,
+      envoyer_facture_email: tachesActuelles.envoyer_facture_email,
+      marquer_vendu: tachesActuelles.marquer_vendu,
+      generer_cerfa: tachesActuelles.generer_cerfa,
+    });
+    console.log("State taches complet:", tachesActuelles);
+
+    const tachesAEnvoyer = {
+      enregistrer_client: tachesActuelles.enregistrer_client ?? true,
+      envoyer_bon_email: tachesActuelles.envoyer_bon_email ?? true,
+      generer_facture: tachesActuelles.generer_facture ?? true,
+      envoyer_facture_email: tachesActuelles.envoyer_facture_email ?? true,
+      marquer_vendu: tachesActuelles.marquer_vendu ?? true,
+      generer_cerfa: tachesActuelles.generer_cerfa ?? false,
+    };
+
+    console.log("TACHES ENVOYÉES:", JSON.stringify(tachesAEnvoyer));
+
+    const order = buildAgentProgressOrder(tachesAEnvoyer as AgentTachesState);
+    setPostAgentRunOrder(order);
+    setPostAgentRunStepIdx(0);
+    setPostAgentPhase("run");
+
+    let step = 0;
+    const iv = window.setInterval(() => {
+      step = Math.min(step + 1, order.length);
+      setPostAgentRunStepIdx(step);
+    }, 800);
+
+    const fixInterval = () => {
+      window.clearInterval(iv);
+    };
+
+    try {
+      const { data: sessionWrap } = await supabase.auth.getSession();
+      const session = sessionWrap.session;
+      const brouillonId = postAgentCtx.draftSnapshot.id.trim();
+
+      const response = await fetch("/api/actions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+        },
+        body: JSON.stringify({
+          action: "agent-post-vente",
+          brouillon_id: brouillonId,
+          concession_id: session?.user?.id ?? "",
+          taches: tachesAEnvoyer,
+          pdf_base64: postAgentCtx.pdfBase64,
+          form_data: postAgentCtx.formData,
+          signature_vendeur_base64: postAgentCtx.signatureVendeurBase64 ?? undefined,
+          bon_email_deja_envoye: postAgentCtx.emailDejaEnvoye,
+          client_email: (postAgentCtx.draftSnapshot.clientEmail ?? "").trim(),
+          client_nom: postAgentCtx.draftSnapshot.clientNom ?? "",
+          client_prenom: postAgentCtx.draftSnapshot.clientPrenom ?? "",
+          vehicule_modele: vehiculeTitreFromForm(postAgentCtx.draftSnapshot),
+          vendeur_email: vendeurEmail,
+          vendeur_nom: "Votre conseiller",
+        }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        rapport?: AgentRapportLigne[];
+        duration_ms?: number;
+        error?: string;
+      };
+      fixInterval();
+      setPostAgentRunStepIdx(order.length);
+      if (!response.ok || !json.success) {
+        toast({
+          title: "Agent IA",
+          description: json.error ?? "Une erreur est survenue.",
+          variant: "destructive",
+        });
+        setPostAgentPhase("pick");
+        return;
+      }
+      setPostAgentRapport(Array.isArray(json.rapport) ? json.rapport : []);
+      setPostAgentDurationMs(typeof json.duration_ms === "number" ? json.duration_ms : 0);
+      setPostAgentPhase("summary");
+      window.dispatchEvent(new CustomEvent("autodocs_factures_updated"));
+      window.dispatchEvent(new CustomEvent("autodocs_stock_updated"));
+      window.dispatchEvent(new CustomEvent("autodocs_clients_updated"));
+    } catch (e) {
+      fixInterval();
+      console.error(e);
+      toast({
+        title: "Agent IA",
+        description: e instanceof Error ? e.message : "Erreur réseau.",
+        variant: "destructive",
+      });
+      setPostAgentPhase("pick");
+    }
+  }, [postAgentCtx, vendeurEmail]);
 
   const closureClientLabel =
     closurePayload &&
@@ -757,11 +1156,6 @@ const NouveauBon = () => {
                 </div>
               </div>
               <div className="space-y-5">
-                <ScanCni
-                  initialScan={formState.documentsScanned?.cni}
-                  onScannedChange={handleCniScannedChange}
-                  onExtracted={handleCniExtracted}
-                />
                 {formState.clientId ? (
                   <div className="flex flex-wrap items-center gap-2 rounded-input border border-success/35 bg-success/15 px-3 py-2.5 text-sm text-foreground">
                     <span className="font-medium text-success">
@@ -867,7 +1261,183 @@ const NouveauBon = () => {
                 prefs={formPrefs}
                 customValues={formState.customFieldsValues}
                 onCustomFieldChange={updateCustomField}
+                repriseEstimation={{
+                  estimation: repriseEstimation,
+                  estimationLoading: repriseEstimationLoading,
+                  onEstimer: estimerReprise,
+                  onApplyRecommended: (prix) => {
+                    updateForm({ repriseValeur: String(prix) });
+                    setRepriseEstimation(null);
+                  },
+                }}
               />
+            </div>
+
+            <div className="card-autodocs border border-dashed border-border/50 bg-muted/[0.04]">
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-input bg-muted/30 text-muted-foreground">
+                  <FileText className="h-3.5 w-3.5" aria-hidden />
+                </div>
+                <div>
+                  <h2 className="font-display text-sm font-semibold text-foreground/90">
+                    Informations complémentaires
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    Optionnel — CERFA, fiche client &amp; livre de police si renseigné
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 text-[13px]">
+                <div className="space-y-4 rounded-xl border border-dashed border-border/80 bg-muted/[0.03] p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">
+                      📷 Scanner la CNI <span className="text-xs">(optionnel)</span>
+                    </span>
+                    <span className="rounded-full bg-indigo-500/15 px-2 py-1 text-xs font-medium text-indigo-300">
+                      Extrait : nom, prénom, date naissance, N° CNI
+                    </span>
+                  </div>
+                  <ScanCni
+                    hideOuterTitle
+                    initialScan={formState.documentsScanned?.cni}
+                    onScannedChange={handleCniScannedChange}
+                    onExtracted={handleCniExtracted}
+                  />
+                  {isFieldEnabled(formPrefs, "clientNumeroCni") ? (
+                    <label className="block">
+                      <span className="field-label">N° CNI</span>
+                      <div className="relative mt-1">
+                        <input
+                          type="text"
+                          value={formState.clientNumeroCni}
+                          onChange={(e) => {
+                            updateForm({ clientNumeroCni: e.target.value });
+                            setNumeroCniExtraitParIa(false);
+                          }}
+                          className={cn(
+                            "field-input w-full",
+                            numeroCniExtraitParIa && "pr-[11rem]",
+                          )}
+                          autoComplete="off"
+                          placeholder="N° de CNI"
+                        />
+                        {numeroCniExtraitParIa ? (
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-green-500/10 px-2 py-1 text-xs text-green-400">
+                            ✓ Extrait par IA
+                          </span>
+                        ) : null}
+                      </div>
+                    </label>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Véhicule
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="text-xs text-muted-foreground">N° VIN (17 car.)</span>
+                      <input
+                        type="text"
+                        maxLength={17}
+                        value={formState.cerfaVinComplement}
+                        onChange={(e) =>
+                          updateForm({
+                            cerfaVinComplement: e.target.value.replace(/\s+/g, "").slice(0, 17),
+                          })
+                        }
+                        className="field-input mt-1 w-full"
+                        autoComplete="off"
+                        placeholder="Pré-rempli depuis le stock si dispo"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-muted-foreground">N° formule carte grise (9 max)</span>
+                      <input
+                        type="text"
+                        maxLength={9}
+                        value={formState.cerfaFormuleCarteGrise}
+                        onChange={(e) =>
+                          updateForm({
+                            cerfaFormuleCarteGrise: e.target.value.replace(/\s+/g, "").slice(0, 9),
+                          })
+                        }
+                        className="field-input mt-1 w-full"
+                        autoComplete="off"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border-t border-border/40 pt-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Acheteur
+                  </p>
+                  <fieldset className="space-y-1">
+                    <legend className="sr-only">Civilité acheteur</legend>
+                    <span className="text-xs text-muted-foreground">Civilité</span>
+                    <div className="mt-1 flex flex-wrap gap-3">
+                      {(
+                        [
+                          ["m", "M."],
+                          ["mme", "Mme"],
+                          ["morale", "Personne morale"],
+                        ] as const
+                      ).map(([val, label]) => (
+                        <label
+                          key={val}
+                          className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-foreground/90"
+                        >
+                          <input
+                            type="radio"
+                            name="cerfa-acheteur-civilite"
+                            checked={formState.cerfaAcheteurCivilite === val}
+                            onChange={() => updateForm({ cerfaAcheteurCivilite: val })}
+                            className="accent-primary"
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="text-xs text-muted-foreground">Code postal</span>
+                      <input
+                        type="text"
+                        value={formState.cerfaAcheteurCodePostal}
+                        onChange={(e) =>
+                          updateForm({ cerfaAcheteurCodePostal: e.target.value.slice(0, 10) })
+                        }
+                        className="field-input mt-1 w-full"
+                        autoComplete="postal-code"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-muted-foreground">Ville</span>
+                      <input
+                        type="text"
+                        value={formState.cerfaAcheteurVille}
+                        onChange={(e) => updateForm({ cerfaAcheteurVille: e.target.value })}
+                        className="field-input mt-1 w-full"
+                        autoComplete="address-level2"
+                      />
+                    </label>
+                  </div>
+                  <label className="block">
+                    <span className="text-xs text-muted-foreground">Lieu de naissance</span>
+                    <input
+                      type="text"
+                      value={formState.cerfaAcheteurLieuNaissance}
+                      onChange={(e) => updateForm({ cerfaAcheteurLieuNaissance: e.target.value })}
+                      className="field-input mt-1 w-full"
+                      autoComplete="off"
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="card-autodocs border-primary/20">
@@ -918,6 +1488,306 @@ const NouveauBon = () => {
         onSignatureRequestSent={handleSignatureRequestSent}
         onSuccessfulModalClosed={handleSuccessfulModalClosed}
       />
+
+      {/* Délégation agent IA — après succès PDF, avant la popup « Clôturer la vente » */}
+      {postAgentOpen && postAgentCtx ? (
+        <>
+          <div className="pointer-events-none fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm" aria-hidden />
+          <div
+            className="fixed inset-x-4 bottom-auto top-1/2 z-[10001] mx-auto max-h-[90vh] max-w-lg -translate-y-1/2 overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#1A1D27] p-6 shadow-2xl pointer-events-auto md:inset-x-auto md:left-1/2 md:w-full md:max-w-lg md:-translate-x-1/2"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="post-agent-title"
+          >
+            {postAgentPhase === "pick" ? (
+              <>
+                <h2
+                  id="post-agent-title"
+                  className="mb-4 font-display text-base font-bold text-foreground"
+                >
+                  🤖 Que voulez-vous déléguer à l&apos;agent IA ?
+                </h2>
+                <ul className="space-y-3 text-sm text-foreground">
+                  <li className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="tache-client"
+                      data-tache="enregistrer_client"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
+                      checked={postAgentTaches.enregistrer_client}
+                      onChange={(e) =>
+                        handlePostAgentToggleTache("enregistrer_client", e.target.checked)
+                      }
+                    />
+                    <label htmlFor="tache-client" className="cursor-pointer leading-snug">
+                      Enregistrer la fiche client
+                    </label>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="tache-bon-mail"
+                      data-tache="envoyer_bon_email"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary disabled:opacity-40"
+                      checked={postAgentTaches.envoyer_bon_email}
+                      disabled={!(postAgentCtx.draftSnapshot.clientEmail ?? "").trim()}
+                      title={
+                        !(postAgentCtx.draftSnapshot.clientEmail ?? "").trim()
+                          ? "Aucun email client dans le formulaire : impossible d’envoyer le bon."
+                          : undefined
+                      }
+                      onChange={(e) =>
+                        handlePostAgentToggleTache("envoyer_bon_email", e.target.checked)
+                      }
+                    />
+                    <label
+                      htmlFor="tache-bon-mail"
+                      className={cn(
+                        "leading-snug",
+                        (postAgentCtx.draftSnapshot.clientEmail ?? "").trim()
+                          ? "cursor-pointer"
+                          : "cursor-not-allowed text-muted-foreground",
+                      )}
+                    >
+                      Envoyer le bon de commande par email
+                    </label>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="tache-facture"
+                      data-tache="generer_facture"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
+                      checked={postAgentTaches.generer_facture}
+                      onChange={(e) =>
+                        handlePostAgentToggleTache("generer_facture", e.target.checked)
+                      }
+                    />
+                    <label htmlFor="tache-facture" className="cursor-pointer leading-snug">
+                      Générer la facture
+                    </label>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="tache-facture-mail"
+                      data-tache="envoyer_facture_email"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary disabled:opacity-40"
+                      checked={postAgentTaches.envoyer_facture_email}
+                      disabled={!postAgentTaches.generer_facture}
+                      onChange={(e) =>
+                        handlePostAgentToggleTache("envoyer_facture_email", e.target.checked)
+                      }
+                    />
+                    <label htmlFor="tache-facture-mail" className="cursor-pointer leading-snug">
+                      Envoyer la facture par email
+                    </label>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="tache-vendu"
+                      data-tache="marquer_vendu"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
+                      checked={postAgentTaches.marquer_vendu}
+                      onChange={(e) =>
+                        handlePostAgentToggleTache("marquer_vendu", e.target.checked)
+                      }
+                    />
+                    <label htmlFor="tache-vendu" className="cursor-pointer leading-snug">
+                      Marquer le véhicule comme vendu
+                    </label>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="tache-cerfa"
+                      data-tache="generer_cerfa"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary"
+                      checked={postAgentTaches.generer_cerfa}
+                      onChange={(e) =>
+                        handlePostAgentToggleTache("generer_cerfa", e.target.checked)
+                      }
+                    />
+                    <label htmlFor="tache-cerfa" className="cursor-pointer leading-snug">
+                      Générer le CERFA
+                    </label>
+                  </li>
+                </ul>
+
+                {postAgentTaches.generer_cerfa ? (
+                  <p className="mt-4 rounded-lg border border-dashed border-border/60 bg-muted/10 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                    VIN, n° de formule et coordonnées acheteur pour le CERFA sont lus depuis le formulaire du bon
+                    (section « Informations complémentaires »). Le vendeur reste la concession (personne morale).
+                  </p>
+                ) : null}
+
+                <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                  <button
+                    type="button"
+                    className="text-primary underline-offset-4 hover:underline cursor-pointer"
+                    onClick={() => handlePostAgentSelectAll(true)}
+                  >
+                    Tout sélectionner
+                  </button>
+                  <span className="text-muted-foreground">/</span>
+                  <button
+                    type="button"
+                    className="text-primary underline-offset-4 hover:underline cursor-pointer"
+                    onClick={() => handlePostAgentSelectAll(false)}
+                  >
+                    Tout désélectionner
+                  </button>
+                </div>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    className="btn-secondary order-2 cursor-pointer sm:order-1"
+                    onClick={handlePostAgentManual}
+                  >
+                    Faire manuellement
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary order-1 cursor-pointer border-0 sm:order-2"
+                    onClick={() => void handlePostAgentLancer()}
+                  >
+                    <span className="inline-flex items-center gap-2">🤖 Lancer l&apos;agent IA</span>
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {postAgentPhase === "run" ? (
+              <>
+                <h2
+                  id="post-agent-title"
+                  className="mb-4 font-display text-base font-bold text-foreground"
+                >
+                  🤖 Agent IA en cours…
+                </h2>
+                <ul className="space-y-2.5 text-sm">
+                  {postAgentRunOrder.map((row, i) => {
+                    const done = i < postAgentRunStepIdx;
+                    const active =
+                      i === postAgentRunStepIdx && postAgentRunStepIdx < postAgentRunOrder.length;
+                    return (
+                      <li key={row.id} className="flex items-center gap-2 text-foreground">
+                        {done ? (
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden />
+                        ) : active ? (
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden />
+                        ) : (
+                          <Circle className="h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden />
+                        )}
+                        <span className={cn(active ? "font-medium text-foreground" : "text-muted-foreground")}>
+                          {row.label}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="mt-5">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted/40">
+                    <div
+                      className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                      style={{
+                        width: `${
+                          postAgentRunOrder.length === 0
+                            ? 0
+                            : Math.min(
+                                100,
+                                Math.round((postAgentRunStepIdx / postAgentRunOrder.length) * 100),
+                              )
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-center text-xs text-muted-foreground">
+                    {postAgentRunOrder.length === 0
+                      ? "0%"
+                      : `${Math.min(100, Math.round((postAgentRunStepIdx / postAgentRunOrder.length) * 100))}%`}
+                  </p>
+                </div>
+              </>
+            ) : null}
+
+            {postAgentPhase === "summary" ? (
+              <>
+                <h2
+                  id="post-agent-title"
+                  className="mb-4 text-center font-display text-lg font-bold text-foreground"
+                >
+                  🎉 Agent IA terminé !
+                </h2>
+                <ul className="space-y-2 text-sm">
+                  {postAgentRapport.map((line, idx) => (
+                    <li key={`${line.tache}-${idx}-${line.message.slice(0, 24)}`} className="flex items-start gap-2">
+                      {line.statut === "ok" ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden />
+                      ) : line.statut === "err" ? (
+                        <span className="mt-0.5 text-destructive" aria-hidden>
+                          ✕
+                        </span>
+                      ) : line.statut === "warn" ? (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+                      ) : (
+                        <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                      )}
+                      <span className="text-foreground">{line.message}</span>
+                    </li>
+                  ))}
+                </ul>
+                {(() => {
+                  const cerfaLine = postAgentRapport.find((r) => r.tache === "cerfa" && r.pdf_base64);
+                  const b64 = cerfaLine?.pdf_base64;
+                  if (!b64) return null;
+                  return (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        type="button"
+                        className="btn-secondary cursor-pointer px-5 py-2.5 text-sm"
+                        onClick={() => downloadBase64Pdf(b64, `cerfa-${Date.now()}.pdf`)}
+                      >
+                        📄 Télécharger le CERFA
+                      </button>
+                    </div>
+                  );
+                })()}
+                <p className="mt-4 text-center text-xs text-muted-foreground">
+                  {(() => {
+                    const ok = postAgentRapport.filter((x) => x.statut === "ok").length;
+                    const total = postAgentRapport.length || 1;
+                    const sec = Math.max(1, Math.round(postAgentDurationMs / 1000));
+                    return `${ok}/${total} actions réalisées en ${sec} seconde${sec > 1 ? "s" : ""}`;
+                  })()}
+                </p>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+                  <button
+                    type="button"
+                    className="btn-primary cursor-pointer border-0"
+                    onClick={handleClosureFermer}
+                  >
+                    Nouveau bon
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary cursor-pointer"
+                    onClick={() => {
+                      setPostAgentOpen(false);
+                      setPostAgentCtx(null);
+                      setPostAgentPhase("pick");
+                      navigate("/historique");
+                    }}
+                  >
+                    Voir l&apos;historique
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </>
+      ) : null}
 
       {/* Modal clôture — après fermeture de la popup GenerateBar en succès */}
       {closureModalOpen && closurePayload ? (
