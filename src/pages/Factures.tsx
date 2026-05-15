@@ -3,9 +3,13 @@ import { Download, Filter, Loader2, CheckCircle2, Mail, MailCheck } from "lucide
 import TopBar from "@/components/layout/TopBar";
 import { cn } from "@/lib/utils";
 import {
+  exportFacturesCSV,
+  exportFacturesExcel,
+  filterFacturesByPeriod,
   getFactures,
   sendFactureEmail,
   updateFactureStatut,
+  type FacturePeriodFilter,
   type FactureRecord,
   type FactureStatut,
 } from "@/utils/factures";
@@ -70,7 +74,7 @@ const Factures = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filterStatut, setFilterStatut] = useState<FactureStatut | "all">("all");
-  const [filterDate, setFilterDate] = useState("");
+  const [filterPeriod, setFilterPeriod] = useState<FacturePeriodFilter>("all");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [emailSendingId, setEmailSendingId] = useState<string | null>(null);
@@ -101,15 +105,44 @@ const Factures = () => {
   }, []);
 
   const filtered = useMemo(() => {
-    return rows.filter((f) => {
-      if (filterStatut !== "all" && f.statut !== filterStatut) return false;
-      if (filterDate) {
-        const d = f.date_facture?.slice(0, 10);
-        if (d !== filterDate) return false;
-      }
-      return true;
+    let list = rows;
+    if (filterStatut !== "all") {
+      list = list.filter((f) => f.statut === filterStatut);
+    }
+    return filterFacturesByPeriod(list, filterPeriod);
+  }, [rows, filterStatut, filterPeriod]);
+
+  const handleExportCSV = () => {
+    if (filtered.length === 0) {
+      toast({
+        title: "Aucune facture à exporter",
+        description: "Ajustez les filtres ou créez des factures.",
+        variant: "destructive",
+      });
+      return;
+    }
+    exportFacturesCSV(filtered);
+    toast({
+      title: "Export CSV",
+      description: `${filtered.length} facture(s) exportée(s).`,
     });
-  }, [rows, filterStatut, filterDate]);
+  };
+
+  const handleExportExcel = () => {
+    if (filtered.length === 0) {
+      toast({
+        title: "Aucune facture à exporter",
+        description: "Ajustez les filtres ou créez des factures.",
+        variant: "destructive",
+      });
+      return;
+    }
+    exportFacturesExcel(filtered);
+    toast({
+      title: "Export Excel",
+      description: `${filtered.length} facture(s) exportée(s).`,
+    });
+  };
 
   const handleDownload = async (f: FactureRecord) => {
     if (!f.pdf_base64) {
@@ -198,44 +231,57 @@ const Factures = () => {
       <TopBar title="Factures" subtitle="Facturation véhicule — PDF conformes" />
       <div className="page-shell">
         <div className="page-content space-y-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <Filter className="h-4 w-4" />
-              <span className="text-[13px] font-medium">Filtres</span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Filter className="h-4 w-4" />
+                <span className="text-[13px] font-medium">Filtres</span>
+              </div>
+              <select
+                className="field-input min-w-[140px] cursor-pointer"
+                value={filterPeriod}
+                onChange={(e) =>
+                  setFilterPeriod(e.target.value as FacturePeriodFilter)
+                }
+                aria-label="Filtrer par période"
+              >
+                <option value="month">Ce mois</option>
+                <option value="3months">3 mois</option>
+                <option value="6months">6 mois</option>
+                <option value="all">Tout</option>
+              </select>
+              <select
+                className="field-input min-w-[140px] cursor-pointer"
+                value={filterStatut}
+                onChange={(e) =>
+                  setFilterStatut(e.target.value as FactureStatut | "all")
+                }
+                aria-label="Filtrer par statut"
+              >
+                <option value="all">Tous</option>
+                <option value="emise">Émises</option>
+                <option value="payee">Payées</option>
+                <option value="annulee">Annulées</option>
+              </select>
             </div>
-            <select
-              className="field-input min-w-[140px] cursor-pointer"
-              value={filterStatut}
-              onChange={(e) =>
-                setFilterStatut(e.target.value as FactureStatut | "all")
-              }
-              aria-label="Filtrer par statut"
-            >
-              <option value="all">Tous les statuts</option>
-              <option value="emise">Émise</option>
-              <option value="payee">Payée</option>
-              <option value="annulee">Annulée</option>
-            </select>
-            <label className="sr-only" htmlFor="factures-filter-date">
-              Date de facture
-            </label>
-            <input
-              id="factures-filter-date"
-              type="date"
-              className="field-input min-w-[150px] cursor-pointer"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
-            />
-            {filterDate ? (
+            <div className="flex gap-2">
               <button
                 type="button"
-                className="btn-secondary cursor-pointer px-3 py-2 text-xs"
-                onClick={() => setFilterDate("")}
+                onClick={handleExportCSV}
+                disabled={loading}
+                className="flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm text-gray-300 transition-all hover:border-gray-500 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Réinitialiser la date
+                📥 Export CSV
               </button>
-            ) : null}
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={loading}
+                className="flex items-center gap-2 rounded-lg border border-green-700/50 bg-green-900/30 px-4 py-2 text-sm text-green-400 transition-all hover:border-green-600 hover:bg-green-900/50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                📊 Export Excel
+              </button>
+            </div>
           </div>
 
           {loadError ? (

@@ -1,8 +1,164 @@
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { getCurrentConcessionId } from "@/lib/auth";
 import { apiFetch } from "@/lib/apiClient";
 
 export type FactureStatut = "emise" | "payee" | "annulee";
+
+export type FacturePeriodFilter = "month" | "3months" | "6months" | "all";
+
+function formatExportDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("fr-FR");
+}
+
+function formatExportMoney(n: number | null | undefined): string {
+  const v = Number(n);
+  if (Number.isNaN(v)) return "0.00";
+  return v.toFixed(2);
+}
+
+export function filterFacturesByPeriod(
+  factures: FactureRecord[],
+  period: FacturePeriodFilter,
+): FactureRecord[] {
+  if (period === "all") return factures;
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (period === "month") {
+    start.setDate(1);
+  } else if (period === "3months") {
+    start.setMonth(start.getMonth() - 3);
+  } else {
+    start.setMonth(start.getMonth() - 6);
+  }
+  return factures.filter((f) => {
+    if (!f.date_facture) return false;
+    const d = new Date(f.date_facture);
+    if (Number.isNaN(d.getTime())) return false;
+    return d >= start && d <= end;
+  });
+}
+
+export function exportFacturesCSV(factures: FactureRecord[]): void {
+  const headers = [
+    "N° Facture",
+    "Date",
+    "Client Nom",
+    "Client Prénom",
+    "Client Email",
+    "Véhicule Marque",
+    "Véhicule Modèle",
+    "Prix HT (€)",
+    "TVA (€)",
+    "Prix TTC (€)",
+    "Acompte (€)",
+    "Reste à payer (€)",
+    "Statut",
+    "Email envoyé le",
+  ];
+
+  const rows = factures.map((f) => [
+    f.numero_facture || "",
+    formatExportDate(f.date_facture),
+    f.client_nom || "",
+    f.client_prenom || "",
+    f.client_email || "",
+    f.vehicule_marque || "",
+    f.vehicule_modele || "",
+    formatExportMoney(f.prix_ht),
+    formatExportMoney(f.tva_montant),
+    formatExportMoney(f.prix_ttc),
+    formatExportMoney(f.acompte),
+    formatExportMoney(f.reste_a_payer),
+    f.statut || "",
+    f.email_envoye_at ? formatExportDate(f.email_envoye_at) : "Non envoyé",
+  ]);
+
+  const csvContent = [headers, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
+    .join("\n");
+
+  const BOM = "\uFEFF";
+  const blob = new Blob([BOM + csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `factures-autodocs-${new Date().toISOString().split("T")[0]}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function exportFacturesExcel(factures: FactureRecord[]): void {
+  const data = factures.map((f) => ({
+    "N° Facture": f.numero_facture || "",
+    Date: formatExportDate(f.date_facture),
+    "Nom client": f.client_nom || "",
+    "Prénom client": f.client_prenom || "",
+    "Email client": f.client_email || "",
+    Marque: f.vehicule_marque || "",
+    Modèle: f.vehicule_modele || "",
+    "Prix HT (€)": f.prix_ht ?? 0,
+    "TVA (€)": f.tva_montant ?? 0,
+    "Prix TTC (€)": f.prix_ttc ?? 0,
+    "Acompte (€)": f.acompte ?? 0,
+    "Reste à payer (€)": f.reste_a_payer ?? 0,
+    Statut: f.statut || "",
+    "Email envoyé": f.email_envoye_at
+      ? formatExportDate(f.email_envoye_at)
+      : "Non envoyé",
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data);
+
+  ws["!cols"] = [
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 15 },
+    { wch: 15 },
+    { wch: 28 },
+    { wch: 12 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 16 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Factures");
+
+  const totalTTC = factures.reduce((s, f) => s + (f.prix_ttc ?? 0), 0);
+  const totalHT = factures.reduce((s, f) => s + (f.prix_ht ?? 0), 0);
+  const totalTVA = factures.reduce((s, f) => s + (f.tva_montant ?? 0), 0);
+
+  const recap = [
+    { Récapitulatif: "Nombre de factures", Valeur: factures.length },
+    { Récapitulatif: "Total HT", Valeur: `${totalHT.toFixed(2)} €` },
+    { Récapitulatif: "Total TVA", Valeur: `${totalTVA.toFixed(2)} €` },
+    { Récapitulatif: "Total TTC", Valeur: `${totalTTC.toFixed(2)} €` },
+    {
+      Récapitulatif: "Export généré le",
+      Valeur: new Date().toLocaleDateString("fr-FR"),
+    },
+  ];
+
+  const wsRecap = XLSX.utils.json_to_sheet(recap);
+  wsRecap["!cols"] = [{ wch: 25 }, { wch: 20 }];
+  XLSX.utils.book_append_sheet(wb, wsRecap, "Récapitulatif");
+
+  XLSX.writeFile(wb, `factures-autodocs-${new Date().toISOString().split("T")[0]}.xlsx`);
+}
 
 export type FactureRecord = {
   id: string;
