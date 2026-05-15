@@ -5,21 +5,477 @@ import puppeteer from "puppeteer-core";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
-import {
-  getAuthUserId,
-  getPublicAppUrl,
-  getSupabaseAdmin,
-} from "./_lib/supabase-admin.js";
-import {
-  buildFactureHtml,
-  type FactureTemplatePayload,
-} from "./_lib/facture-template.js";
-import { buildLivrePoliceHTML } from "./_lib/livre-police-template.js";
-import {
-  assertIsAdminOfConcession,
-  getActiveConcessionIdForUser,
-} from "./_lib/concession.js";
-import { buildRelanceEmailHTML } from "./_lib/relance-template.js";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+/* ==================================================================
+ *  _lib inliné (supabase-admin, concession, relance, livre-police)
+ *  Inliné pour éviter ERR_MODULE_NOT_FOUND sur Vercel ESM serverless.
+ * ================================================================== */
+
+/**
+ * Helpers Supabase pour les routes API serverless (`api/*.ts`).
+ *
+ * Le préfixe `_` du dossier indique à Vercel de NE PAS déployer ce fichier
+ * comme une fonction serverless ; il est seulement importable depuis les
+ * autres routes via `import { ... } from "./_lib/supabase-admin.js"`.
+ *
+ * Important :
+ *  - On NE lit JAMAIS de variables `VITE_*` côté serveur. Elles n'existent
+ *    pas en runtime serverless (Vercel n'expose au front que ce qui est
+ *    préfixé `VITE_` au build), et leur présence ici est trompeuse.
+ *  - On garde un *fallback* pour `SUPABASE_URL` uniquement vers
+ *    `VITE_SUPABASE_URL` parce que c'est *publique* (URL du projet) et
+ *    pour conserver la compat avec les déploiements existants.
+ *  - `SUPABASE_SERVICE_ROLE_KEY` est OBLIGATOIRE et n'a JAMAIS de fallback.
+ */
+
+const SERVICE_ROLE_ENV = "SUPABASE_SERVICE_ROLE_KEY";
+
+function getSupabaseUrlOrThrow(): string {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+  if (!url) {
+    throw new Error(
+      "Configuration Supabase manquante : SUPABASE_URL n'est pas définie côté serveur (Vercel → Settings → Environment Variables).",
+    );
+  }
+  return url;
+}
+
+function getSupabaseAnonKeyOrThrow(): string {
+  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+  if (!key) {
+    throw new Error(
+      "Configuration Supabase manquante : SUPABASE_ANON_KEY n'est pas définie côté serveur.",
+    );
+  }
+  return key;
+}
+
+function getServiceRoleKeyOrThrow(): string {
+  const key = process.env[SERVICE_ROLE_ENV];
+  if (!key) {
+    throw new Error(
+      `Configuration Supabase manquante : ${SERVICE_ROLE_ENV} n'est pas définie côté serveur. Ajoutez-la dans Vercel → Settings → Environment Variables (Production + Preview), puis redéployez.`,
+    );
+  }
+  if (key.startsWith("VITE_") || key.length < 50) {
+    throw new Error(
+      `${SERVICE_ROLE_ENV} semble invalide (longueur ${key.length}). Vérifiez que vous avez bien copié la "service_role" key depuis Supabase → Project Settings → API.`,
+    );
+  }
+  return key;
+}
+
+/**
+ * Client Supabase ADMIN (service_role) — bypass RLS.
+ * À utiliser UNIQUEMENT depuis `api/*.ts`. Le throw est volontaire :
+ * faire échouer la route avec un message lisible vaut mieux qu'un
+ * `TypeError: Failed to fetch` côté client.
+ */
+async function getSupabaseAdmin(): Promise<SupabaseClient> {
+  const url = getSupabaseUrlOrThrow();
+  const key = getServiceRoleKeyOrThrow();
+  const { createClient } = await import("@supabase/supabase-js");
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+/**
+ * Client Supabase ANON (clé publique) — utile uniquement pour valider
+ * un JWT utilisateur via `auth.getUser(token)`. NE PAS utiliser pour
+ * lire/écrire des données sensibles depuis une route API.
+ */
+async function getSupabaseAuthClient(): Promise<SupabaseClient> {
+  const url = getSupabaseUrlOrThrow();
+  const anon = getSupabaseAnonKeyOrThrow();
+  const { createClient } = await import("@supabase/supabase-js");
+  return createClient(url, anon, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+/**
+ * Extrait l'`auth.uid()` à partir du header `Authorization: Bearer <jwt>`.
+ * Retourne `null` si l'en-tête est absent / le token invalide. NE THROW PAS :
+ * laisser le caller décider si la route exige une auth ou non.
+ */
+async function getAuthUserId(req: VercelRequest): Promise<string | null> {
+  const header = req.headers.authorization;
+  const token = typeof header === "string" ? header.replace(/^Bearer\s+/i, "").trim() : "";
+  if (!token) return null;
+  try {
+    const supabase = await getSupabaseAuthClient();
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) return null;
+    return data.user.id;
+  } catch (err) {
+    console.error("[supabase-admin] getAuthUserId failed:", err);
+    return null;
+  }
+}
+
+const FALLBACK_APP_URL = "https://autodocs-eight.vercel.app";
+
+/**
+ * Calcule l'URL publique de l'app, dans cet ordre :
+ *  1. `PUBLIC_APP_URL` (env var explicite — recommandé en prod)
+ *  2. en-têtes `x-forwarded-host` / `host` de la requête (si dispo)
+ *  3. `VERCEL_URL` (URL automatique du déploiement)
+ *  4. fallback hardcodé.
+ */
+function getPublicAppUrl(req?: VercelRequest): string {
+  const explicit = process.env.PUBLIC_APP_URL?.trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+
+  if (req) {
+    const host =
+      (req.headers["x-forwarded-host"] as string | undefined) ??
+      (req.headers.host as string | undefined);
+    const proto =
+      (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
+    if (host) return `${proto}://${host}`;
+  }
+
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) {
+    return vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`;
+  }
+
+  return FALLBACK_APP_URL;
+}
+
+/** Concession active du compte (unique membre actif V1). */
+async function getActiveConcessionIdForUser(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from("membres_concession")
+    .select("concession_id")
+    .eq("user_id", userId)
+    .eq("actif", true)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("[concession] getActiveConcessionIdForUser:", error);
+    return null;
+  }
+  return (data?.concession_id as string | undefined) ?? null;
+}
+
+async function getMembreRoleForConcession(
+  admin: SupabaseClient,
+  userId: string,
+  concessionId: string,
+): Promise<"admin" | "commercial" | null> {
+  const { data } = await admin
+    .from("membres_concession")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("concession_id", concessionId)
+    .eq("actif", true)
+    .maybeSingle();
+  if (!data?.role) return null;
+  return data.role === "admin" ? "admin" : "commercial";
+}
+
+async function assertIsAdminOfConcession(
+  admin: SupabaseClient,
+  userId: string,
+  concessionId: string,
+): Promise<boolean> {
+  const role = await getMembreRoleForConcession(admin, userId, concessionId);
+  return role === "admin";
+}
+
+
+type BuildRelanceEmailPayload = {
+  clientNom: string;
+  clientPrenom: string;
+  signatureUrl: string;
+  expiresAt?: string | null;
+  messagePersonnalise?: string | null;
+  numeroRelance: 1 | 2;
+};
+
+function escapeHtml(value: string): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatExpiresAt(expiresAt?: string | null): string {
+  if (!expiresAt) return "bientot";
+  const date = new Date(expiresAt);
+  if (Number.isNaN(date.getTime())) return "bientot";
+  return date.toLocaleDateString("fr-FR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function buildRelanceEmailHTML(payload: BuildRelanceEmailPayload): string {
+  const clientNom = escapeHtml(payload.clientNom || "Client");
+  const clientPrenom = escapeHtml(payload.clientPrenom || "");
+  const fullName = `${clientPrenom} ${clientNom}`.trim();
+  const expiresAtLabel = formatExpiresAt(payload.expiresAt);
+  const messagePersonnalise = String(payload.messagePersonnalise ?? "").trim();
+  const relanceLabel = payload.numeroRelance === 2 ? "2e rappel" : "1er rappel";
+
+  return `
+    <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #1a1a2e; line-height: 1.55; max-width: 600px;">
+      <p style="margin: 0 0 14px;">Bonjour ${fullName || "Client"},</p>
+      <p style="margin: 0 0 12px;">
+        Nous vous rappelons que votre bon de commande est en attente de votre signature.
+      </p>
+      <p style="margin: 0 0 12px; color: #59607a; font-size: 13px;">
+        ${relanceLabel} de la concession.
+      </p>
+      ${
+        messagePersonnalise
+          ? `<div style="margin: 0 0 16px; padding: 12px 14px; background: #f5f7ff; border-left: 4px solid #2c3e8f; border-radius: 6px; color: #23263a;">
+               ${escapeHtml(messagePersonnalise).replace(/\n/g, "<br>")}
+             </div>`
+          : ""
+      }
+      <div style="margin: 22px 0 18px;">
+        <a href="${payload.signatureUrl}"
+           style="display: inline-block; background: #2c3e8f; color: #fff; text-decoration: none; padding: 12px 22px; border-radius: 7px; font-weight: 700;">
+          SIGNER MON BON DE COMMANDE
+        </a>
+      </div>
+      <p style="margin: 0 0 8px; color: #666;">
+        Ce lien expire le <strong>${escapeHtml(expiresAtLabel)}</strong>.
+      </p>
+      <p style="margin: 0; color: #666; font-size: 12px;">
+        Si le bouton ne fonctionne pas, copiez-collez ce lien :<br>
+        <a href="${payload.signatureUrl}" style="color: #2c3e8f; word-break: break-all;">${payload.signatureUrl}</a>
+      </p>
+      <p style="margin: 18px 0 0;">
+        Cordialement,<br>
+        L'équipe AutoDocs
+      </p>
+    </div>
+  `;
+}
+
+
+/* livre-police-template (ex api/_lib/livre-police-template.ts) */
+/** Ligne issue de `livre_de_police` (PDF registre / fiche). */
+type LivrePoliceEntreePdf = Record<string, unknown>;
+
+function escapeHtmlLivreCell(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  const s = String(value).trim();
+  if (s === "") return "—";
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Lit la 1re clé présente (snake_case ou alias MAJUSCULE / CSV hérité). */
+function pickRaw(e: LivrePoliceEntreePdf, ...keys: string[]): unknown {
+  const rec = e as Record<string, unknown>;
+  for (const k of keys) {
+    const v = rec[k];
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string" && v.trim() === "") continue;
+    return v;
+  }
+  return undefined;
+}
+
+function strCell(e: LivrePoliceEntreePdf, ...keys: string[]): string {
+  return escapeHtmlLivreCell(pickRaw(e, ...keys));
+}
+
+function fmtEuro(n: unknown): string {
+  if (n === null || n === undefined || n === "") return "—";
+  const num = typeof n === "number" ? n : Number(String(n).replace(",", "."));
+  if (!Number.isFinite(num)) return "—";
+  return `${num.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`;
+}
+
+function fmtDateFr(d: unknown): string {
+  if (!d) return "—";
+  try {
+    const iso = typeof d === "string" ? d : String(d);
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return "—";
+    return dt.toLocaleDateString("fr-FR");
+  } catch {
+    return "—";
+  }
+}
+
+function fmtKm(n: unknown): string {
+  if (n === null || n === undefined) return "—";
+  const num = typeof n === "number" ? n : parseInt(String(n), 10);
+  if (!Number.isFinite(num)) return "—";
+  return num.toLocaleString("fr-FR");
+}
+
+function vendeurCell(e: LivrePoliceEntreePdf): { nom: string; idPiece: string } {
+  const type = String(pickRaw(e, "vendeur_type", "VENDEUR_TYPE") ?? "particulier");
+  if (type === "entreprise") {
+    return {
+      nom: strCell(e, "vendeur_entreprise_nom", "VENDEUR_ENTREPRISE_NOM"),
+      idPiece: strCell(e, "vendeur_siret", "VENDEUR_SIRET"),
+    };
+  }
+  const nomRaw = `${String(pickRaw(e, "vendeur_nom", "VENDEUR_NOM") ?? "").trim()} ${String(pickRaw(e, "vendeur_prenom", "VENDEUR_PRENOM") ?? "").trim()}`.trim();
+  return {
+    nom: escapeHtmlLivreCell(nomRaw || "—"),
+    idPiece: strCell(e, "vendeur_numero_piece_identite", "VENDEUR_NUMERO_PIECE_IDENTITE"),
+  };
+}
+
+function acheteurCell(e: LivrePoliceEntreePdf): { nom: string; idPiece: string } {
+  const type = String(pickRaw(e, "acheteur_type", "ACHETEUR_TYPE") ?? "particulier");
+  if (type === "entreprise") {
+    return {
+      nom: strCell(e, "acheteur_entreprise_nom", "ACHETEUR_ENTREPRISE_NOM"),
+      idPiece: strCell(e, "acheteur_siret", "ACHETEUR_SIRET"),
+    };
+  }
+  const nomRaw =
+    `${String(pickRaw(e, "acheteur_nom", "ACHETEUR_NOM") ?? "").trim()} ${String(pickRaw(e, "acheteur_prenom", "ACHETEUR_PRENOM") ?? "").trim()}`.trim();
+  return {
+    nom: escapeHtmlLivreCell(nomRaw || "—"),
+    idPiece: strCell(e, "acheteur_numero_piece_identite", "ACHETEUR_NUMERO_PIECE_IDENTITE"),
+  };
+}
+
+function buildLivrePoliceHTML(
+  entrees: LivrePoliceEntreePdf[] | null | undefined,
+  concession: { nom?: string | null; siret?: string | null } | null | undefined,
+): string {
+  const rows = Array.isArray(entrees) ? entrees : [];
+  console.log("buildLivrePoliceHTML - nb entrees:", rows.length);
+  console.log("buildLivrePoliceHTML - premiere entree:", rows[0]);
+  const bodyRows =
+    rows.length > 0
+      ? rows
+          .map((e) => {
+            const v = vendeurCell(e);
+            const a = acheteurCell(e);
+            const modeAchat = pickRaw(e, "mode_reglement", "mode_reglement_achat", "MODE_REGLEMENT");
+            const modeVente = pickRaw(e, "mode_reglement_vente", "mode_reglement", "MODE_REGLEMENT_VENTE");
+            return `
+        <tr>
+          <td>${escapeHtmlLivreCell(pickRaw(e, "numero_ordre", "NUMERO_ORDRE"))}</td>
+          <td>${fmtDateFr(pickRaw(e, "date_entree", "DATE_ENTREE"))}</td>
+          <td>${strCell(e, "genre", "GENRE")}</td>
+          <td>${strCell(e, "marque", "MARQUE")}</td>
+          <td>${strCell(e, "modele", "MODELE")}</td>
+          <td>${strCell(e, "type_variante_version", "TYPE_VARIANTE_VERSION", "TVV")}</td>
+          <td>${strCell(e, "couleur", "COULEUR")}</td>
+          <td>${strCell(e, "annee_mise_en_circulation", "ANNEE_MISE_EN_CIRCULATION", "1ERE_MEC")}</td>
+          <td>${fmtKm(pickRaw(e, "kilometrage", "KILOMETRAGE", "KM"))}</td>
+          <td>${strCell(e, "immatriculation", "IMMAT", "IMMATRICULATION")}</td>
+          <td>${strCell(e, "vin", "VIN", "N° DE SERIE")}</td>
+          <td>${(() => {
+            const p = pickRaw(e, "pays_origine", "PAYS_ORIGINE");
+            if (p == null || (typeof p === "string" && !String(p).trim())) return escapeHtmlLivreCell("France");
+            return escapeHtmlLivreCell(p);
+          })()}</td>
+          <td>${v.nom}</td>
+          <td>${v.idPiece}</td>
+          <td>${fmtEuro(pickRaw(e, "prix_achat", "PRIX_ACHAT"))}</td>
+          <td>${escapeHtmlLivreCell(modeAchat)}</td>
+          <td>${a.nom}</td>
+          <td>${a.idPiece}</td>
+          <td>${fmtEuro(pickRaw(e, "prix_vente", "PRIX_VENTE"))}</td>
+          <td>${escapeHtmlLivreCell(modeVente)}</td>
+          <td>${fmtDateFr(pickRaw(e, "date_sortie", "DATE_SORTIE"))}</td>
+          <td>${strCell(e, "destination_sortie", "DESTINATION_SORTIE")}</td>
+        </tr>`;
+          })
+          .join("")
+      : '<tr><td colspan="22">Aucune entrée</td></tr>';
+
+  const nomConc = escapeHtmlLivreCell(concession?.nom?.trim() || "Concession");
+  const siret = escapeHtmlLivreCell(concession?.siret?.trim() || "—");
+  const edite = new Date().toLocaleDateString("fr-FR");
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 8px; }
+    h1 { font-size: 14px; text-align: center; }
+    .header { text-align: center; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      background: #1e3a5f; color: white;
+      padding: 4px; font-size: 7px;
+      border: 1px solid #ccc;
+    }
+    td {
+      padding: 3px; border: 1px solid #ddd;
+      font-size: 7px; vertical-align: top;
+    }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .mention {
+      margin-top: 20px; font-size: 7px;
+      color: #666; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>LIVRE DE POLICE — REGISTRE DES VÉHICULES D'OCCASION</h1>
+    <p><strong>${nomConc}</strong> — SIRET : ${siret}</p>
+    <p>Édité le ${escapeHtmlLivreCell(edite)}</p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>N°</th>
+        <th>Date entrée</th>
+        <th>Genre</th>
+        <th>Marque</th>
+        <th>Modèle</th>
+        <th>TVV</th>
+        <th>Couleur</th>
+        <th>1ère MEC</th>
+        <th>KM</th>
+        <th>Immat</th>
+        <th>VIN</th>
+        <th>Pays</th>
+        <th>Vendeur</th>
+        <th>N° ID vendeur</th>
+        <th>Prix achat</th>
+        <th>Règlement achat</th>
+        <th>Acheteur</th>
+        <th>N° ID acheteur</th>
+        <th>Prix vente</th>
+        <th>Règlement vente</th>
+        <th>Date sortie</th>
+        <th>Destination</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyRows}
+    </tbody>
+  </table>
+
+  <div class="mention">
+    Document conforme aux obligations légales du livre de police automobile (Article L321-1 du Code de la Sécurité Intérieure).
+    Ce registre doit être conservé 5 ans après la dernière inscription.
+  </div>
+</body>
+</html>`;
+}
 
 /* ==================================================================
  *  Bon-template inliné (ex api/_lib/bon-template.ts)
@@ -347,6 +803,330 @@ function extractPremiereMiseEnCirculation(donnees: Record<string, unknown>): str
     ]) || "Non renseignée"
   );
 }
+
+/* facture-template (ex api/_lib/facture-template.ts) */
+type PrestationFacture = { libelle: string; prix_ht: number };
+
+function formatMoneyFr(n: number): string {
+  return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+type FactureTemplatePayload = {
+  numero_facture: string;
+  date_facture_label: string;
+
+  concession_nom: string;
+  concession_siret: string;
+  concession_adresse: string;
+  concession_telephone: string;
+  concession_email: string;
+  concession_tva_intra: string;
+
+  client_nom: string;
+  client_prenom: string;
+  client_adresse: string;
+  client_email: string;
+  client_telephone: string;
+
+  vehicule_marque: string;
+  vehicule_modele: string;
+  vehicule_version: string;
+  vehicule_type: string;
+  vehicule_premiere_circulation: string;
+  vehicule_kilometrage: string;
+  vehicule_km_non_garanti: boolean;
+  vehicule_vin: string;
+  vehicule_immatriculation: string;
+  vehicule_couleur: string;
+  vehicule_energie: string;
+  vehicule_donnees?: Record<string, unknown>;
+
+  prestations: PrestationFacture[];
+
+  prix_ht_vehicule_label: string;
+  prix_ht_prestations_label: string;
+  prix_ht_total_label: string;
+  tva_taux_label: string;
+  tva_montant_label: string;
+  prix_ttc_label: string;
+  acompte_label: string;
+  reprise_montant_label: string;
+  reprise_description: string;
+  reste_a_payer_label: string;
+
+  mention_garantie_vente: string;
+  notes: string;
+};
+
+function buildFactureHtml(p: FactureTemplatePayload): string {
+  const vehiculeDonnees = p.vehicule_donnees ?? {};
+  const resolvedPremiereCirculation =
+    String(p.vehicule_premiere_circulation ?? "").trim() ||
+    extractPremiereMiseEnCirculation(vehiculeDonnees);
+  const resolvedKilometrage =
+    String(p.vehicule_kilometrage ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, [
+      "km",
+      "kilometrage",
+      "kilométrage",
+      "kms",
+      "kilometre",
+      "kilomètres",
+      "nb_km",
+      "compteur",
+    ]);
+  const resolvedVin =
+    String(p.vehicule_vin ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, [
+      "vin",
+      "VIN",
+      "numero_serie",
+      "numéro de série",
+      "n_serie",
+      "serie",
+      "chassis",
+      "châssis",
+      "n_chassis",
+    ]);
+  const resolvedImmat =
+    String(p.vehicule_immatriculation ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, [
+      "immat",
+      "immatriculation",
+      "plaque",
+      "numero_immat",
+      "n_immat",
+      "plaque_immat",
+    ]);
+  const resolvedEnergie =
+    String(p.vehicule_energie ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, [
+      "energie",
+      "énergie",
+      "carburant",
+      "motorisation",
+      "type_energie",
+      "fuel",
+      "combustible",
+    ]);
+  const resolvedCouleur =
+    String(p.vehicule_couleur ?? "").trim() ||
+    extractVehiculeField(vehiculeDonnees, ["couleur", "color", "teinte", "coloris"]);
+
+  const prestRows =
+    p.prestations.length === 0
+      ? `<tr><td colspan="2" style="padding:8px;border:1px solid #ccc;color:#666;font-style:italic;">Aucune prestation supplémentaire</td></tr>`
+      : p.prestations
+          .map(
+            (pr) =>
+              `<tr><td style="padding:6px 8px;border:1px solid #ccc;">${escapeHtmlTemplate(pr.libelle)}</td>` +
+              `<td style="padding:6px 8px;border:1px solid #ccc;text-align:right;white-space:nowrap;">${escapeHtmlTemplate(formatMoneyFr(pr.prix_ht))} €</td></tr>`,
+          )
+          .join("");
+
+  const notesBlock =
+    (p.notes ?? "").trim().length > 0
+      ? `<div class="notes-box"><strong>Notes</strong><br/>${escapeHtmlTemplate(p.notes.trim()).replace(/\n/g, "<br/>")}</div>`
+      : "";
+
+  const repriseBlock =
+    parseFloat(String(p.reprise_montant_label).replace(/\s/g, "").replace(",", ".")) > 0
+      ? `<div class="price-row"><span>Reprise déduite</span><span>− ${escapeHtmlTemplate(p.reprise_montant_label)} €</span></div>
+         ${(p.reprise_description ?? "").trim() ? `<div class="reprise-desc">${escapeHtmlTemplate(p.reprise_description.trim())}</div>` : ""}`
+      : "";
+  const acompteBlock =
+    parseFloat(String(p.acompte_label).replace(/\s/g, "").replace(",", ".")) > 0
+      ? `<div class="price-row"><span>Acompte versé</span><span>− ${escapeHtmlTemplate(p.acompte_label)} €</span></div>`
+      : "";
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  @page { size: A4; margin: 14mm 12mm 14mm 12mm; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+    font-size: 10.5px;
+    color: #111;
+    line-height: 1.45;
+    position: relative;
+  }
+  .watermark {
+    position: fixed;
+    top: 42%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-35deg);
+    font-size: 64px;
+    font-weight: 800;
+    color: #000;
+    opacity: 0.045;
+    pointer-events: none;
+    z-index: 0;
+    white-space: nowrap;
+  }
+  .wrap { position: relative; z-index: 1; }
+  .doc-title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-align: right;
+    margin-bottom: 4px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 2px solid #000;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+  }
+  .concession h1 { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+  .concession .small { font-size: 9px; color: #333; line-height: 1.35; }
+  .meta { text-align: right; font-size: 10px; }
+  .meta .num { font-size: 13px; font-weight: 800; margin-bottom: 4px; }
+  .section { margin-bottom: 10px; }
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    background: #000;
+    color: #fff;
+    padding: 4px 8px;
+    margin-bottom: 0;
+  }
+  table.grid { width: 100%; border-collapse: collapse; }
+  table.grid th, table.grid td {
+    border: 1px solid #ccc;
+    padding: 5px 8px;
+    font-size: 10px;
+    vertical-align: top;
+  }
+  table.grid th {
+    background: #f4f4f4;
+    font-weight: 600;
+    width: 22%;
+    white-space: nowrap;
+  }
+  .price-box {
+    border: 1px solid #000;
+    padding: 10px 12px;
+    margin-top: 8px;
+  }
+  .price-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 10.5px;
+  }
+  .price-row.emphasis { font-weight: 700; font-size: 11px; border-top: 1px dashed #999; margin-top: 6px; padding-top: 8px; }
+  .reste-box {
+    margin-top: 10px;
+    border: 3px double #000;
+    padding: 10px 12px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 14px;
+  }
+  .reste-box span { display: block; font-size: 10px; font-weight: 600; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+  .legal {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #ccc;
+    font-size: 8.5px;
+    color: #222;
+    line-height: 1.45;
+  }
+  .legal p { margin-bottom: 6px; }
+  .legal strong { font-weight: 700; }
+  .notes-box { margin-top: 8px; padding: 8px; border: 1px dashed #999; font-size: 9px; }
+  .reprise-desc { font-size: 9px; color: #444; margin-top: 4px; font-style: italic; }
+</style>
+</head>
+<body>
+<div class="watermark">AutoDocs</div>
+<div class="wrap">
+
+  <div class="doc-title">FACTURE</div>
+
+  <div class="header">
+    <div class="concession">
+      <h1>${escapeHtmlTemplate(p.concession_nom)}</h1>
+      <div class="small">
+        ${escapeHtmlTemplate(p.concession_adresse)}<br/>
+        Tél. ${escapeHtmlTemplate(p.concession_telephone)} — ${escapeHtmlTemplate(p.concession_email)}<br/>
+        SIRET : ${escapeHtmlTemplate(p.concession_siret)} — TVA intracom. : ${escapeHtmlTemplate(p.concession_tva_intra)}
+      </div>
+    </div>
+    <div class="meta">
+      <div class="num">N° ${escapeHtmlTemplate(p.numero_facture)}</div>
+      <div>Date de facture : <strong>${escapeHtmlTemplate(p.date_facture_label)}</strong></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Client (acheteur)</div>
+    <table class="grid">
+      <tr><th>Nom</th><td>${escapeHtmlTemplate(p.client_nom)}</td><th>Prénom</th><td>${escapeHtmlTemplate(p.client_prenom)}</td></tr>
+      <tr><th>Adresse</th><td colspan="3">${escapeHtmlTemplate(p.client_adresse)}</td></tr>
+      <tr><th>Email</th><td>${escapeHtmlTemplate(p.client_email)}</td><th>Téléphone</th><td>${escapeHtmlTemplate(p.client_telephone)}</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Détail du véhicule</div>
+    <table class="grid">
+      <tr><th>Marque</th><td>${escapeHtmlTemplate(p.vehicule_marque)}</td><th>Type / genre</th><td>${escapeHtmlTemplate(p.vehicule_type)}</td></tr>
+      <tr><th>Modèle</th><td>${escapeHtmlTemplate(p.vehicule_modele)}</td><th>Version</th><td>${escapeHtmlTemplate(p.vehicule_version)}</td></tr>
+      <tr><th>1ère mise en circulation</th><td colspan="3">${escapeHtmlTemplate(resolvedPremiereCirculation || "Non renseignée")}</td></tr>
+      <tr><th>Kilométrage</th><td colspan="3">${p.vehicule_km_non_garanti ? "<strong>Non garanti</strong>" : escapeHtmlTemplate(resolvedKilometrage || "Non renseigné")}</td></tr>
+      <tr><th>N° VIN (numéro de série)</th><td colspan="3">${escapeHtmlTemplate(resolvedVin || "Non renseigné")}</td></tr>
+      <tr><th>N° d'immatriculation</th><td>${escapeHtmlTemplate(resolvedImmat || "Non renseignée")}</td><th>Couleur</th><td>${escapeHtmlTemplate(resolvedCouleur || "Non renseignée")}</td></tr>
+      <tr><th>Énergie</th><td colspan="3">${escapeHtmlTemplate(resolvedEnergie || "Non renseignée")}</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Prestations supplémentaires (hors véhicule)</div>
+    <table class="grid">
+      <tr style="background:#f4f4f4;font-weight:700;"><td style="border:1px solid #ccc;">Libellé</td><td style="border:1px solid #ccc;width:120px;text-align:right;">Prix HT</td></tr>
+      ${prestRows}
+    </table>
+  </div>
+
+  <div class="price-box">
+    <div class="price-row"><span>Prix HT véhicule</span><span>${escapeHtmlTemplate(p.prix_ht_vehicule_label)} €</span></div>
+    <div class="price-row"><span>Total HT prestations</span><span>${escapeHtmlTemplate(p.prix_ht_prestations_label)} €</span></div>
+    <div class="price-row emphasis"><span>Total HT</span><span>${escapeHtmlTemplate(p.prix_ht_total_label)} €</span></div>
+    <div class="price-row"><span>TVA (${escapeHtmlTemplate(p.tva_taux_label)} %)</span><span>${escapeHtmlTemplate(p.tva_montant_label)} €</span></div>
+    <div class="price-row emphasis"><span>Total TTC</span><span>${escapeHtmlTemplate(p.prix_ttc_label)} €</span></div>
+    ${acompteBlock}
+    ${repriseBlock}
+    <div class="reste-box">
+      <span>Net à payer TTC</span>
+      ${escapeHtmlTemplate(p.reste_a_payer_label)} €
+    </div>
+  </div>
+
+  ${notesBlock}
+
+  <div class="legal">
+    <p><strong>Conditions de vente et mentions légales</strong></p>
+    <p>${escapeHtmlTemplate(p.mention_garantie_vente)}</p>
+    <p>Le vendeur déclare que le véhicule est <strong>libre de tout gage et opposition</strong> au jour de la vente.</p>
+    <p>Les <strong>pièces administratives</strong> nécessaires à la circulation et à la revente ont été ou seront <strong>remises à l'acheteur</strong> conformément à la réglementation applicable.</p>
+    <p><strong>Garantie légale de conformité</strong> : pour les acheteurs qualifiés de consommateurs, le véhicule bénéficie de la garantie légale de conformité prévue aux articles L. 217-3 et suivants du Code de la consommation, dans les conditions fixées par le décret n° 2021-609 du 19 mai 2021 et les textes subséquents.</p>
+    <p>${p.vehicule_km_non_garanti ? "Le kilométrage est indiqué <strong>sans garantie</strong> au moment de la vente." : "Le vendeur déclare que le <strong>kilométrage indiqué est exact</strong> au moment de la vente."}</p>
+    <p><strong>Conservation du document</strong> : ce document doit être conservé <strong>10 ans</strong> par le vendeur et l'acheteur aux fins notamment de justification fiscale et de garanties.</p>
+  </div>
+
+</div>
+</body>
+</html>`;
+}
+
 
 function isoDateToFr(iso: string | undefined | null): string {
   const s = String(iso ?? "").trim();
@@ -716,14 +1496,6 @@ async function authUserExistsByEmail(
     page += 1;
   }
   return false;
-}
-
-function escapeHtml(s: string): string {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function generateToken(): string {
