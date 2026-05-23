@@ -188,7 +188,20 @@ type AgentTachesState = {
   envoyer_facture_email: boolean;
   marquer_vendu: boolean;
   generer_cerfa: boolean;
+  livre_police: boolean;
 };
+
+type LivrePoliceDataState = {
+  prix_achat: string;
+  genre: string;
+  pays_origine: string;
+};
+
+const defaultLivrePoliceData = (): LivrePoliceDataState => ({
+  prix_achat: "",
+  genre: "VP",
+  pays_origine: "France",
+});
 
 type AgentRapportLigne = {
   tache: string;
@@ -230,6 +243,7 @@ function defaultAgentTaches(clientEmailTrim: string): AgentTachesState {
     envoyer_facture_email: true,
     marquer_vendu: true,
     generer_cerfa: false,
+    livre_police: true,
   };
 }
 
@@ -251,6 +265,9 @@ function buildAgentProgressOrder(t: AgentTachesState): { id: string; label: stri
   }
   if (t.marquer_vendu) {
     rows.push({ id: "vendu", label: "Véhicule marqué comme vendu" });
+  }
+  if (t.livre_police) {
+    rows.push({ id: "livre_police", label: "Entrée livre de police créée" });
   }
   if (t.generer_cerfa) {
     rows.push({ id: "cerfa", label: "Génération CERFA" });
@@ -355,6 +372,10 @@ const NouveauBon = () => {
   );
   /** Refs : évite une valeur « figée » des tâches au clic « Lancer l'agent ». */
   const tachesRef = useRef<AgentTachesState>(defaultAgentTaches(""));
+  const [livrePoliceData, setLivrePoliceData] = useState<LivrePoliceDataState>(() =>
+    defaultLivrePoliceData(),
+  );
+  const livrePoliceRef = useRef<LivrePoliceDataState>(defaultLivrePoliceData());
   const [postAgentRunOrder, setPostAgentRunOrder] = useState<{ id: string; label: string }[]>([]);
   const [postAgentRunStepIdx, setPostAgentRunStepIdx] = useState(0);
   const [postAgentRapport, setPostAgentRapport] = useState<AgentRapportLigne[]>([]);
@@ -363,6 +384,10 @@ const NouveauBon = () => {
   useEffect(() => {
     tachesRef.current = postAgentTaches;
   }, [postAgentTaches]);
+
+  useEffect(() => {
+    livrePoliceRef.current = livrePoliceData;
+  }, [livrePoliceData]);
 
   const [repriseEstimationLoading, setRepriseEstimationLoading] = useState(false);
   const [repriseEstimation, setRepriseEstimation] = useState<RepriseEstimationAi | null>(null);
@@ -460,6 +485,9 @@ const NouveauBon = () => {
     setPostAgentRunStepIdx(0);
     setPostAgentRapport([]);
     setPostAgentDurationMs(0);
+    const resetLp = defaultLivrePoliceData();
+    setLivrePoliceData(resetLp);
+    livrePoliceRef.current = resetLp;
     setRepriseEstimation(null);
     setRepriseEstimationLoading(false);
     setNumeroCniExtraitParIa(false);
@@ -948,6 +976,9 @@ const NouveauBon = () => {
     setPostAgentRunStepIdx(0);
     setPostAgentRapport([]);
     setPostAgentDurationMs(0);
+    const fermerLp = defaultLivrePoliceData();
+    setLivrePoliceData(fermerLp);
+    livrePoliceRef.current = fermerLp;
     setRepriseEstimation(null);
     setRepriseEstimationLoading(false);
     setFormState({ ...defaultFormState });
@@ -989,6 +1020,7 @@ const NouveauBon = () => {
       envoyer_facture_email: all,
       marquer_vendu: all,
       generer_cerfa: all,
+      livre_police: all,
     };
     tachesRef.current = next;
     setPostAgentTaches(next);
@@ -1004,24 +1036,33 @@ const NouveauBon = () => {
       return;
     }
     console.log("=== AGENT IA LAUNCH ===");
-    const tachesActuelles = tachesRef.current;
+    const t = tachesRef.current;
+    const lp = livrePoliceRef.current;
     console.log("Tâches envoyées à l'agent:", {
-      enregistrer_client: tachesActuelles.enregistrer_client,
-      envoyer_bon_email: tachesActuelles.envoyer_bon_email,
-      generer_facture: tachesActuelles.generer_facture,
-      envoyer_facture_email: tachesActuelles.envoyer_facture_email,
-      marquer_vendu: tachesActuelles.marquer_vendu,
-      generer_cerfa: tachesActuelles.generer_cerfa,
+      enregistrer_client: t.enregistrer_client,
+      envoyer_bon_email: t.envoyer_bon_email,
+      generer_facture: t.generer_facture,
+      envoyer_facture_email: t.envoyer_facture_email,
+      marquer_vendu: t.marquer_vendu,
+      generer_cerfa: t.generer_cerfa,
+      livre_police: t.livre_police,
     });
-    console.log("State taches complet:", tachesActuelles);
+    console.log("State taches complet:", t);
+    console.log("Livre police data:", lp);
 
     const tachesAEnvoyer = {
-      enregistrer_client: tachesActuelles.enregistrer_client ?? true,
-      envoyer_bon_email: tachesActuelles.envoyer_bon_email ?? true,
-      generer_facture: tachesActuelles.generer_facture ?? true,
-      envoyer_facture_email: tachesActuelles.envoyer_facture_email ?? true,
-      marquer_vendu: tachesActuelles.marquer_vendu ?? true,
-      generer_cerfa: tachesActuelles.generer_cerfa ?? false,
+      enregistrer_client: t.enregistrer_client ?? true,
+      envoyer_bon_email: t.envoyer_bon_email ?? true,
+      generer_facture: t.generer_facture ?? true,
+      envoyer_facture_email: t.envoyer_facture_email ?? true,
+      marquer_vendu: t.marquer_vendu ?? true,
+      generer_cerfa: t.generer_cerfa ?? false,
+      livre_police: t.livre_police ?? true,
+      livre_police_data: {
+        prix_achat: lp.prix_achat || null,
+        genre: lp.genre || "VP",
+        pays_origine: lp.pays_origine || "France",
+      },
     };
 
     console.log("TACHES ENVOYÉES:", JSON.stringify(tachesAEnvoyer));
@@ -1597,6 +1638,44 @@ const NouveauBon = () => {
                     <label htmlFor="tache-vendu" className="cursor-pointer leading-snug">
                       Marquer le véhicule comme vendu
                     </label>
+                  </li>
+                  <li className="space-y-2">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="tache-livre-police"
+                        data-tache="livre_police"
+                        checked={postAgentTaches.livre_police}
+                        onChange={(e) =>
+                          handlePostAgentToggleTache("livre_police", e.target.checked)
+                        }
+                        className="w-4 h-4 rounded accent-indigo-500"
+                      />
+                      <span className="text-sm text-gray-200">
+                        📋 Créer l&apos;entrée dans le livre de police
+                      </span>
+                    </label>
+                    {postAgentTaches.livre_police ? (
+                      <div className="ml-7 mt-2 p-3 bg-gray-800/40 border border-gray-700/50 rounded-lg">
+                        <label className="text-xs text-gray-400 block mb-1">
+                          Prix d&apos;achat du véhicule par la concession (€)
+                          <span className="text-gray-600 ml-1">— optionnel</span>
+                        </label>
+                        <input
+                          type="number"
+                          value={livrePoliceData.prix_achat}
+                          onChange={(e) =>
+                            setLivrePoliceData((prev) => {
+                              const next = { ...prev, prix_achat: e.target.value };
+                              livrePoliceRef.current = next;
+                              return next;
+                            })
+                          }
+                          placeholder="ex: 12000"
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
+                        />
+                      </div>
+                    ) : null}
                   </li>
                   <li className="flex items-start gap-2">
                     <input

@@ -4256,8 +4256,9 @@ async function handleAgentPostVente(
   const envoyer_facture_email = taches.envoyer_facture_email === true;
   const marquer_vendu = taches.marquer_vendu === true;
   const generer_cerfa = taches.generer_cerfa === true;
+  const livre_police = taches.livre_police === true;
   console.log("[agent-post-vente] taches reçues raw:", JSON.stringify(taches));
-  console.log("[agent-post-vente] flags parsés:", { enregistrer_client, envoyer_bon_email, generer_facture, envoyer_facture_email, marquer_vendu, generer_cerfa });
+  console.log("[agent-post-vente] flags parsés:", { enregistrer_client, envoyer_bon_email, generer_facture, envoyer_facture_email, marquer_vendu, generer_cerfa, livre_police });
 
   const pdfBase64 = String(body.pdf_base64 ?? "").trim();
   const formData =
@@ -4665,6 +4666,119 @@ async function handleAgentPostVente(
         rapport.push({ tache: "vendu", statut: "err", message: msg });
         erreurs.push({ tache: "vendu", detail: msg });
       }
+    }
+  }
+
+  if (livre_police) {
+    try {
+      const lpData =
+        taches.livre_police_data && typeof taches.livre_police_data === "object"
+          ? (taches.livre_police_data as Record<string, unknown>)
+          : {};
+
+      const stockDonneesLp = parseStringDict(
+        (rawKv as Record<string, unknown> | undefined)?.stock_donnees,
+      );
+      const lpMarque = pickStockField(stockDonneesLp, ["marque", "brand"]);
+      const lpModele = pickStockField(stockDonneesLp, ["modele", "modèle", "model"]);
+      const lpCouleur = extractVehiculeField(stockDonneesLp, [
+        "couleur",
+        "color",
+        "teinte",
+        "coloris",
+      ]);
+      const lpAnnee = extractVehiculeField(stockDonneesLp, [
+        "annee",
+        "année",
+        "premiere_mise_en_circulation",
+        "première mise en circulation",
+        "date_mec",
+        "mec",
+      ]);
+      const lpKm = extractVehiculeField(stockDonneesLp, [
+        "km",
+        "kilometrage",
+        "kilométrage",
+        "kms",
+      ]);
+      const lpImmat = extractVehiculeField(stockDonneesLp, [
+        "immat",
+        "immatriculation",
+        "plaque",
+        "numero_immat",
+      ]);
+      const lpVin =
+        extractVehiculeField(stockDonneesLp, ["vin", "VIN", "chassis", "châssis"]) ||
+        String(kvStr.cerfa_vin_complement ?? "").trim();
+      const lpStockId =
+        String(extracted.vehicule.stock_vehicule_id ?? "").trim() ||
+        String(kvStr.vehicule_stock_id ?? "").trim() ||
+        null;
+      const lpClientNom = String(extracted.client?.nom ?? br.client_nom ?? "").trim();
+      const lpClientPrenom = String(extracted.client?.prenom ?? br.client_prenom ?? "").trim();
+      const lpClientAdresse =
+        String(extracted.client?.adresse ?? br.client_adresse ?? "").trim();
+      const lpClientCni = String(br.client_numero_cni ?? "").trim();
+      const lpPrixVente = String(br.vehicule_prix ?? "").trim();
+      const lpModePaiement = String(br.mode_paiement ?? "comptant").trim() || "comptant";
+
+      const { data: maxOrdre } = await admin
+        .from("livre_de_police")
+        .select("numero_ordre")
+        .eq("concession_id", concessionId)
+        .order("numero_ordre", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const nextNumero = (Number(maxOrdre?.numero_ordre) || 0) + 1;
+
+      const { error: lpError } = await admin.from("livre_de_police").insert({
+        concession_id: concessionId,
+        numero_ordre: nextNumero,
+        date_entree: new Date().toISOString().split("T")[0],
+        genre: String(lpData.genre ?? "VP") || "VP",
+        marque: lpMarque,
+        modele: lpModele,
+        couleur: lpCouleur,
+        annee_mise_en_circulation: lpAnnee,
+        kilometrage: parseInt(lpKm, 10) || null,
+        immatriculation: lpImmat,
+        vin: lpVin,
+        pays_origine: String(lpData.pays_origine ?? "France") || "France",
+        vendeur_type: "entreprise",
+        prix_achat: lpData.prix_achat ? parseFloat(String(lpData.prix_achat)) : null,
+        acheteur_type: "particulier",
+        acheteur_nom: lpClientNom,
+        acheteur_prenom: lpClientPrenom,
+        acheteur_adresse: lpClientAdresse,
+        acheteur_numero_piece_identite: lpClientCni,
+        prix_vente: lpPrixVente ? parseFloat(lpPrixVente) : null,
+        mode_reglement_vente: lpModePaiement,
+        date_sortie: new Date().toISOString().split("T")[0],
+        destination_sortie: "Vente",
+        stock_vehicule_id: lpStockId,
+        brouillon_id: brouillonId,
+      });
+
+      if (lpError) {
+        console.error("LP error:", lpError);
+        throw lpError;
+      }
+
+      rapport.push({
+        tache: "livre_police",
+        statut: "ok",
+        message: `Entrée n°${nextNumero} créée dans le livre de police`,
+      });
+    } catch (e: unknown) {
+      console.error("ERREUR livre_police:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      rapport.push({
+        tache: "livre_police",
+        statut: "err",
+        message: `Erreur livre de police: ${msg}`,
+      });
+      erreurs.push({ tache: "livre_police", detail: msg });
     }
   }
 
