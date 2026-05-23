@@ -25,6 +25,7 @@
     <style>
       :root {
         --bg: #0f0f1a;
+        --bg-2: #12121f;
         --bg-card: #111127;
         --bg-card-hover: #1a1a35;
         --border: rgba(99, 102, 241, 0.15);
@@ -1145,6 +1146,442 @@
         opacity: 1;
         transform: translateY(0);
       }
+
+      .demo-section {
+        padding: 120px 0;
+        background: var(--bg-2);
+      }
+      .demo-section .section-label {
+        margin-bottom: 16px;
+      }
+      .demo-frame {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 32px;
+        max-width: 860px;
+        margin: 48px auto 0;
+      }
+      .demo-wrap {
+        font-family: "DM Sans", sans-serif;
+      }
+      .demo-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      .demo-logo-badge {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .demo-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--indigo);
+        display: inline-block;
+      }
+      .demo-pills {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .d-pill {
+        padding: 4px 14px;
+        border-radius: 100px;
+        font-size: 12px;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        transition: all 0.4s;
+        font-weight: 500;
+      }
+      .d-pill.active {
+        background: var(--indigo);
+        color: white;
+        border-color: var(--indigo);
+      }
+      .d-pill.done {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+        border-color: rgba(16, 185, 129, 0.3);
+      }
+      .demo-screen {
+        background: var(--bg);
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        overflow: hidden;
+        min-height: 300px;
+      }
+      .demo-bar {
+        background: var(--bg-2);
+        border-bottom: 1px solid var(--border);
+        padding: 10px 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .bar-circle {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+      .demo-url {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 8px;
+        padding: 4px 12px;
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: 0 12px;
+      }
+      .demo-body {
+        padding: 20px;
+      }
+      .d-slide {
+        display: none;
+        animation: dFadeUp 0.4s ease;
+      }
+      .d-slide.active {
+        display: block;
+      }
+      @keyframes dFadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .d-form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .d-field {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 14px;
+      }
+      .d-field-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+      }
+      .d-field-value {
+        font-size: 14px;
+        color: var(--text);
+        font-weight: 500;
+        min-height: 20px;
+      }
+      .d-field-value.typing::after {
+        content: "|";
+        animation: dblink 0.8s infinite;
+        color: var(--indigo-light);
+      }
+      @keyframes dblink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0;
+        }
+      }
+      .d-vehicle {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 12px;
+      }
+      .d-vehicle-ico {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: rgba(99, 102, 241, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        flex-shrink: 0;
+      }
+      .d-vehicle-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .d-vehicle-sub {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 2px;
+      }
+      .d-price {
+        margin-left: auto;
+        font-size: 16px;
+        font-weight: 700;
+        color: #10b981;
+      }
+      .d-btn {
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, var(--indigo), var(--purple));
+        border: none;
+        border-radius: 12px;
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-family: "DM Sans", sans-serif;
+        transition: all 0.2s;
+      }
+      .d-btn:hover {
+        opacity: 0.9;
+      }
+      .d-pdf {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        margin-bottom: 14px;
+      }
+      .d-pdf-icon {
+        font-size: 36px;
+        margin-bottom: 8px;
+      }
+      .d-pdf-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .d-pdf-sub {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+      .d-sign-zone {
+        border: 1.5px dashed rgba(99, 102, 241, 0.3);
+        border-radius: 10px;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 10px 0;
+        transition: all 0.3s;
+      }
+      .d-sign-zone.signed {
+        border-color: #3b82f6;
+        background: rgba(59, 130, 246, 0.05);
+      }
+      .d-sig-text {
+        font-family: Georgia, serif;
+        font-size: 24px;
+        color: #3b82f6;
+        font-style: italic;
+      }
+      .d-send-btn {
+        width: 100%;
+        padding: 12px;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        border-radius: 12px;
+        color: #10b981;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-family: "DM Sans", sans-serif;
+        transition: all 0.2s;
+      }
+      .d-agent-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .d-agent-ava {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--indigo), var(--purple));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        flex-shrink: 0;
+      }
+      .d-agent-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .d-agent-sub {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .d-prog-bar {
+        height: 4px;
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 2px;
+        margin: 12px 0 20px;
+        overflow: hidden;
+      }
+      .d-prog-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--indigo), var(--purple));
+        border-radius: 2px;
+        width: 0%;
+        transition: width 0.8s ease;
+      }
+      .d-tasks {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .d-task {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.02);
+        transition: all 0.4s;
+      }
+      .d-task.running {
+        border-color: var(--indigo);
+        background: rgba(99, 102, 241, 0.06);
+      }
+      .d-task.done {
+        border-color: rgba(16, 185, 129, 0.3);
+        background: rgba(16, 185, 129, 0.05);
+      }
+      .d-task-ico {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        flex-shrink: 0;
+        transition: all 0.3s;
+      }
+      .d-task.done .d-task-ico {
+        background: rgba(16, 185, 129, 0.15);
+      }
+      .d-task-text {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text);
+        flex: 1;
+      }
+      .d-task-status {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .d-task.running .d-task-status {
+        color: var(--indigo-light);
+      }
+      .d-task.done .d-task-status {
+        color: #10b981;
+      }
+      .d-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(99, 102, 241, 0.2);
+        border-top-color: var(--indigo);
+        border-radius: 50%;
+        animation: dspin 0.8s linear infinite;
+      }
+      @keyframes dspin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .d-results {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 10px;
+        margin-top: 16px;
+      }
+      .d-result-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        text-align: center;
+      }
+      .d-result-val {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 4px;
+      }
+      .d-result-lbl {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+      .d-result-card.highlight {
+        border-color: rgba(99, 102, 241, 0.3);
+        background: rgba(99, 102, 241, 0.06);
+      }
+      .d-result-card.highlight .d-result-val {
+        color: var(--indigo-light);
+      }
+      .demo-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 16px;
+      }
+      .d-nav-btn {
+        padding: 8px 20px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 13px;
+        cursor: pointer;
+        font-family: "DM Sans", sans-serif;
+        transition: all 0.2s;
+      }
+      .d-nav-btn:hover {
+        color: var(--text);
+        border-color: rgba(255, 255, 255, 0.2);
+      }
+      .d-nav-btn.primary {
+        background: linear-gradient(135deg, var(--indigo), var(--purple));
+        color: white;
+        border-color: transparent;
+      }
+      .d-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
     </style>
   </head>
   <body>
@@ -1267,6 +1704,184 @@
         </div>
       </div>
     </header>
+
+    <!-- DEMO SECTION -->
+    <section class="demo-section" id="demo">
+      <div class="container">
+        <p class="section-label reveal" style="text-align: center">Démo interactive</p>
+        <h2 class="section-title reveal" style="text-align: center; margin: 0 auto 12px">
+          Voyez AutoDocs en action
+        </h2>
+        <p
+          style="
+            font-size: 17px;
+            color: var(--text-muted);
+            max-width: 520px;
+            margin: 0 auto 0;
+            text-align: center;
+          "
+          class="reveal"
+        >
+          De la création du bon de commande à l'agent IA qui automatise tout — en moins de 90 secondes.
+        </p>
+        <div class="demo-frame reveal">
+          <div class="demo-wrap">
+            <div class="demo-top">
+              <div class="demo-logo-badge">
+                <span class="demo-dot"></span>
+                AutoDocs — Simulation en direct
+              </div>
+              <div class="demo-pills">
+                <div class="d-pill active" id="dp1">1 · Client</div>
+                <div class="d-pill" id="dp2">2 · Véhicule</div>
+                <div class="d-pill" id="dp3">3 · Signature</div>
+                <div class="d-pill" id="dp4">4 · Agent IA</div>
+              </div>
+            </div>
+
+            <div class="demo-screen">
+              <div class="demo-bar">
+                <div class="bar-circle" style="background: #ef4444"></div>
+                <div class="bar-circle" style="background: #f59e0b"></div>
+                <div class="bar-circle" style="background: #10b981"></div>
+                <div class="demo-url" id="d-url">autodocs.services / nouveau-bon</div>
+              </div>
+              <div class="demo-body">
+                <!-- SLIDE 1: CLIENT -->
+                <div class="d-slide active" id="ds1">
+                  <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px; font-weight: 500">
+                    👤 Informations client
+                  </div>
+                  <div class="d-form-row">
+                    <div class="d-field">
+                      <div class="d-field-label">Nom</div>
+                      <div class="d-field-value" id="df-nom"></div>
+                    </div>
+                    <div class="d-field">
+                      <div class="d-field-label">Prénom</div>
+                      <div class="d-field-value" id="df-prenom"></div>
+                    </div>
+                  </div>
+                  <div class="d-form-row">
+                    <div class="d-field">
+                      <div class="d-field-label">Date de naissance</div>
+                      <div class="d-field-value" id="df-dob"></div>
+                    </div>
+                    <div class="d-field">
+                      <div class="d-field-label">Email</div>
+                      <div class="d-field-value" id="df-email"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- SLIDE 2: VEHICULE -->
+                <div class="d-slide" id="ds2">
+                  <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px; font-weight: 500">
+                    🚗 Véhicule sélectionné depuis le stock
+                  </div>
+                  <div class="d-vehicle">
+                    <div class="d-vehicle-ico">🚗</div>
+                    <div>
+                      <div class="d-vehicle-name">Mercedes C63 AMG</div>
+                      <div class="d-vehicle-sub">2023 · Électrique · 45 000 km · Noir</div>
+                    </div>
+                    <div class="d-price">87 900 €</div>
+                  </div>
+                  <div class="d-form-row">
+                    <div class="d-field">
+                      <div class="d-field-label">Mode de paiement</div>
+                      <div class="d-field-value">Comptant</div>
+                    </div>
+                    <div class="d-field">
+                      <div class="d-field-label">Date de livraison</div>
+                      <div class="d-field-value">15/06/2026</div>
+                    </div>
+                  </div>
+                  <button class="d-btn" id="d-gen-btn">📄 Générer le bon de commande</button>
+                </div>
+
+                <!-- SLIDE 3: SIGNATURE -->
+                <div class="d-slide" id="ds3">
+                  <div class="d-pdf">
+                    <div class="d-pdf-icon">📄</div>
+                    <div class="d-pdf-name">bon-commande-dupont-mercedes.pdf</div>
+                    <div class="d-pdf-sub">Généré · 2 pages · Légalement conforme</div>
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px">✍️ Signature vendeur</div>
+                  <div class="d-sign-zone" id="d-sign-zone">
+                    <span style="font-size: 13px; color: var(--text-muted)">Zone de signature</span>
+                  </div>
+                  <button class="d-send-btn" id="d-send-btn">📧 Envoyer au client pour signature</button>
+                </div>
+
+                <!-- SLIDE 4: AGENT IA -->
+                <div class="d-slide" id="ds4">
+                  <div class="d-agent-head">
+                    <div class="d-agent-ava">🤖</div>
+                    <div>
+                      <div class="d-agent-title">Agent IA post-vente</div>
+                      <div class="d-agent-sub" id="d-agent-sub">Client signé · Déclenchement automatique</div>
+                    </div>
+                  </div>
+                  <div class="d-prog-bar">
+                    <div class="d-prog-fill" id="d-prog"></div>
+                  </div>
+                  <div class="d-tasks">
+                    <div class="d-task" id="dt1">
+                      <div class="d-task-ico">👤</div>
+                      <div class="d-task-text">Fiche client enregistrée dans le CRM</div>
+                      <div class="d-task-status">En attente</div>
+                    </div>
+                    <div class="d-task" id="dt2">
+                      <div class="d-task-ico">🚗</div>
+                      <div class="d-task-text">Véhicule marqué comme vendu</div>
+                      <div class="d-task-status">En attente</div>
+                    </div>
+                    <div class="d-task" id="dt3">
+                      <div class="d-task-ico">🧾</div>
+                      <div class="d-task-text">Facture générée et envoyée par email</div>
+                      <div class="d-task-status">En attente</div>
+                    </div>
+                    <div class="d-task" id="dt4">
+                      <div class="d-task-ico">📋</div>
+                      <div class="d-task-text">Livre de police mis à jour</div>
+                      <div class="d-task-status">En attente</div>
+                    </div>
+                    <div class="d-task" id="dt5">
+                      <div class="d-task-ico">📄</div>
+                      <div class="d-task-text">CERFA de cession généré</div>
+                      <div class="d-task-status">En attente</div>
+                    </div>
+                  </div>
+                  <div class="d-results" id="d-results" style="display: none">
+                    <div class="d-result-card">
+                      <div class="d-result-val" style="color: #10b981">5/5</div>
+                      <div class="d-result-lbl">tâches réalisées</div>
+                    </div>
+                    <div class="d-result-card highlight">
+                      <div class="d-result-val">8 sec</div>
+                      <div class="d-result-lbl">au lieu de 15 min</div>
+                    </div>
+                    <div class="d-result-card">
+                      <div class="d-result-val" style="color: #10b981">0</div>
+                      <div class="d-result-lbl">clic requis</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="demo-footer">
+              <button class="d-nav-btn" id="d-btn-prev" onclick="dPrev()" style="visibility: hidden">
+                ← Précédent
+              </button>
+              <span class="d-hint" id="d-hint">Complétez les infos client →</span>
+              <button class="d-nav-btn primary" id="d-btn-next" onclick="dNext()">Suivant →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- ROI CALCULATOR -->
     <section id="roi">
@@ -1781,6 +2396,157 @@
       );
 
       document.querySelectorAll(".reveal").forEach((el) => revealObserver.observe(el));
+    </script>
+    <script>
+      // ─── DEMO INTERACTIVE ───
+      (function () {
+        var dCurrent = 1;
+        var dAgentDone = false;
+
+        var dHints = [
+          "Complétez les infos client →",
+          "Sélectionnez le véhicule →",
+          "Signez et envoyez au client →",
+          "L'agent IA s'occupe du reste !",
+        ];
+
+        var dUrls = [
+          "autodocs.services / nouveau-bon",
+          "autodocs.services / nouveau-bon — véhicule",
+          "autodocs.services / signer-document",
+          "autodocs.services / agent-ia — en cours...",
+        ];
+
+        function dType(el, text, speed, cb) {
+          if (!el) return;
+          el.textContent = "";
+          el.classList.add("typing");
+          var i = 0;
+          var t = setInterval(function () {
+            el.textContent += text[i++];
+            if (i >= text.length) {
+              clearInterval(t);
+              el.classList.remove("typing");
+              if (cb) cb();
+            }
+          }, speed);
+        }
+
+        function dShowSlide(n) {
+          for (var i = 1; i <= 4; i++) {
+            var s = document.getElementById("ds" + i);
+            var p = document.getElementById("dp" + i);
+            if (s) s.classList.remove("active");
+            if (p) {
+              p.classList.remove("active", "done");
+              if (i < n) p.classList.add("done");
+              else if (i === n) p.classList.add("active");
+            }
+          }
+          var slide = document.getElementById("ds" + n);
+          if (slide) slide.classList.add("active");
+
+          var prev = document.getElementById("d-btn-prev");
+          var next = document.getElementById("d-btn-next");
+          if (prev) prev.style.visibility = n > 1 ? "visible" : "hidden";
+          if (next) next.style.display = n === 4 ? "none" : "block";
+
+          var hint = document.getElementById("d-hint");
+          if (hint) hint.textContent = dHints[n - 1];
+
+          var url = document.getElementById("d-url");
+          if (url) url.textContent = dUrls[n - 1];
+
+          if (n === 1) dAnimSlide1();
+          if (n === 3) dAnimSlide3();
+          if (n === 4 && !dAgentDone) {
+            dAgentDone = true;
+            dRunAgent();
+          }
+        }
+
+        function dAnimSlide1() {
+          var fields = [
+            ["df-nom", "DUPONT", 45],
+            ["df-prenom", "Jean", 65],
+            ["df-dob", "12/12/1992", 55],
+            ["df-email", "j.dupont@gmail.com", 38],
+          ];
+          var delay = 400;
+          fields.forEach(function (f) {
+            setTimeout(function () {
+              dType(document.getElementById(f[0]), f[1], f[2]);
+            }, delay);
+            delay += f[1].length * f[2] + 500;
+          });
+        }
+
+        function dAnimSlide3() {
+          setTimeout(function () {
+            var zone = document.getElementById("d-sign-zone");
+            if (zone) {
+              zone.classList.add("signed");
+              zone.innerHTML = '<span class="d-sig-text">J. Dupont</span>';
+            }
+          }, 900);
+        }
+
+        function dRunAgent() {
+          var tasks = ["dt1", "dt2", "dt3", "dt4", "dt5"];
+          var prog = document.getElementById("d-prog");
+          var done = 0;
+
+          tasks.forEach(function (id, i) {
+            setTimeout(function () {
+              var el = document.getElementById(id);
+              if (!el) return;
+              el.classList.add("running");
+              el.querySelector(".d-task-status").textContent = "En cours...";
+              el.querySelector(".d-task-ico").innerHTML = '<div class="d-spinner"></div>';
+              if (prog) prog.style.width = ((i + 0.5) / tasks.length) * 100 + "%";
+
+              setTimeout(function () {
+                el.classList.remove("running");
+                el.classList.add("done");
+                el.querySelector(".d-task-status").innerHTML = "✓ Fait";
+                el.querySelector(".d-task-ico").textContent = "✅";
+                done++;
+                if (prog) prog.style.width = (done / tasks.length) * 100 + "%";
+
+                if (done === tasks.length) {
+                  setTimeout(function () {
+                    var sub = document.getElementById("d-agent-sub");
+                    if (sub) sub.textContent = "5 tâches réalisées en 8 secondes — 0 clic";
+                    var res = document.getElementById("d-results");
+                    if (res) res.style.display = "grid";
+                  }, 400);
+                }
+              }, 950);
+            }, 500 + i * 1300);
+          });
+        }
+
+        window.dNext = function () {
+          if (dCurrent < 4) {
+            dCurrent++;
+            dShowSlide(dCurrent);
+          }
+        };
+        window.dPrev = function () {
+          if (dCurrent > 1) {
+            dCurrent--;
+            dShowSlide(dCurrent);
+          }
+        };
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", function () {
+            dShowSlide(1);
+          });
+        } else {
+          dShowSlide(1);
+        }
+      })();
     </script>
   </body>
 </html>
