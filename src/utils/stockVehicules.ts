@@ -382,9 +382,53 @@ export async function updateStatut(id: string, statut: StatutVehicule): Promise<
   }
 }
 
+/**
+ * Détache les entrées du livre de police liées au stock avant suppression.
+ * Sans cette étape, Supabase renvoie souvent une 500 : contrainte FK ou
+ * mise à jour RLS lors du ON DELETE SET NULL implicite.
+ */
+async function detachLivrePoliceStockLinks(options: {
+  concessionId: string;
+  stockVehiculeId?: string;
+}): Promise<void> {
+  const { concessionId, stockVehiculeId } = options;
+  let query = supabase
+    .from("livre_de_police")
+    .update({
+      stock_vehicule_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("concession_id", concessionId);
+
+  if (stockVehiculeId) {
+    query = query.eq("stock_vehicule_id", stockVehiculeId);
+  } else {
+    query = query.not("stock_vehicule_id", "is", null);
+  }
+
+  const { error } = await query;
+  if (error) {
+    if (/livre_de_police.*does not exist|Could not find the table/i.test(error.message ?? "")) {
+      return;
+    }
+    console.error("detachLivrePoliceStockLinks:", error);
+    throw error;
+  }
+}
+
 export async function deleteVehicule(id: string): Promise<void> {
   if (!id) return;
-  const { error } = await supabase.from("stock_vehicules").delete().eq("id", id);
+  const concessionId = await getCurrentConcessionId();
+  if (concessionId) {
+    await detachLivrePoliceStockLinks({ concessionId, stockVehiculeId: id });
+  }
+
+  let deleteQuery = supabase.from("stock_vehicules").delete().eq("id", id);
+  if (concessionId) {
+    deleteQuery = deleteQuery.eq("concession_id", concessionId);
+  }
+
+  const { error } = await deleteQuery;
   if (error) {
     console.error("deleteVehicule:", error);
     throw error;
@@ -428,6 +472,8 @@ export async function markVehiculeVenduPourBon(vehiculeId: string): Promise<bool
 
 export async function clearStock(concessionId: string): Promise<void> {
   if (!concessionId) return;
+  await detachLivrePoliceStockLinks({ concessionId });
+
   const { error } = await supabase
     .from("stock_vehicules")
     .delete()
