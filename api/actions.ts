@@ -264,7 +264,7 @@ function buildRelanceEmailHTML(payload: BuildRelanceEmailPayload): string {
   `;
 }
 
-
+/* ==================================================================
  *  Bon-template inliné (ex api/_lib/bon-template.ts)
  *  Inliné pour éviter ERR_MODULE_NOT_FOUND sur Vercel ESM serverless.
  * ================================================================== */

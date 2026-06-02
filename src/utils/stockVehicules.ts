@@ -382,84 +382,12 @@ export async function updateStatut(id: string, statut: StatutVehicule): Promise<
   }
 }
 
-type SupabaseErr = { message?: string; code?: string; details?: string; hint?: string };
-
-function isMissingRpcError(message: string | undefined): boolean {
-  return /function.*does not exist|Could not find the function/i.test(message ?? "");
-}
-
-function stockDeleteError(error: SupabaseErr, context: string): Error {
-  console.error(context, error);
-  if (error.code === "23503") {
-    return new Error(
-      "Suppression impossible : des entrées du livre de police référencent encore ce stock. " +
-        "Exécutez le script src/lib/sql_fix_stock_delete_livre_police.sql dans Supabase → SQL Editor.",
-    );
-  }
-  if (isMissingRpcError(error.message)) {
-    return new Error(
-      "Migration Supabase manquante. Exécutez src/lib/sql_fix_stock_delete_livre_police.sql dans le SQL Editor.",
-    );
-  }
-  return new Error(error.message?.trim() || "Erreur Supabase lors de la suppression du stock.");
-}
-
-/**
- * Détache les entrées du livre de police (repli si les RPC ne sont pas déployées).
- * La mise à jour directe échoue souvent silencieusement à cause de la RLS.
- */
-async function detachLivrePoliceStockLinks(options: {
-  concessionId: string;
-  stockVehiculeId?: string;
-}): Promise<void> {
-  const { concessionId, stockVehiculeId } = options;
-  let query = supabase
-    .from("livre_de_police")
-    .update({
-      stock_vehicule_id: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("concession_id", concessionId);
-
-  if (stockVehiculeId) {
-    query = query.eq("stock_vehicule_id", stockVehiculeId);
-  } else {
-    query = query.not("stock_vehicule_id", "is", null);
-  }
-
-  const { error } = await query;
-  if (error) {
-    if (/livre_de_police.*does not exist|Could not find the table/i.test(error.message ?? "")) {
-      return;
-    }
-    console.error("detachLivrePoliceStockLinks:", error);
-    throw stockDeleteError(error, "detachLivrePoliceStockLinks");
-  }
-}
-
 export async function deleteVehicule(id: string): Promise<void> {
   if (!id) return;
-
-  const { error: rpcError } = await supabase.rpc("delete_stock_vehicule", { p_id: id });
-  if (!rpcError) return;
-
-  if (!isMissingRpcError(rpcError.message)) {
-    throw stockDeleteError(rpcError, "deleteVehicule rpc");
-  }
-
-  const concessionId = await getCurrentConcessionId();
-  if (concessionId) {
-    await detachLivrePoliceStockLinks({ concessionId, stockVehiculeId: id });
-  }
-
-  let deleteQuery = supabase.from("stock_vehicules").delete().eq("id", id);
-  if (concessionId) {
-    deleteQuery = deleteQuery.eq("concession_id", concessionId);
-  }
-
-  const { error } = await deleteQuery;
+  const { error } = await supabase.from("stock_vehicules").delete().eq("id", id);
   if (error) {
-    throw stockDeleteError(error, "deleteVehicule");
+    console.error("deleteVehicule:", error);
+    throw error;
   }
 }
 
@@ -500,24 +428,13 @@ export async function markVehiculeVenduPourBon(vehiculeId: string): Promise<bool
 
 export async function clearStock(concessionId: string): Promise<void> {
   if (!concessionId) return;
-
-  const { error: rpcError } = await supabase.rpc("clear_stock_vehicules", {
-    p_concession_id: concessionId,
-  });
-  if (!rpcError) return;
-
-  if (!isMissingRpcError(rpcError.message)) {
-    throw stockDeleteError(rpcError, "clearStock rpc");
-  }
-
-  await detachLivrePoliceStockLinks({ concessionId });
-
   const { error } = await supabase
     .from("stock_vehicules")
     .delete()
     .eq("concession_id", concessionId);
   if (error) {
-    throw stockDeleteError(error, "clearStock");
+    console.error("clearStock:", error);
+    throw error;
   }
 }
 
