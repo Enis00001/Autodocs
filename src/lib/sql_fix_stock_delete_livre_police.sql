@@ -1,13 +1,14 @@
 -- =============================================================================
 -- Fix suppression stock véhicules — livre de police
 -- =============================================================================
--- À exécuter dans Supabase → SQL Editor si la suppression du stock renvoie 500.
--- Idempotent.
+-- À exécuter dans Supabase → SQL Editor (OBLIGATOIRE si erreur 409/500 à la
+-- suppression ou au vidage du stock). Idempotent.
 --
--- Cause : livre_de_police.stock_vehicule_id référence stock_vehicules sans
--- ON DELETE SET NULL, ou la cascade SET NULL échoue à cause de la RLS.
+-- Cause : livre_de_police.stock_vehicule_id référence stock_vehicules.
+-- La mise à jour client-side échoue silencieusement (RLS) → DELETE renvoie 409.
 -- =============================================================================
 
+-- 1. FK : ON DELETE SET NULL (détachement automatique côté PostgreSQL)
 DO $$
 DECLARE
   fk_name TEXT;
@@ -15,7 +16,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'livre_de_police'
   ) THEN
-    RAISE NOTICE 'Table livre_de_police absente — rien à faire.';
+    RAISE NOTICE 'Table livre_de_police absente — étape FK ignorée.';
     RETURN;
   END IF;
 
@@ -39,3 +40,80 @@ BEGIN
     REFERENCES public.stock_vehicules(id)
     ON DELETE SET NULL;
 END $$;
+
+-- 2. RPC sécurisées (bypass RLS pour détacher livre_de_police puis supprimer)
+CREATE OR REPLACE FUNCTION public.delete_stock_vehicule(p_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_concession_id UUID;
+BEGIN
+  IF p_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT concession_id
+  INTO v_concession_id
+  FROM stock_vehicules
+  WHERE id = p_id;
+
+  IF v_concession_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF NOT public.is_membre_concession(v_concession_id) THEN
+    RAISE EXCEPTION 'Accès refusé à cette concession';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'livre_de_police'
+  ) THEN
+    UPDATE livre_de_police
+    SET stock_vehicule_id = NULL,
+        updated_at = now()
+    WHERE stock_vehicule_id = p_id;
+  END IF;
+
+  DELETE FROM stock_vehicules
+  WHERE id = p_id
+    AND concession_id = v_concession_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.clear_stock_vehicules(p_concession_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_concession_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  IF NOT public.is_membre_concession(p_concession_id) THEN
+    RAISE EXCEPTION 'Accès refusé à cette concession';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'livre_de_police'
+  ) THEN
+    UPDATE livre_de_police
+    SET stock_vehicule_id = NULL,
+        updated_at = now()
+    WHERE concession_id = p_concession_id
+      AND stock_vehicule_id IS NOT NULL;
+  END IF;
+
+  DELETE FROM stock_vehicules
+  WHERE concession_id = p_concession_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.delete_stock_vehicule(UUID) FROM public;
+REVOKE ALL ON FUNCTION public.clear_stock_vehicules(UUID) FROM public;
+GRANT EXECUTE ON FUNCTION public.delete_stock_vehicule(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.clear_stock_vehicules(UUID) TO authenticated;

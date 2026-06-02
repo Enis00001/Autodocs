@@ -382,10 +382,31 @@ export async function updateStatut(id: string, statut: StatutVehicule): Promise<
   }
 }
 
+type SupabaseErr = { message?: string; code?: string; details?: string; hint?: string };
+
+function isMissingRpcError(message: string | undefined): boolean {
+  return /function.*does not exist|Could not find the function/i.test(message ?? "");
+}
+
+function stockDeleteError(error: SupabaseErr, context: string): Error {
+  console.error(context, error);
+  if (error.code === "23503") {
+    return new Error(
+      "Suppression impossible : des entrées du livre de police référencent encore ce stock. " +
+        "Exécutez le script src/lib/sql_fix_stock_delete_livre_police.sql dans Supabase → SQL Editor.",
+    );
+  }
+  if (isMissingRpcError(error.message)) {
+    return new Error(
+      "Migration Supabase manquante. Exécutez src/lib/sql_fix_stock_delete_livre_police.sql dans le SQL Editor.",
+    );
+  }
+  return new Error(error.message?.trim() || "Erreur Supabase lors de la suppression du stock.");
+}
+
 /**
- * Détache les entrées du livre de police liées au stock avant suppression.
- * Sans cette étape, Supabase renvoie souvent une 500 : contrainte FK ou
- * mise à jour RLS lors du ON DELETE SET NULL implicite.
+ * Détache les entrées du livre de police (repli si les RPC ne sont pas déployées).
+ * La mise à jour directe échoue souvent silencieusement à cause de la RLS.
  */
 async function detachLivrePoliceStockLinks(options: {
   concessionId: string;
@@ -412,12 +433,20 @@ async function detachLivrePoliceStockLinks(options: {
       return;
     }
     console.error("detachLivrePoliceStockLinks:", error);
-    throw error;
+    throw stockDeleteError(error, "detachLivrePoliceStockLinks");
   }
 }
 
 export async function deleteVehicule(id: string): Promise<void> {
   if (!id) return;
+
+  const { error: rpcError } = await supabase.rpc("delete_stock_vehicule", { p_id: id });
+  if (!rpcError) return;
+
+  if (!isMissingRpcError(rpcError.message)) {
+    throw stockDeleteError(rpcError, "deleteVehicule rpc");
+  }
+
   const concessionId = await getCurrentConcessionId();
   if (concessionId) {
     await detachLivrePoliceStockLinks({ concessionId, stockVehiculeId: id });
@@ -430,8 +459,7 @@ export async function deleteVehicule(id: string): Promise<void> {
 
   const { error } = await deleteQuery;
   if (error) {
-    console.error("deleteVehicule:", error);
-    throw error;
+    throw stockDeleteError(error, "deleteVehicule");
   }
 }
 
@@ -472,6 +500,16 @@ export async function markVehiculeVenduPourBon(vehiculeId: string): Promise<bool
 
 export async function clearStock(concessionId: string): Promise<void> {
   if (!concessionId) return;
+
+  const { error: rpcError } = await supabase.rpc("clear_stock_vehicules", {
+    p_concession_id: concessionId,
+  });
+  if (!rpcError) return;
+
+  if (!isMissingRpcError(rpcError.message)) {
+    throw stockDeleteError(rpcError, "clearStock rpc");
+  }
+
   await detachLivrePoliceStockLinks({ concessionId });
 
   const { error } = await supabase
@@ -479,8 +517,7 @@ export async function clearStock(concessionId: string): Promise<void> {
     .delete()
     .eq("concession_id", concessionId);
   if (error) {
-    console.error("clearStock:", error);
-    throw error;
+    throw stockDeleteError(error, "clearStock");
   }
 }
 
